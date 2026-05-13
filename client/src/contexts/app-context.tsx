@@ -124,9 +124,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const openFiles = useCallback((dir = "/") => {
     setPages(prev => {
-      const existing = prev.find(p => p.type === "files");
-      if (existing) { setActivePageId(existing.id); return prev; }
-      const page: FilesPage = { id: uid(), type: "files", title: "files", dir };
+      // Allow multiple files pages - always create a new one
+      const page: FilesPage = { id: uid(), type: "files", title: `files ${prev.filter(p => p.type === "files").length + 1}`, dir };
       setActivePageId(page.id);
       return [...prev, page];
     });
