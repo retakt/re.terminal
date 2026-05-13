@@ -229,7 +229,7 @@ html, body, #root {
   background: rgba(0,0,0,0.18);
 }
 .reterm-conn-badge--connected {
-  color: #9ece6a;
+  color: #05b65d;
   background: rgba(158,206,106,0.15);
 }
 
@@ -238,7 +238,7 @@ html, body, #root {
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
 }
 .reterm-conn-dot--connected {
-  background: #40a02b;   /* darker forest green — visible on blue bar */
+  background: #05b65d;   /* darker forest green — visible on blue bar */
   box-shadow: 0 0 0 0 rgba(64,160,43,0.7);
   animation: reterm-pulse 3s ease-in-out infinite;
 }
@@ -249,7 +249,7 @@ html, body, #root {
 }
 
 .reterm-conn-badge--connected {
-  color: #9ece6a;
+  color: #05b65d;
   background: rgba(158,206,106,0.2);
 }
 
@@ -349,7 +349,7 @@ html, body, #root {
   /* Increase base font size for better readability */
   html, body, #root { font-size: 15px; }
   
-  .reterm-tabbar { height: 48px; }
+  .reterm-tabbar { height: 36px; }
 
   /* Tabs shrink more aggressively on small screens */
   .reterm-tab {
@@ -472,7 +472,7 @@ html, body, #root {
   height: 14px;
   background: var(--border);
   flex-shrink: 0;
-  margin: 0 1px;
+  margin: 0;
 }
 
 /* ─── Remove old floating pill elements ──────────────────────────────────── */
