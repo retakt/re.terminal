@@ -511,10 +511,35 @@ wss.on("connection", (ws, req) => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
+/** Auto-detect Tailscale IP */
+function getTailscaleIP() {
+  // Try tailscale CLI first
+  try {
+    const { execSync } = require('child_process');
+    const ip = execSync('tailscale ip -4 2>/dev/null', { encoding: 'utf8' }).trim();
+    if (ip) return ip;
+  } catch (_) {}
+
+  // Fallback: check network interfaces for 100.x.x.x
+  try {
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && iface.address.startsWith('100.')) {
+          return iface.address;
+        }
+      }
+    }
+  } catch (_) {}
+
+  return 'unknown';
+}
+
 httpServer.listen(PORT, "0.0.0.0", () => {
   log("INFO", "startup", "server listening", {
     local:     `http://localhost:${PORT}`,
-    tailscale: `http://100.77.70.7:${PORT}`,
+    tailscale: `http://${getTailscaleIP()}:${PORT}`,
     network:   `http://10.10.24.206:${PORT}`,
     logFile:   LOG_FILE,
   });
