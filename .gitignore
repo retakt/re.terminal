@@ -1,60 +1,82 @@
 ```
 # Dependencies
 node_modules/
-.julia/
-zig-cache/
-zig-out/
-target/
 
-# Python
+# Environment variables
+.env
+.env.local
+*.env.*
+
+# Logs
+*.log
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+target/
+*.out
+
+# Python specific
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
-venv/
-.venv/
-.env
-.env.local
-.env.*
-pyproject.toml.bak
-poetry.lock
-*.egg-info/
-
-# Build artifacts
-build/
-dist/
 *.so
-*.dylib
-*.dll
-*.exe
-*.out
+*.egg-info/
+.eggs/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Logs
-*.log
+# Node.js specific
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# OS
-.DS_Store
-Thumbs.db
+# Compiled files
+*.class
+*.o
+*.obj
+*.dll
+*.so
+*.a
+*.exe
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Temporary files
-*.tmp
-*.temp
-.DS_Store
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
