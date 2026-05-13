@@ -25,6 +25,7 @@ import {
   Plus, X, Terminal, FileText, FolderOpen,
   WifiOff, Loader2, ChevronRight, Settings, Circle,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 
@@ -133,7 +134,10 @@ function PrimaryTabBar() {
 
       <button
         className="reterm-tab-new"
-        onClick={() => openFiles("/")}
+        onClick={() => {
+          // Open new files page always from root (/)
+          openFiles("/");
+        }}
         title="open file explorer"
         style={{ borderLeft: "1px solid var(--border-subtle)" }}
       >
@@ -150,10 +154,20 @@ function PrimaryTabBar() {
 function FileTabBar() {
   const { pages, activePageId, closePage, switchPage, openEditor } = useApp();
 
-  const filesPage = pages.find(p => p.type === "files");
-  if (!filesPage) return null;
+  // Find the active files page (the one currently selected in row 1)
+  const activeFilesPage = pages.find(p => p.type === "files" && p.id === activePageId);
+  
+  // If no files page is active, find any files page or return null
+  const filesPage = activeFilesPage || pages.find(p => p.type === "files");
+  if (!filesPage || filesPage.type !== "files") return null;
 
+  // Get all editor pages that belong to this files page
+  // For now, we show all editors but they're associated with the active files page context
   const editorPages = pages.filter((p): p is EditorPage => p.type === "editor");
+
+  // Extract current directory name from the files page dir path
+  const dirPath = filesPage.dir || "/";
+  const dirName = dirPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "/";
 
   return (
     <div className="reterm-filetabbar">
@@ -161,10 +175,10 @@ function FileTabBar() {
       <button
         className={`reterm-filetab reterm-filetab--files ${activePageId === filesPage.id ? "reterm-filetab--active" : ""}`}
         onClick={() => switchPage(filesPage.id)}
-        title="file explorer"
+        title={dirPath}
       >
         <FolderOpen size={11} strokeWidth={1.5} />
-        <span>files</span>
+        <span>{dirName}</span>
       </button>
 
       {/* Divider */}
@@ -202,10 +216,14 @@ function FileTabBar() {
       <button
         className="reterm-filetab-new"
         onClick={() => {
-          const name = prompt("file path to open:");
-          if (name) openEditor(name);
+          // Open new file in the current directory of the active files page
+          const name = prompt("file name:");
+          if (name) {
+            const filePath = dirPath.endsWith("/") ? `${dirPath}${name}` : `${dirPath}/${name}`;
+            openEditor(filePath, name);
+          }
         }}
-        title="open file by path"
+        title="new file in current directory"
       >
         <Plus size={11} strokeWidth={2} />
       </button>
@@ -348,7 +366,7 @@ export function TerminalPage() {
       {/* Row 2: file sub-tabs (only when files page exists) */}
       {hasFilesPage && <FileTabBar />}
 
-      {/* Key bar — only for terminal pages */}
+      {/* Key bar — only for terminal pages (positioned under the top bars) */}
       {activeIsTerminal && <KeyBar sessionId={activeSessionId} />}
 
       {/* Content area */}
@@ -362,24 +380,29 @@ export function TerminalPage() {
             </button>
           </div>
         ) : (
-          pages.map(page => {
-            const isVisible = page.id === activePageId;
-            return (
-              <div
-                key={page.id}
-                style={{
-                  position:      "absolute",
-                  inset:         0,
-                  opacity:       isVisible ? 1 : 0,
-                  pointerEvents: isVisible ? "auto" : "none",
-                  // Keep terminals mounted; unmount editor/files when hidden
-                  display: !isVisible ? "none" : undefined,
-                }}
-              >
-                <PageContent page={page} />
-              </div>
-            );
-          })
+          <AnimatePresence mode="wait">
+            {pages.map(page => {
+              const isVisible = page.id === activePageId;
+              return (
+                <motion.div
+                  key={page.id}
+                  initial={{ rotateY: 0, opacity: 1 }}
+                  animate={{ rotateY: isVisible ? 0 : -5, opacity: isVisible ? 1 : 0 }}
+                  exit={{ rotateY: 5, opacity: 0 }}
+                  transition={{ duration: 0.15, ease: "easeInOut" }}
+                  style={{
+                    position:      "absolute",
+                    inset:         0,
+                    pointerEvents: isVisible ? "auto" : "none",
+                    display: !isVisible ? "none" : undefined,
+                    transformOrigin: "left center",
+                  }}
+                >
+                  <PageContent page={page} />
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         )}
       </div>
 

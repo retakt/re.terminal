@@ -5,7 +5,6 @@
  * - NO auto-focus on mobile (prevents keyboard popup on load)
  * - Touch tap on terminal = focus + show keyboard (intentional)
  * - xterm selection works because we don't intercept touch on canvas
- * - Pressure-velocity scroll on .xterm-viewport only
  *
  * Performance:
  * - will-change: transform on container
@@ -39,73 +38,6 @@ const THEME = {
 
 const isMobile = () => navigator.maxTouchPoints > 0;
 
-// ─── Pressure-velocity scroll ─────────────────────────────────────────────────
-// Attaches ONLY to .xterm-viewport so xterm canvas handles selection freely.
-
-function attachPressureScroll(container: HTMLElement, xterm: XTerm): () => void {
-  const viewport = container.querySelector(".xterm-viewport") as HTMLElement | null;
-  if (!viewport) return () => {};
-
-  let active = false, startY = 0, lastY = 0, lastT = 0;
-  let velocity = 0, pressure = 0.5, rafId: number | null = null;
-
-  const DECAY = 0.85;
-  const SENS  = 0.10;  // lines per px
-
-  const stop = () => { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } };
-
-  const momentum = () => {
-    if (Math.abs(velocity) < 0.04) { velocity = 0; return; }
-    xterm.scrollLines(Math.round(velocity * SENS * (0.5 + pressure) * 16));
-    velocity *= DECAY;
-    rafId = requestAnimationFrame(momentum);
-  };
-
-  const onDown = (e: PointerEvent) => {
-    if (!e.isPrimary) return;
-    stop();
-    active = true; startY = lastY = e.clientY;
-    lastT = performance.now(); velocity = 0;
-    pressure = e.pressure > 0 ? e.pressure : 0.5;
-    viewport.setPointerCapture(e.pointerId);
-  };
-
-  const onMove = (e: PointerEvent) => {
-    if (!active) return;
-    const now = performance.now(), dt = now - lastT, dy = e.clientY - lastY;
-    if (dt > 0) velocity = velocity * 0.55 + (dy / dt) * 0.45;
-    if (e.pressure > 0 && e.pressure !== 0.5) pressure = Math.max(pressure, e.pressure);
-    const lines = -(dy * SENS * (0.5 + pressure));
-    if (Math.abs(lines) >= 0.4) xterm.scrollLines(Math.round(lines));
-    lastY = e.clientY; lastT = now;
-  };
-
-  const onUp = (e: PointerEvent) => {
-    if (!active) return;
-    active = false;
-    try { viewport.releasePointerCapture(e.pointerId); } catch (_) {}
-    if (Math.abs(e.clientY - startY) > 6 && Math.abs(velocity) > 0.08) {
-      velocity = -velocity;
-      rafId = requestAnimationFrame(momentum);
-    }
-  };
-
-  const onCancel = () => { active = false; stop(); };
-
-  viewport.addEventListener("pointerdown",   onDown,   { passive: true });
-  viewport.addEventListener("pointermove",   onMove,   { passive: true });
-  viewport.addEventListener("pointerup",     onUp,     { passive: true });
-  viewport.addEventListener("pointercancel", onCancel, { passive: true });
-
-  return () => {
-    stop();
-    viewport.removeEventListener("pointerdown",   onDown);
-    viewport.removeEventListener("pointermove",   onMove);
-    viewport.removeEventListener("pointerup",     onUp);
-    viewport.removeEventListener("pointercancel", onCancel);
-  };
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function TerminalInstance({ sessionId, isActive }: Props) {
@@ -118,7 +50,7 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
   React.useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
-    let disposed = false, cleanupScroll: (() => void) | null = null;
+    let disposed = false;
 
     // Responsive font size: 14 (desktop) -> 10 (small mobile)
     const getFontSize = () => {
@@ -161,8 +93,6 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
 
       // Only auto-focus on desktop — on mobile this triggers keyboard popup
       if (!mobile.current) xterm.focus();
-
-      if (mobile.current) cleanupScroll = attachPressureScroll(el, xterm);
     });
 
     xtermRef.current = xterm;
@@ -190,7 +120,6 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
 
     return () => {
       disposed = true;
-      cleanupScroll?.();
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       unregisterXterm(sessionId);
@@ -208,6 +137,18 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
       xtermRef.current?.focus();
       try { fitRef.current?.fit(); } catch (_) {}
     }, 30);
+    return () => clearTimeout(t);
+  }, [isActive]);
+
+  // Mobile: scroll to end when terminal becomes active (e.g., after keyboard opens)
+  React.useEffect(() => {
+    if (!isActive || !mobile.current) return;
+    const t = setTimeout(() => {
+      if (xtermRef.current) {
+        // Scroll to bottom of terminal buffer
+        xtermRef.current.scrollToBottom();
+      }
+    }, 150);
     return () => clearTimeout(t);
   }, [isActive]);
 
