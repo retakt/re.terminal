@@ -59,7 +59,7 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
       if (window.innerWidth <= 768) return 12; // Tablets
       return 14; // Desktop
     };
-    const fontSize = mobile.current ? getFontSize() : 14;
+    const fontSize = mobile.current ? getFontSize() : 17;
 
     const xterm = new XTerm({
       cursorBlink:        true,
