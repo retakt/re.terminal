@@ -21,9 +21,11 @@ import { TerminalInstance } from "./terminal-instance";
 import { KeyBar } from "./key-bar";
 import { FileBrowser } from "@/components/files/file-browser";
 import { FileEditor } from "@/components/editor/file-editor";
+import { SettingsPanel } from "./settings-panel";
 import {
   Plus, X, Terminal, FileText, FolderOpen,
   WifiOff, Loader2, ChevronRight, Settings, Circle,
+  GitBranch, Bell,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -236,6 +238,25 @@ function FileTabBar() {
 function StatusBar() {
   const { status, sessions, disconnect } = useTerminal();
   const { pages, activePageId } = useApp();
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [settings, setSettings] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem("reterm_settings");
+      return saved ? JSON.parse(saved) : {
+        theme: 'dark' as const,
+        fontSize: 14,
+        fontFamily: '"Ubuntu Mono", monospace',
+        terminalOpacity: 0.95,
+      };
+    } catch {
+      return {
+        theme: 'dark' as const,
+        fontSize: 14,
+        fontFamily: '"Ubuntu Mono", monospace',
+        terminalOpacity: 0.95,
+      };
+    }
+  });
 
   const activePage  = pages.find(p => p.id === activePageId);
   const isConnected = status === "connected";
@@ -247,40 +268,74 @@ function StatusBar() {
 
   const editorPath = activePage?.type === "editor" ? activePage.filePath : null;
 
+  // Save settings to localStorage
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("reterm_settings", JSON.stringify(settings));
+    } catch {}
+  }, [settings]);
+
+  // Apply font settings
+  React.useEffect(() => {
+    document.documentElement.style.setProperty('--term-font-size', `${settings.fontSize}px`);
+    document.documentElement.style.setProperty('--term-font-family', settings.fontFamily);
+  }, [settings.fontSize, settings.fontFamily]);
+
+  const handleSettingsUpdate = (updates: Partial<typeof settings>) => {
+    setSettings((prev: typeof settings) => ({ ...prev, ...updates }));
+  };
+
   return (
-    <div className="reterm-statusbar">
-      <div className="reterm-statusbar-left">
-        <span className={`reterm-conn-badge ${isConnected ? "reterm-conn-badge--connected" : ""}`}>
-          {isConnected ? (
-            <><span className="reterm-conn-dot reterm-conn-dot--connected" />connected</>
-          ) : isBusy ? (
-            <><Loader2 size={10} className="reterm-spin" />{status === "connecting" ? "connecting…" : "reconnecting…"}</>
-          ) : (
-            <><Circle size={8} strokeWidth={2} style={{ opacity: 0.4 }} />{status === "idle" ? "idle" : "disconnected"}</>
-          )}
-        </span>
-        {termSession && termSession.cols !== 80 && (
-          <span className="reterm-statusbar-item reterm-dims">{termSession.cols}×{termSession.rows}</span>
-        )}
-        {editorPath && (
-          <span className="reterm-statusbar-item reterm-dims" style={{ opacity: 0.6 }}>{editorPath}</span>
-        )}
-        {sessions.length > 0 && (
-          <span className="reterm-statusbar-item" style={{ opacity: 0.5, fontSize: 10 }}>
-            {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+    <>
+      <div className="reterm-statusbar">
+        <div className="reterm-statusbar-left">
+          <span className={`reterm-conn-badge ${isConnected ? "reterm-conn-badge--connected" : ""}`}>
+            {isConnected ? (
+              <><span className="reterm-conn-dot reterm-conn-dot--connected" />connected</>
+            ) : isBusy ? (
+              <><Loader2 size={10} className="reterm-spin" />{status === "connecting" ? "connecting…" : "reconnecting…"}</>
+            ) : (
+              <><Circle size={8} strokeWidth={2} style={{ opacity: 0.4 }} />{status === "idle" ? "idle" : "disconnected"}</>
+            )}
           </span>
-        )}
-      </div>
-      <div className="reterm-statusbar-right">
-        <span className="reterm-statusbar-brand">re.Term</span>
-        <button className="reterm-statusbar-btn" title="settings"><Settings size={11} strokeWidth={1.8} /></button>
-        {isConnected && (
-          <button className="reterm-statusbar-btn reterm-statusbar-btn--danger" onClick={disconnect} title="disconnect">
-            <WifiOff size={11} strokeWidth={1.8} />
+          {termSession && termSession.cols !== 80 && (
+            <span className="reterm-statusbar-item reterm-dims">{termSession.cols}×{termSession.rows}</span>
+          )}
+          {editorPath && (
+            <span className="reterm-statusbar-item reterm-dims" style={{ opacity: 0.6 }}>{editorPath.split('/').pop()}</span>
+          )}
+          {sessions.length > 0 && (
+            <span className="reterm-statusbar-item" style={{ opacity: 0.5, fontSize: 10 }}>
+              {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+        <div className="reterm-statusbar-right">
+          <span className="reterm-statusbar-brand">re.Term</span>
+          <button className="reterm-statusbar-btn" title="notifications"><Bell size={11} strokeWidth={1.8} /></button>
+          <button className="reterm-statusbar-btn" title="git"><GitBranch size={11} strokeWidth={1.8} /></button>
+          <button 
+            className="reterm-statusbar-btn" 
+            title="settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings size={11} strokeWidth={1.8} />
           </button>
-        )}
+          {isConnected && (
+            <button className="reterm-statusbar-btn reterm-statusbar-btn--danger" onClick={disconnect} title="disconnect">
+              <WifiOff size={11} strokeWidth={1.8} />
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+      
+      <SettingsPanel
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onUpdate={handleSettingsUpdate}
+      />
+    </>
   );
 }
 
