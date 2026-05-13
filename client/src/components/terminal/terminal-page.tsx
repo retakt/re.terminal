@@ -155,16 +155,20 @@ function FileTabBar() {
 
   const editorPages = pages.filter((p): p is EditorPage => p.type === "editor");
 
+  // Extract current directory name from the files page dir path
+  const dirPath = filesPage.dir || "/";
+  const dirName = dirPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "/";
+
   return (
     <div className="reterm-filetabbar">
       {/* Files label — clicking goes back to the tree */}
       <button
         className={`reterm-filetab reterm-filetab--files ${activePageId === filesPage.id ? "reterm-filetab--active" : ""}`}
         onClick={() => switchPage(filesPage.id)}
-        title="file explorer"
+        title={dirPath}
       >
         <FolderOpen size={11} strokeWidth={1.5} />
-        <span>files</span>
+        <span>{dirName}</span>
       </button>
 
       {/* Divider */}
@@ -202,10 +206,14 @@ function FileTabBar() {
       <button
         className="reterm-filetab-new"
         onClick={() => {
-          const name = prompt("file path to open:");
-          if (name) openEditor(name);
+          // Open new file in the current directory shown in the files tab
+          const name = prompt("file name:");
+          if (name) {
+            const filePath = dirPath.endsWith("/") ? `${dirPath}${name}` : `${dirPath}/${name}`;
+            openEditor(filePath, name);
+          }
         }}
-        title="open file by path"
+        title="new file in current directory"
       >
         <Plus size={11} strokeWidth={2} />
       </button>
