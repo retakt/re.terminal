@@ -440,22 +440,6 @@ html, body, #root {
 }
 .keybar::-webkit-scrollbar { display: none; }
 
-/* Mobile: fix keybar at bottom above status bar to avoid keyboard overlap */
-@media (max-width: 768px) {
-  .keybar {
-    position: fixed;
-    bottom: var(--statusbar-height);
-    left: 0;
-    right: 0;
-    z-index: 100;
-    box-shadow: 0 -2px 8px rgba(0,0,0,0.3);
-  }
-  /* Add padding to reterm-area to account for fixed keybar */
-  .reterm-area.has-keybar {
-    padding-bottom: 36px;
-  }
-}
-
 .keybar-key {
   display: inline-flex;
   align-items: center;

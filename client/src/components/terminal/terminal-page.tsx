@@ -349,7 +349,7 @@ export function TerminalPage() {
       {hasFilesPage && <FileTabBar />}
 
       {/* Content area */}
-      <div className={`reterm-area${activeIsTerminal ? ' has-keybar' : ''}`}>
+      <div className="reterm-area">
         {pages.length === 0 ? (
           <div className="reterm-empty">
             <Terminal size={40} strokeWidth={1} opacity={0.3} />
