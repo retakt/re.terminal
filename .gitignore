@@ -1,63 +1,51 @@
-```gitignore
-# Dependencies
-node_modules/
-
-# Build outputs
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
 dist/
 build/
-target/
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.py.class
-.Python
-env/
-venv/
+# Dependencies
 .venv/
-.ENV
-.python-version
+venv/
+node_modules/
+target/
+.gradle/
+.mypy_cache/
+.pytest_cache/
 
-# Logs
+# Logs and temp files
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+*.tmp
+*.swp
+*.swo
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-*.cover
-
-# Environment variables
+# Environment
 .env
 .env.local
-.env.*
-!.env.example
+*.env.*
 
-# IDE
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS
+# System files
 .DS_Store
 Thumbs.db
 
-# Testing
-.mypy_cache/
-.pytest_cache/
-.nyc_output/
+# Coverage
 coverage/
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
+htmlcov/
+.coverage
 
 # Compressed files
 *.zip
@@ -82,4 +70,3 @@ coverage/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-```
