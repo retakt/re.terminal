@@ -131,7 +131,7 @@ html, body, #root {
   color: var(--fg-muted); font-family: var(--font-ui); font-size: 12px;
   cursor: pointer; white-space: nowrap; position: relative;
   transition: all 0.15s ease; flex-shrink: 0;
-  border-radius: 6px 6px 0 0;
+  border-radius: 3px 3px 0 0;
   margin: 0 2px;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -173,7 +173,7 @@ html, body, #root {
   border-left: 1px solid var(--border-subtle);
   color: var(--fg-muted); cursor: pointer; flex-shrink: 0;
   transition: background 0.15s, color 0.15s;
-  border-radius: 0 6px 0 0;
+  border-radius: 0 3px 0 0;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
@@ -447,7 +447,7 @@ html, body, #root {
   height: 22px;
   padding: 0 7px;
   flex-shrink: 0;
-  border-radius: 4px;
+  border-radius: 0;
   border: 1px solid rgba(192,202,245,0.1);
   background: rgba(31,35,53,0.9);
   color: rgba(192,202,245,0.75);
@@ -527,7 +527,7 @@ html, body, #root {
   flex-shrink: 0;
   transition: all 0.15s ease;
   position: relative;
-  border-radius: 4px 4px 0 0;
+  border-radius: 2px 2px 0 0;
   margin: 0 2px;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
