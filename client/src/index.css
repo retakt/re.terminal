@@ -655,11 +655,17 @@ html, body, #root {
   font-family: var(--font-mono);
   font-size: 11px;
   cursor: pointer;
-  padding: 2px 5px;
+  padding: 3px 6px;
   border-radius: 3px;
   transition: color 0.1s, background 0.1s;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  /* Better touch targets for mobile */
+  min-width: 28px;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 @media (hover: hover) {
   .fb-hbtn:hover { color: var(--fg-base); background: var(--bg-active); }
@@ -684,9 +690,14 @@ html, body, #root {
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--fg-subtle) transparent;
+  /* Mobile touch optimization */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  /* GPU acceleration for smoother scrolling */
+  will-change: scroll-position;
 }
-.fb-tree::-webkit-scrollbar { width: 4px; }
-.fb-tree::-webkit-scrollbar-thumb { background: var(--fg-subtle); border-radius: 2px; }
+.fb-tree::-webkit-scrollbar { width: 6px; }
+.fb-tree::-webkit-scrollbar-thumb { background: var(--fg-subtle); border-radius: 3px; }
 
 /* Status messages */
 .fb-msg {
@@ -703,12 +714,16 @@ html, body, #root {
 .fb-node {
   display: flex;
   align-items: center;
-  height: 22px;           /* fixed height — chevron + name always on same line */
+  height: 24px;           /* fixed height — chevron + name always on same line */
   cursor: pointer;
   user-select: none;
+  -webkit-user-select: none;
   position: relative;
   padding-right: 4px;
-  transition: background 0.07s;
+  transition: background 0.12s ease;
+  /* Better touch target for mobile */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 @media (hover: hover) {
   .fb-node:hover { background: var(--bg-active); }
@@ -734,7 +749,9 @@ html, body, #root {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 22px;
+  line-height: 24px;
+  /* Prevent pointer events from interfering with scroll */
+  pointer-events: none;
 }
 .fb-node--dir  .fb-node-name { color: var(--accent-yellow); }
 .fb-node--file .fb-node-name { color: var(--fg-base); opacity: 0.95; }
@@ -755,12 +772,18 @@ html, body, #root {
   font-family: var(--font-mono);
   font-size: 10px;
   cursor: pointer;
-  padding: 1px 4px;
+  padding: 2px 6px;
   border-radius: 2px;
   line-height: 1;
   transition: color 0.1s, background 0.1s;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  /* Make buttons easier to tap on mobile */
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 @media (hover: hover) {
   .fb-abtn:hover { color: var(--fg-base); background: var(--bg-overlay); }
