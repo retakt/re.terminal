@@ -133,6 +133,8 @@ html, body, #root {
   transition: all 0.15s ease; flex-shrink: 0;
   border-radius: 6px 6px 0 0;
   margin: 0 2px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .reterm-tab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
 .reterm-tab--active {
@@ -151,6 +153,8 @@ html, body, #root {
   opacity: 0; color: var(--fg-muted); flex-shrink: 0; cursor: pointer;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
   margin-left: auto;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .reterm-tab:hover .reterm-tab-close,
 .reterm-tab--active .reterm-tab-close { opacity: 1; }
@@ -164,6 +168,8 @@ html, body, #root {
   color: var(--fg-muted); cursor: pointer; flex-shrink: 0;
   transition: background 0.15s, color 0.15s;
   border-radius: 0 6px 0 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .reterm-tab-new:hover { background: rgba(122,162,247,0.15); color: var(--accent-blue); }
 
@@ -501,6 +507,8 @@ html, body, #root {
   position: relative;
   border-radius: 4px 4px 0 0;
   margin: 0 2px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .reterm-filetab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
 
@@ -538,6 +546,8 @@ html, body, #root {
   cursor: pointer;
   transition: opacity 0.1s, background 0.1s, color 0.1s;
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .reterm-filetab:hover .reterm-filetab-close,
 .reterm-filetab--active .reterm-filetab-close { opacity: 1; }
@@ -562,6 +572,8 @@ html, body, #root {
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.1s, color 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .reterm-filetab-new:hover { background: var(--bg-highlight); color: var(--fg-base); }
 
@@ -609,6 +621,8 @@ html, body, #root {
   padding: 2px 5px;
   border-radius: 3px;
   transition: color 0.1s, background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .fb-hbtn:hover { color: var(--fg-base); background: var(--bg-active); }
 
@@ -697,6 +711,8 @@ html, body, #root {
   border-radius: 2px;
   line-height: 1;
   transition: color 0.1s, background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .fb-abtn:hover { color: var(--fg-base); background: var(--bg-overlay); }
 .fb-abtn--del:hover { color: var(--accent-red); }
