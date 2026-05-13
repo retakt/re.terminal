@@ -52,11 +52,11 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
     const el = containerRef.current;
     let disposed = false;
 
-    // Responsive font size: 14 (desktop) -> 10 (small mobile)
+    // Responsive font size: 15 (mobile) -> 14 (desktop)
     const getFontSize = () => {
-      if (window.innerWidth <= 375) return 10; // iPhone 6/7/8 and smaller
-      if (window.innerWidth <= 480) return 11; // Small phones
-      if (window.innerWidth <= 768) return 12; // Tablets
+      if (window.innerWidth <= 375) return 11; // iPhone 6/7/8 and smaller
+      if (window.innerWidth <= 480) return 12; // Small phones
+      if (window.innerWidth <= 768) return 15; // Tablets/mobile
       return 14; // Desktop
     };
     const fontSize = mobile.current ? getFontSize() : 14;
