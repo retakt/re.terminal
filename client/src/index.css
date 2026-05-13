@@ -27,8 +27,8 @@
   --accent-cyan:    #7dcfff;
   --tab-height:     35px;
   --statusbar-height: 22px;
-  /* Ubuntu Mono everywhere */
-  --font-ui:   "Ubuntu Mono", "JetBrains Mono", monospace;
+  /* Clean sans-serif for UI elements, Ubuntu Mono for terminal */
+  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   --font-mono: "Ubuntu Mono", "JetBrains Mono", monospace;
 }
 
@@ -136,7 +136,9 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.reterm-tab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
+@media (hover: hover) {
+  .reterm-tab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
+}
 .reterm-tab--active {
   background: linear-gradient(180deg, #24283b 0%, #1f2335 100%);
   color: var(--fg-base);
@@ -156,9 +158,13 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.reterm-tab:hover .reterm-tab-close,
+@media (hover: hover) {
+  .reterm-tab:hover .reterm-tab-close { opacity: 1; }
+}
 .reterm-tab--active .reterm-tab-close { opacity: 1; }
-.reterm-tab-close:hover { background: rgba(247,118,142,0.2); color: var(--accent-red); }
+@media (hover: hover) {
+  .reterm-tab-close:hover { background: rgba(247,118,142,0.2); color: var(--accent-red); }
+}
 
 .reterm-tab-new {
   display: flex; align-items: center; justify-content: center;
@@ -171,7 +177,9 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.reterm-tab-new:hover { background: rgba(122,162,247,0.15); color: var(--accent-blue); }
+@media (hover: hover) {
+  .reterm-tab-new:hover { background: rgba(122,162,247,0.15); color: var(--accent-blue); }
+}
 
 /* ─── Terminal area ──────────────────────────────────────────────────────── */
 
@@ -198,7 +206,9 @@ html, body, #root {
   color: var(--fg-base); font-size: 12px; cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
-.reterm-empty-btn:hover { background: var(--bg-active); border-color: var(--accent-blue); }
+@media (hover: hover) {
+  .reterm-empty-btn:hover { background: var(--bg-active); border-color: var(--accent-blue); }
+}
 
 /* ─── Status bar ─────────────────────────────────────────────────────────── */
 
@@ -259,8 +269,10 @@ html, body, #root {
   border-radius: 3px; color: inherit; cursor: pointer;
   opacity: 0.8; transition: opacity 0.1s, background 0.1s;
 }
-.reterm-statusbar-btn:hover { opacity: 1; background: rgba(0,0,0,0.3); }
-.reterm-statusbar-btn--danger:hover { color: #f7768e !important; opacity: 1 !important; }
+@media (hover: hover) {
+  .reterm-statusbar-btn:hover { opacity: 1; background: rgba(0,0,0,0.3); }
+  .reterm-statusbar-btn--danger:hover { color: #f7768e !important; opacity: 1 !important; }
+}
 
 /* ─── Login screen ───────────────────────────────────────────────────────── */
 
@@ -306,7 +318,9 @@ html, body, #root {
   cursor: pointer; transition: opacity 0.15s, transform 0.1s, box-shadow 0.1s; margin-top: 4px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
-.reterm-login-btn:hover:not(:disabled) { opacity: 0.95; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+@media (hover: hover) {
+  .reterm-login-btn:hover:not(:disabled) { opacity: 0.95; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+}
 .reterm-login-btn:active:not(:disabled) { transform: scale(0.98); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
 .reterm-login-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .reterm-login-reconnect {
@@ -324,55 +338,63 @@ html, body, #root {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
+@media (hover: hover) {
+  ::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
+}
 ::selection { background: rgba(122,162,247,0.25); }
 
 /* ─── Mobile ─────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
-  .reterm-tabbar { height: 40px; }
+  /* Increase base font size for better readability */
+  html, body, #root { font-size: 15px; }
+  
+  .reterm-tabbar { height: 48px; }
 
   /* Tabs shrink more aggressively on small screens */
   .reterm-tab {
-    min-width: 80px;
-    max-width: 140px;
-    padding: 0 8px 0 7px;
-    font-size: 11px;
+    min-width: 100px;
+    max-width: 160px;
+    padding: 0 12px 0 10px;
+    font-size: 13px;
   }
 
   /* Hide session name text on very small screens, keep icon */
-  .reterm-tab-title { font-size: 11px; }
+  .reterm-tab-title { font-size: 13px; }
 
   /* Status bar — tighter on mobile */
-  .reterm-statusbar { height: 26px; padding: 0 6px; gap: 4px; }
+  .reterm-statusbar { height: 32px; padding: 0 10px; gap: 6px; font-size: 12px; }
   .reterm-statusbar-left,
-  .reterm-statusbar-right { gap: 4px; }
+  .reterm-statusbar-right { gap: 6px; }
 
   /* Hide session name in status bar on small screens */
   .reterm-session-name { display: none; }
 
   /* Login card full-width */
-  .reterm-login-card { padding: 24px 16px; }
+  .reterm-login-card { padding: 28px 20px; }
+  
+  /* Login elements larger on mobile */
+  .reterm-login-logo { font-size: 22px; }
+  .reterm-login-subtitle { font-size: 13px; }
+  .reterm-login-input { padding: 11px 14px; font-size: 15px; }
+  .reterm-login-btn { padding: 11px 18px; font-size: 15px; }
+  .reterm-login-label { font-size: 12px; }
 
   /* xterm padding tighter on mobile */
-  .xterm { padding: 4px 6px; }
+  .xterm { padding: 6px 8px; font-size: 14px; }
+  
+  /* Keybar keys larger for touch */
+  .keybar-key { height: 28px; padding: 0 10px; font-size: 12px; }
+  
+  /* Empty state button larger */
+  .reterm-empty-btn { padding: 9px 18px; font-size: 13px; }
+  .reterm-empty p { font-size: 14px; }
 }
 
 @media (max-width: 400px) {
   /* Tabs: icon + short name only */
-  .reterm-tab { min-width: 60px; }
-  .reterm-tab-title { max-width: 50px; }
-}
-
-/* ─── Enhanced hover effects ─────────────────────────────────────────────────── */
-
-.reterm-tab:hover,
-.reterm-filetab:hover {
-  background: rgba(41, 46, 66, 0.6);
-}
-
-.reterm-tab--active {
-  background: linear-gradient(180deg, #24283b 0%, #1f2335 100%);
+  .reterm-tab { min-width: 80px; }
+  .reterm-tab-title { max-width: 60px; }
 }
 
 /* ─── Ubuntu Mono — self-hosted ──────────────────────────────────────────── */
@@ -417,6 +439,22 @@ html, body, #root {
   overscroll-behavior-x: contain;
 }
 .keybar::-webkit-scrollbar { display: none; }
+
+/* Mobile: fix keybar at bottom above status bar to avoid keyboard overlap */
+@media (max-width: 768px) {
+  .keybar {
+    position: fixed;
+    bottom: var(--statusbar-height);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.3);
+  }
+  /* Add padding to reterm-area to account for fixed keybar */
+  .reterm-area.has-keybar {
+    padding-bottom: 36px;
+  }
+}
 
 .keybar-key {
   display: inline-flex;
@@ -510,7 +548,9 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.reterm-filetab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
+@media (hover: hover) {
+  .reterm-filetab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
+}
 
 .reterm-filetab--active {
   background: linear-gradient(180deg, #24283b 0%, #1f2335 100%);
@@ -549,9 +589,13 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.reterm-filetab:hover .reterm-filetab-close,
+@media (hover: hover) {
+  .reterm-filetab:hover .reterm-filetab-close { opacity: 1; }
+}
 .reterm-filetab--active .reterm-filetab-close { opacity: 1; }
-.reterm-filetab-close:hover { background: var(--bg-highlight); color: var(--accent-red); }
+@media (hover: hover) {
+  .reterm-filetab-close:hover { background: var(--bg-highlight); color: var(--accent-red); }
+}
 
 .reterm-filetab-sep {
   width: 1px;
@@ -575,7 +619,9 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.reterm-filetab-new:hover { background: var(--bg-highlight); color: var(--fg-base); }
+@media (hover: hover) {
+  .reterm-filetab-new:hover { background: var(--bg-highlight); color: var(--fg-base); }
+}
 
 /* ─── File Browser ───────────────────────────────────────────────────────── */
 /* ─── File Browser ───────────────────────────────────────────────────────── */
@@ -624,7 +670,9 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.fb-hbtn:hover { color: var(--fg-base); background: var(--bg-active); }
+@media (hover: hover) {
+  .fb-hbtn:hover { color: var(--fg-base); background: var(--bg-active); }
+}
 
 /* Root folder row */
 .fb-root-row {
@@ -723,8 +771,10 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.fb-abtn:hover { color: var(--fg-base); background: var(--bg-overlay); }
-.fb-abtn--del:hover { color: var(--accent-red); }
+@media (hover: hover) {
+  .fb-abtn:hover { color: var(--fg-base); background: var(--bg-overlay); }
+  .fb-abtn--del:hover { color: var(--accent-red); }
+}
 
 /* ─── File Editor ────────────────────────────────────────────────────────── */
 

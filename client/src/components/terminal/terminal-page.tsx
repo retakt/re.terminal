@@ -348,11 +348,8 @@ export function TerminalPage() {
       {/* Row 2: file sub-tabs (only when files page exists) */}
       {hasFilesPage && <FileTabBar />}
 
-      {/* Key bar — only for terminal pages */}
-      {activeIsTerminal && <KeyBar sessionId={activeSessionId} />}
-
       {/* Content area */}
-      <div className="reterm-area">
+      <div className={`reterm-area${activeIsTerminal ? ' has-keybar' : ''}`}>
         {pages.length === 0 ? (
           <div className="reterm-empty">
             <Terminal size={40} strokeWidth={1} opacity={0.3} />
@@ -382,6 +379,9 @@ export function TerminalPage() {
           })
         )}
       </div>
+
+      {/* Key bar — only for terminal pages (fixed at bottom on mobile) */}
+      {activeIsTerminal && <KeyBar sessionId={activeSessionId} />}
 
       <StatusBar />
     </div>
