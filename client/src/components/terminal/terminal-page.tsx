@@ -133,7 +133,24 @@ function PrimaryTabBar() {
 
       <button
         className="reterm-tab-new"
-        onClick={() => openFiles("/")}
+        onClick={() => {
+          // Open new files page with the current active files page's directory
+          const filesPages = pages.filter(p => p.type === "files");
+          const activePage = pages.find(p => p.id === activePageId);
+          
+          let dir = "/";
+          if (activePage?.type === "files") {
+            dir = activePage.dir || "/";
+          } else if (activePage?.type === "editor") {
+            // Find the parent files page for this editor
+            const parentFilesPage = filesPages[0]; // Use first files page as fallback
+            if (parentFilesPage) {
+              dir = parentFilesPage.dir || "/";
+            }
+          }
+          
+          openFiles(dir);
+        }}
         title="open file explorer"
         style={{ borderLeft: "1px solid var(--border-subtle)" }}
       >
@@ -150,7 +167,11 @@ function PrimaryTabBar() {
 function FileTabBar() {
   const { pages, activePageId, closePage, switchPage, openEditor } = useApp();
 
-  const filesPage = pages.find(p => p.type === "files");
+  // Find the active files page (the one currently selected in row 1)
+  const activeFilesPage = pages.find(p => p.type === "files" && p.id === activePageId);
+  
+  // If no files page is active, find any files page or return null
+  const filesPage = activeFilesPage || pages.find(p => p.type === "files");
   if (!filesPage) return null;
 
   const editorPages = pages.filter((p): p is EditorPage => p.type === "editor");
