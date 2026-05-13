@@ -671,7 +671,11 @@ html, body, #root {
   padding-right: 4px;
   transition: background 0.07s;
 }
-.fb-node:hover { background: var(--bg-active); }
+@media (hover: hover) {
+  .fb-node:hover { background: var(--bg-active); }
+}
+/* Touch feedback for mobile */
+.fb-node:active { background: var(--bg-active); }
 .fb-node--selected { background: #24283b; }
 
 /* Fixed 16px chevron column — files get an invisible placeholder so names align */
@@ -698,7 +702,12 @@ html, body, #root {
 
 /* Hover action buttons */
 .fb-node-actions { display: none; align-items: center; gap: 1px; flex-shrink: 0; }
-.fb-node:hover .fb-node-actions { display: flex; }
+@media (hover: hover) {
+  .fb-node:hover .fb-node-actions { display: flex; }
+}
+/* Always show actions on touch devices when parent is touched */
+.fb-node:active .fb-node-actions,
+.fb-node:focus .fb-node-actions { display: flex; }
 
 .fb-abtn {
   background: none;
