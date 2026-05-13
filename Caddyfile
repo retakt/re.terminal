@@ -1,0 +1,95 @@
+{
+	admin off
+	email retaktmusic@gmail.com
+}
+
+retakt.cc, www.retakt.cc {
+	encode gzip zstd
+
+	root * /opt/retakt/frontend
+	file_server
+
+	reverse_proxy /api/status* localhost:3002 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	reverse_proxy /terminal/* localhost:3002
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+	}
+}
+
+yt.retakt.cc {
+	encode gzip zstd
+
+	root * /opt/yt-downloader/frontend
+	file_server
+
+	reverse_proxy /api/* localhost:3000 {
+		health_uri /api/health
+
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	reverse_proxy localhost:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+
+		@websocket {
+			header Connection *Upgrade*
+			header Upgrade websocket
+		}
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
+
+tmux.retakt.cc {
+	encode gzip zstd
+
+	root * /opt/re-term/client/dist
+
+	# API reverse proxy
+	handle /api/* {
+		reverse_proxy localhost:3003
+	}
+
+	# WebSocket reverse proxy
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @websocket {
+		reverse_proxy localhost:3003
+	}
+
+	# Serve static files; fall back to index.html for SPA routes
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		X-XSS-Protection "1; mode=block"
+	}
+}

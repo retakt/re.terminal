@@ -1,0 +1,23 @@
+[Unit]
+Description=re.Term - Shared Terminal Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/re-term
+ExecStart=/usr/bin/node /opt/re-term/server/server.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=TERMINAL_PORT=3003
+Environment=TERMINAL_PASSWORD=itsretakt
+Environment=TERMINAL_CORS_ORIGIN=*
+Environment=FILE_ROOT=/root
+Environment=MAX_SESSIONS=10
+Environment=HISTORY_MAX=2000
+Environment=SHELL=bash
+Environment=LOG_FILE=/var/log/re-term.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      viewport-fit=cover: fills iPhone notch/home bar areas
+      interactive-widget=resizes-content: CRITICAL — tells browser to resize
+      the layout viewport when keyboard appears, not just the visual viewport.
+      This prevents the "gap above keyboard" issue on iOS Safari/Chrome.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0,
+               user-scalable=no, viewport-fit=cover,
+               interactive-widget=resizes-content"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>re.Term</title>
+    <!-- Preload Ubuntu Mono so xterm gets it on first render -->
+    <link rel="preload" href="/fonts/UbuntuMono-Regular.ttf" as="font" type="font/ttf" crossorigin="anonymous" />
+    <style>
+      /* Use dvh (dynamic viewport height) — shrinks when keyboard appears */
+      html {
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+        background: #1a1b26;
+      }
+      body {
+        margin: 0; padding: 0;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+        background: #1a1b26;
+        /* Prevent iOS bounce scroll */
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: auto;
+        /* Prevent text selection flash on touch */
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+      }
+      #root {
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

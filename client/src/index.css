@@ -1,0 +1,739 @@
+/* ─── re.Term — Global Styles ─────────────────────────────────────────────── */
+/* Theme: Tokyo Night                                                          */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Variables ──────────────────────────────────────────────────────── */
+
+:root {
+  --bg-base:        #1a1b26;
+  --bg-surface:     #16161e;
+  --bg-overlay:     #1f2335;
+  --bg-highlight:   #292e42;
+  --bg-active:      #24283b;
+  --border:         #292e42;
+  --border-subtle:  #1f2335;
+  /* Enhanced contrast for a more vibrant feel */
+  --fg-base:        #e0e6ed;
+  --fg-muted:       #94a3b8;
+  --fg-subtle:      #64748b;
+  --accent-blue:    #7aa2f7;
+  --accent-green:   #9ece6a;
+  --accent-yellow:  #e0af68;
+  --accent-red:     #f7768e;
+  --accent-magenta: #bb9af7;
+  --accent-cyan:    #7dcfff;
+  --tab-height:     35px;
+  --statusbar-height: 22px;
+  /* Ubuntu Mono everywhere */
+  --font-ui:   "Ubuntu Mono", "JetBrains Mono", monospace;
+  --font-mono: "Ubuntu Mono", "JetBrains Mono", monospace;
+}
+
+/* ─── Web Fonts ──────────────────────────────────────────────────────────────── */
+/* Ubuntu Mono - loaded from public/fonts/ */
+
+@font-face {
+  font-family: "Ubuntu Mono";
+  src: url("/fonts/UbuntuMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Ubuntu Mono";
+  src: url("/fonts/UbuntuMono-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: "Ubuntu Mono";
+  src: url("/fonts/UbuntuMono-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Ubuntu Mono";
+  src: url("/fonts/UbuntuMono-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+}
+
+/* ─── Reset ──────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  width: 100%; height: 100%; overflow: hidden;
+  background: var(--bg-base); color: var(--fg-base);
+  font-family: var(--font-ui); font-size: 13px; line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  /* Everything lowercase by default */
+  text-transform: lowercase;
+}
+
+/* Allow text selection in terminal areas */
+.reterm-root * {
+  user-select: auto;
+  -webkit-user-select: auto;
+  -moz-user-select: auto;
+  -ms-user-select: auto;
+}
+
+/* ─── Monaco Editor Font Fix ──────────────────────────────────────────────────── */
+/* Ensure Monaco editor uses Ubuntu Mono font */
+
+.monaco-editor,
+.monaco-editor .view-line,
+.monaco-editor .margin-view-overlays,
+.monaco-editor .line-numbers {
+  font-family: "Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace !important;
+}
+
+/* Use visual viewport height — shrinks when keyboard appears on mobile */
+.reterm-root {
+  display: flex; flex-direction: column;
+  width: 100%;
+  height: var(--vvh, 100dvh);
+  max-height: var(--vvh, 100dvh);
+  background: var(--bg-base); overflow: hidden;
+  /* GPU layer for the whole app */
+  will-change: contents;
+}
+
+/* ─── Tab bar ────────────────────────────────────────────────────────────── */
+
+.reterm-tabbar {
+  display: flex; align-items: stretch;
+  height: var(--tab-height);
+  background: linear-gradient(180deg, #16161e 0%, #1a1b26 100%);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.reterm-tabs {
+  display: flex; align-items: stretch; flex: 1;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+.reterm-tabs::-webkit-scrollbar { display: none; }
+
+.reterm-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 10px 0 12px;
+  min-width: 120px; max-width: 200px; height: 100%;
+  background: transparent; border: none;
+  border-right: 1px solid var(--border-subtle);
+  color: var(--fg-muted); font-family: var(--font-ui); font-size: 12px;
+  cursor: pointer; white-space: nowrap; position: relative;
+  transition: all 0.15s ease; flex-shrink: 0;
+  border-radius: 6px 6px 0 0;
+  margin: 0 2px;
+}
+.reterm-tab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
+.reterm-tab--active {
+  background: linear-gradient(180deg, #24283b 0%, #1f2335 100%);
+  color: var(--fg-base);
+  border-bottom: none;
+  box-shadow: 0 -2px 4px rgba(122,162,247,0.2);
+}
+.reterm-tab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s, color 0.15s; }
+.reterm-tab--active .reterm-tab-icon { opacity: 1; color: var(--accent-blue); }
+.reterm-tab-title { flex: 1; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+
+.reterm-tab-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 4px;
+  opacity: 0; color: var(--fg-muted); flex-shrink: 0; cursor: pointer;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  margin-left: auto;
+}
+.reterm-tab:hover .reterm-tab-close,
+.reterm-tab--active .reterm-tab-close { opacity: 1; }
+.reterm-tab-close:hover { background: rgba(247,118,142,0.2); color: var(--accent-red); }
+
+.reterm-tab-new {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 100%;
+  background: transparent; border: none;
+  border-left: 1px solid var(--border-subtle);
+  color: var(--fg-muted); cursor: pointer; flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+  border-radius: 0 6px 0 0;
+}
+.reterm-tab-new:hover { background: rgba(122,162,247,0.15); color: var(--accent-blue); }
+
+/* ─── Terminal area ──────────────────────────────────────────────────────── */
+
+.reterm-area {
+  flex: 1; overflow: hidden;
+  background: linear-gradient(180deg, #1a1b26 0%, #16161e 100%); position: relative;
+}
+
+.xterm { padding: 8px 12px; height: 100%; }
+.xterm-viewport { background: #1a1b26 !important; }
+.xterm-screen { background: #1a1b26; }
+
+/* ─── Empty state ────────────────────────────────────────────────────────── */
+
+.reterm-empty {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 100%; gap: 12px; color: var(--fg-muted);
+}
+.reterm-empty p { font-size: 13px; }
+.reterm-empty-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 16px; background: var(--bg-overlay);
+  border: 1px solid var(--border); border-radius: 5px;
+  color: var(--fg-base); font-size: 12px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.reterm-empty-btn:hover { background: var(--bg-active); border-color: var(--accent-blue); }
+
+/* ─── Status bar ─────────────────────────────────────────────────────────── */
+
+.reterm-statusbar {
+  display: flex; align-items: center; justify-content: space-between;
+  height: var(--statusbar-height); padding: 0 8px;
+  background: var(--accent-blue); flex-shrink: 0;
+  font-size: 11px; color: #1a1b26; font-weight: 500; user-select: none;
+}
+.reterm-statusbar-left,
+.reterm-statusbar-right { display: flex; align-items: center; gap: 6px; }
+
+/* Connection badge — green text when connected */
+.reterm-conn-badge {
+  display: flex; align-items: center; gap: 5px;
+  padding: 1px 7px 1px 5px; border-radius: 4px;
+  font-size: 11px; font-weight: 600;
+  background: rgba(0,0,0,0.18);
+}
+.reterm-conn-badge--connected {
+  color: #9ece6a;
+  background: rgba(158,206,106,0.15);
+}
+
+/* Green pulsing dot */
+.reterm-conn-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.reterm-conn-dot--connected {
+  background: #40a02b;   /* darker forest green — visible on blue bar */
+  box-shadow: 0 0 0 0 rgba(64,160,43,0.7);
+  animation: reterm-pulse 3s ease-in-out infinite;
+}
+@keyframes reterm-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(64,160,43,0.7); }
+  50%  { box-shadow: 0 0 0 5px rgba(64,160,43,0);   }
+  100% { box-shadow: 0 0 0 0   rgba(64,160,43,0);   }
+}
+
+.reterm-conn-badge--connected {
+  color: #9ece6a;
+  background: rgba(158,206,106,0.2);
+}
+
+.reterm-dims {
+  font-family: var(--font-mono); font-size: 10px; opacity: 0.8;
+}
+.reterm-session-name {
+  font-size: 10px; opacity: 0.7;
+  max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.reterm-statusbar-brand {
+  font-weight: 700; font-size: 11px; letter-spacing: 0.04em; opacity: 1;
+}
+.reterm-statusbar-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; background: transparent; border: none;
+  border-radius: 3px; color: inherit; cursor: pointer;
+  opacity: 0.8; transition: opacity 0.1s, background 0.1s;
+}
+.reterm-statusbar-btn:hover { opacity: 1; background: rgba(0,0,0,0.3); }
+.reterm-statusbar-btn--danger:hover { color: #f7768e !important; opacity: 1 !important; }
+
+/* ─── Login screen ───────────────────────────────────────────────────────── */
+
+.reterm-login {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-base); padding: 24px;
+}
+.reterm-login-card {
+  width: 100%; max-width: 360px;
+  background: var(--bg-overlay); border: 1px solid var(--border);
+  border-radius: 8px; padding: 32px 28px;
+}
+.reterm-login-logo {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--accent-blue); font-size: 20px; font-weight: 700;
+  letter-spacing: -0.02em; margin-bottom: 6px;
+}
+.reterm-login-subtitle { color: var(--fg-subtle); font-size: 12px; margin-bottom: 24px; }
+.reterm-login-form { display: flex; flex-direction: column; gap: 10px; }
+.reterm-login-label {
+  font-size: 11px; font-weight: 600; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.reterm-login-input {
+  width: 100%; padding: 9px 12px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--fg-base);
+  font-family: var(--font-mono); font-size: 13px; outline: none;
+  transition: border-color 0.15s;
+}
+.reterm-login-input:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(122,162,247,0.2); }
+.reterm-login-input::placeholder { color: var(--fg-subtle); opacity: 0.6; }
+.reterm-login-input:disabled { opacity: 0.4; }
+.reterm-login-error {
+  padding: 8px 10px;
+  background: rgba(247,118,142,0.1); border: 1px solid rgba(247,118,142,0.3);
+  border-radius: 4px; color: var(--accent-red); font-size: 12px;
+}
+.reterm-login-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 16px; background: var(--accent-blue); border: none;
+  border-radius: 5px; color: #1a1b26; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s, transform 0.1s, box-shadow 0.1s; margin-top: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.reterm-login-btn:hover:not(:disabled) { opacity: 0.95; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+.reterm-login-btn:active:not(:disabled) { transform: scale(0.98); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+.reterm-login-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.reterm-login-reconnect {
+  display: flex; align-items: center; gap: 6px; margin-top: 16px;
+  color: var(--fg-muted); font-size: 11px; justify-content: center;
+}
+
+/* ─── Spinner ────────────────────────────────────────────────────────────── */
+
+@keyframes reterm-spin { to { transform: rotate(360deg); } }
+.reterm-spin { animation: reterm-spin 0.8s linear infinite; }
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
+::selection { background: rgba(122,162,247,0.25); }
+
+/* ─── Mobile ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .reterm-tabbar { height: 40px; }
+
+  /* Tabs shrink more aggressively on small screens */
+  .reterm-tab {
+    min-width: 80px;
+    max-width: 140px;
+    padding: 0 8px 0 7px;
+    font-size: 11px;
+  }
+
+  /* Hide session name text on very small screens, keep icon */
+  .reterm-tab-title { font-size: 11px; }
+
+  /* Status bar — tighter on mobile */
+  .reterm-statusbar { height: 26px; padding: 0 6px; gap: 4px; }
+  .reterm-statusbar-left,
+  .reterm-statusbar-right { gap: 4px; }
+
+  /* Hide session name in status bar on small screens */
+  .reterm-session-name { display: none; }
+
+  /* Login card full-width */
+  .reterm-login-card { padding: 24px 16px; }
+
+  /* xterm padding tighter on mobile */
+  .xterm { padding: 4px 6px; }
+}
+
+@media (max-width: 400px) {
+  /* Tabs: icon + short name only */
+  .reterm-tab { min-width: 60px; }
+  .reterm-tab-title { max-width: 50px; }
+}
+
+/* ─── Enhanced hover effects ─────────────────────────────────────────────────── */
+
+.reterm-tab:hover,
+.reterm-filetab:hover {
+  background: rgba(41, 46, 66, 0.6);
+}
+
+.reterm-tab--active {
+  background: linear-gradient(180deg, #24283b 0%, #1f2335 100%);
+}
+
+/* ─── Ubuntu Mono — self-hosted ──────────────────────────────────────────── */
+
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('/fonts/UbuntuMono-Regular.ttf') format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('/fonts/UbuntuMono-Italic.ttf') format('truetype');
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('/fonts/UbuntuMono-Bold.ttf') format('truetype');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('/fonts/UbuntuMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700; font-style: italic; font-display: swap;
+}
+
+/* ─── Key Bar — horizontal scrollable strip ──────────────────────────────── */
+
+.keybar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.keybar::-webkit-scrollbar { display: none; }
+
+.keybar-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 7px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(192,202,245,0.1);
+  background: rgba(31,35,53,0.9);
+  color: rgba(192,202,245,0.75);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.4);
+  transition: background 0.07s, transform 0.05s, box-shadow 0.05s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  text-transform: inherit;
+}
+.keybar-key:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.keybar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 1px;
+}
+
+/* ─── Remove old floating pill elements ──────────────────────────────────── */
+.fk-root,
+.fk-drag,
+.fk-pill,
+.fk-panel,
+.fk-grid,
+.fk-grid-scroll,
+.fk-key,
+.hkt-root,
+.floating-pill-wrapper { display: none !important; }
+
+
+/* ─── Tab type variants ──────────────────────────────────────────────────── */
+
+.reterm-tab--editor .reterm-tab-icon   { color: var(--accent-yellow); }
+.reterm-tab--files  .reterm-tab-icon   { color: var(--accent-cyan);   }
+.reterm-tab--terminal .reterm-tab-icon { color: var(--accent-blue);   }
+
+/* ─── File sub-tab bar (Row 2) ───────────────────────────────────────────── */
+/* Shows open editor files. Only visible when a files page exists.           */
+
+.reterm-filetabbar {
+  display: flex;
+  align-items: stretch;
+  height: 32px;
+  background: linear-gradient(180deg, #1a1b26 0%, #16161e 100%);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.reterm-filetabbar::-webkit-scrollbar { display: none; }
+
+.reterm-filetab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  position: relative;
+  border-radius: 4px 4px 0 0;
+  margin: 0 2px;
+}
+.reterm-filetab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
+
+.reterm-filetab--active {
+  background: linear-gradient(180deg, #24283b 0%, #1f2335 100%);
+  color: var(--fg-base);
+  box-shadow: 0 -2px 4px rgba(122,162,247,0.2);
+}
+
+/* "files" label tab — slightly different style */
+.reterm-filetab--files {
+  color: var(--accent-cyan);
+  opacity: 0.8;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 0 10px;
+}
+.reterm-filetab--files.reterm-filetab--active {
+  opacity: 1;
+  box-shadow: 0 -2px 4px rgba(125,220,255,0.2);
+}
+
+.reterm-filetab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s, color 0.15s; }
+.reterm-filetab--active .reterm-filetab-icon { opacity: 1; }
+
+.reterm-filetab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.reterm-filetab:hover .reterm-filetab-close,
+.reterm-filetab--active .reterm-filetab-close { opacity: 1; }
+.reterm-filetab-close:hover { background: var(--bg-highlight); color: var(--accent-red); }
+
+.reterm-filetab-sep {
+  width: 1px;
+  background: var(--border);
+  margin: 6px 2px;
+  flex-shrink: 0;
+}
+
+.reterm-filetab-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.reterm-filetab-new:hover { background: var(--bg-highlight); color: var(--fg-base); }
+
+/* ─── File Browser ───────────────────────────────────────────────────────── */
+/* ─── File Browser ───────────────────────────────────────────────────────── */
+
+.fb-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #16161e;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-base);
+  overflow: hidden;
+}
+
+/* Header */
+.fb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px 4px;
+  background: #1f2335;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.fb-header-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+}
+.fb-header-actions { display: flex; align-items: center; gap: 2px; }
+
+/* Small text action buttons */
+.fb-hbtn {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 3px;
+  transition: color 0.1s, background 0.1s;
+}
+.fb-hbtn:hover { color: var(--fg-base); background: var(--bg-active); }
+
+/* Root folder row */
+.fb-root-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.fb-root-name { font-weight: 600; color: var(--fg-base); }
+
+/* Scrollable tree */
+.fb-tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--fg-subtle) transparent;
+}
+.fb-tree::-webkit-scrollbar { width: 4px; }
+.fb-tree::-webkit-scrollbar-thumb { background: var(--fg-subtle); border-radius: 2px; }
+
+/* Status messages */
+.fb-msg {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+.fb-msg--error { color: var(--accent-red); }
+
+/* ── Tree node ── */
+
+.fb-node {
+  display: flex;
+  align-items: center;
+  height: 22px;           /* fixed height — chevron + name always on same line */
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding-right: 4px;
+  transition: background 0.07s;
+}
+.fb-node:hover { background: var(--bg-active); }
+.fb-node--selected { background: #24283b; }
+
+/* Fixed 16px chevron column — files get an invisible placeholder so names align */
+.fb-node-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.fb-node--file .fb-node-chevron { visibility: hidden; }
+
+/* Name */
+.fb-node-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 22px;
+}
+.fb-node--dir  .fb-node-name { color: var(--accent-yellow); }
+.fb-node--file .fb-node-name { color: var(--fg-base); opacity: 0.95; }
+
+/* Hover action buttons */
+.fb-node-actions { display: none; align-items: center; gap: 1px; flex-shrink: 0; }
+.fb-node:hover .fb-node-actions { display: flex; }
+
+.fb-abtn {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 2px;
+  line-height: 1;
+  transition: color 0.1s, background 0.1s;
+}
+.fb-abtn:hover { color: var(--fg-base); background: var(--bg-overlay); }
+.fb-abtn--del:hover { color: var(--accent-red); }
+
+/* ─── File Editor ────────────────────────────────────────────────────────── */
+
+.fe-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1b26; /* Darker, more vibrant base */
+}
+
+.fe-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.fe-state--error { color: var(--accent-red); }
+
+.fe-save-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  background: rgba(158,206,106,0.1);
+  border-bottom: 1px solid rgba(158,206,106,0.2);
+  color: var(--accent-green);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.fe-save-bar--error {
+  background: rgba(247,118,142,0.1);
+  border-color: rgba(247,118,142,0.2);
+  color: var(--accent-red);
+}

@@ -1,0 +1,52 @@
+{
+  "services": {
+    "ai": [
+      {
+        "name": "AI Model (Ollama)",
+        "url": "https://chat-api.retakt.cc/api/tags",
+        "timeout": 5,
+        "category": "ai"
+      },
+      {
+        "name": "Web Search (SearXNG)",
+        "url": "https://search-api.retakt.cc/search?q=test&format=json",
+        "timeout": 5,
+        "category": "ai"
+      }
+    ],
+    "external": [
+      {
+        "name": "Weather API",
+        "url": "https://wttr.in/test?format=j1",
+        "timeout": 6,
+        "category": "external"
+      },
+      {
+        "name": "Exchange Rate API",
+        "url": "https://open.er-api.com/v6/latest/USD",
+        "timeout": 6,
+        "category": "external"
+      }
+    ],
+    "application": [
+      {
+        "name": "YouTube Backend",
+        "url": "https://yt.retakt.cc/api/health",
+        "timeout": 5,
+        "category": "application"
+      },
+      {
+        "name": "Open Terminal",
+        "url": "https://tmux.retakt.cc/api/config",
+        "timeout": 3,
+        "category": "application"
+      }
+    ]
+  },
+  "monitoring": {
+    "interval": 30,
+    "log_rotation": 2000,
+    "log_path": "logs/ai-monitor.log",
+    "pid_path": "logs/ai-monitor.pid"
+  }
+}

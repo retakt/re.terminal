@@ -1,0 +1,22 @@
+{
+  "name": "re-term-server",
+  "version": "1.0.0",
+  "description": "re.Term — standalone shared terminal server",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "prod": "NODE_ENV=production node server.js",
+    "start:prod": "NODE_ENV=production node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-pty": "^1.0.0",
+    "ws": "^8.17.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
