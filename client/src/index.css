@@ -349,18 +349,18 @@ html, body, #root {
   /* Increase base font size for better readability */
   html, body, #root { font-size: 15px; }
   
-  .reterm-tabbar { height: 48px; }
+  .reterm-tabbar { height: 42px; }
 
   /* Tabs shrink more aggressively on small screens */
   .reterm-tab {
     min-width: 100px;
     max-width: 160px;
     padding: 0 12px 0 10px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* Hide session name text on very small screens, keep icon */
-  .reterm-tab-title { font-size: 13px; }
+  .reterm-tab-title { font-size: 14px; }
 
   /* Status bar — tighter on mobile */
   .reterm-statusbar { height: 32px; padding: 0 10px; gap: 6px; font-size: 12px; }
@@ -381,7 +381,7 @@ html, body, #root {
   .reterm-login-label { font-size: 12px; }
 
   /* xterm padding tighter on mobile */
-  .xterm { padding: 6px 8px; font-size: 14px; }
+  .xterm { padding: 6px 8px; font-size: 15px; }
   
   /* Keybar keys larger for touch */
   .keybar-key { height: 28px; padding: 0 10px; font-size: 12px; }
