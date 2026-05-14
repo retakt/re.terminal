@@ -20,19 +20,34 @@ import "@xterm/xterm/css/xterm.css";
 
 interface Props { sessionId: string; isActive: boolean; }
 
-const THEME = {
-  background:          "#1a1a1a",
-  foreground:          "#EA549F",
-  cursor:              "#EA549F",
-  cursorAccent:        "#1a1a1a",
-  selectionBackground: "rgba(234,84,159,0.2)",
-  black:   "#000000", red:     "#E92888", green:   "#4EC9B0",
-  yellow:  "#CE9178", blue:    "#579BD5", magenta: "#714896",
-  cyan:    "#00B6D6", white:   "#EAEAEA",
-  brightBlack:   "#797979", brightRed:     "#EB2A88",
-  brightGreen:   "#1AD69C", brightYellow:  "#e9ad95",
-  brightBlue:    "#9CDCFE", brightMagenta: "#975EAB",
-  brightCyan:    "#2BC4E2", brightWhite:   "#EAEAEA",
+const THEME_DARK = {
+  background:          "#0d1117",
+  foreground:          "#c9d1d9",
+  cursor:              "#58a6ff",
+  cursorAccent:        "#0d1117",
+  selectionBackground: "rgba(88, 166, 255, 0.3)",
+  black:   "#484f58", red:     "#f85149", green:   "#3fb950",
+  yellow:  "#d29922", blue:    "#58a6ff", magenta: "#bc8cff",
+  cyan:    "#39c5cf", white:   "#b1bac4",
+  brightBlack:   "#6e7681", brightRed:     "#ff7b72",
+  brightGreen:   "#56d364", brightYellow:  "#e3b341",
+  brightBlue:    "#79c0ff", brightMagenta: "#d2a8ff",
+  brightCyan:    "#76e3ea", brightWhite:   "#f0f6fc",
+};
+
+const THEME_LIGHT = {
+  background:          "#ffffff",
+  foreground:          "#24292f",
+  cursor:              "#0969da",
+  cursorAccent:        "#ffffff",
+  selectionBackground: "rgba(9, 105, 218, 0.2)",
+  black:   "#6e7781", red:     "#cf222e", green:   "#2da44e",
+  yellow:  "#9a6700", blue:    "#0969da", magenta: "#8250df",
+  cyan:    "#1b7c83", white:   "#57606a",
+  brightBlack:   "#8c959f", brightRed:     "#a40e26",
+  brightGreen:   "#1a7f37", brightYellow:  "#9a6700",
+  brightBlue:    "#0969da", brightMagenta: "#8250df",
+  brightCyan:    "#1b7c83", brightWhite:   "#57606a",
 };
 
 const isMobile = () => navigator.maxTouchPoints > 0;
@@ -45,6 +60,13 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
   const xtermRef     = React.useRef<XTerm | null>(null);
   const fitRef       = React.useRef<FitAddon | null>(null);
   const mobile       = React.useRef(isMobile());
+
+  // Get current theme from document data attribute
+  const getTheme = () => {
+    const theme = document.documentElement.getAttribute('data-theme');
+    if (theme === 'light') return THEME_LIGHT;
+    return THEME_DARK;
+  };
 
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -67,7 +89,7 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
       lineHeight:         mobile.current ? 1.2 : 1.25,
       fontFamily:         '"Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace',
       fontWeight:         "400",
-      theme:              THEME,
+      theme:              getTheme(),
       scrollback:         mobile.current ? 3000 : 10000,
       overviewRulerWidth: 0,
       disableStdin:       false,
@@ -157,6 +179,9 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
     requestAnimationFrame(() => xtermRef.current?.focus());
   }, []);
 
+  // Get current theme for background
+  const currentTheme = getTheme();
+
   return (
     <div
       ref={containerRef}
@@ -164,7 +189,7 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
       style={{
         position:   "absolute",
         inset:      0,
-        background: THEME.background,
+        background: currentTheme.background,
         opacity:     isActive ? 1 : 0,
         // Keep pointer events only when active — prevents ghost touches on hidden tabs
         pointerEvents: isActive ? "auto" : "none",
