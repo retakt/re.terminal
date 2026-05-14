@@ -206,8 +206,29 @@ html, body, #root {
   -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
 }
 
-.xterm { padding: 8px 12px; height: 100%; }
-.xterm-viewport { background: #1a1b26 !important; }
+/* xterm.js container - allow it to grow beyond viewport for scrolling */
+.xterm { 
+  padding: 8px 12px; 
+  height: auto;
+  min-height: 100%;
+  position: relative;
+}
+
+/* Enable scroll on xterm viewport - critical for terminal content scrolling */
+.xterm-viewport { 
+  background: #1a1b26 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--fg-muted) transparent;
+}
+.xterm-viewport::-webkit-scrollbar { width: 6px; }
+.xterm-viewport::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
+@media (hover: hover) {
+  .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
+}
+
 .xterm-screen { background: #1a1b26; }
 
 /* ─── File Browser Scroll Fixes ─────────────────────────────────────────── */
