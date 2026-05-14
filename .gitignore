@@ -1,54 +1,8 @@
-# Dependencies
 node_modules/
+
+# Build artifacts
 client/node_modules/
-server/node_modules/
-
-# Environment files
-.env
-.env.local
-.env.production
-.env.development
-
-client/.env
-server/.env
-
-# Build outputs
-dist/
 client/dist/
+server/node_modules/
 server/dist/
 
-# Logs
-logs/
-*.log
-server/re-term.log
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-
-# Coverage
-coverage/
-
-# Cache
-.cache/
-.temp/
-
-# Tests
-*.test.ts
-*.test.tsx
-*.spec.ts
-*.spec.tsx
-__tests__/
-test/
-tests/
