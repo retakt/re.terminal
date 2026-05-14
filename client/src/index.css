@@ -1,1054 +1,114 @@
 /* ─── re.Term — Global Styles ─────────────────────────────────────────────── */
-/* Theme: GitHub Dark + Aurelia Colors                                           */
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ─── CSS Variables ──────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Ubuntu+Mono:wght@400;700&display=swap');
 
+/* ─── Theme Variables ─────────────────────────────────────────────────────── */
 :root {
-  /* GitHub Dark backgrounds */
-  --bg-base:        #0d1117;
-  --bg-surface:     #161b22;
-  --bg-overlay:     #21262d;
-  --bg-highlight:   #30363d;
-  --bg-active:      #1f2937;
-  --border:         #30363d;
-  --border-subtle:  #21262d;
-  
-  /* Foreground colors */
-  --fg-base:        #c9d1d9;
-  --fg-muted:       #8b949e;
-  --fg-subtle:      #484f58;
-  
-  /* Aurelia accent colors */
-  --accent-blue:    #579BD5;
-  --accent-green:   #4EC9B0;
-  --accent-yellow:  #CE9178;
-  --accent-red:     #E92888;
-  --accent-magenta: #714896;
-  --accent-cyan:    #00B6D6;
-  --accent-pink:    #EA549F;
-  --accent-bright-red:    #EB2A88;
-  --accent-bright-green:  #1AD69C;
-  --accent-bright-blue:   #9CDCFE;
-  --accent-bright-cyan:   #2BC4E2;
-  --accent-bright-yellow: #e9ad95;
-  --accent-bright-purple: #975EAB;
-  --accent-bright-white:  #EAEAEA;
-  --accent-bright-black:  #797979;
-  
-  --tab-height:     35px;
-  --statusbar-height: 22px;
-  /* Clean sans-serif for UI elements, Ubuntu Mono for terminal */
-  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  --font-mono: "Ubuntu Mono", "JetBrains Mono", monospace;
+  --bg-surface: #1a1b26;
+  --bg-overlay: #24283b;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --accent-green: #3bd98b; /* Deep neon green */
+  --font-ui: system-ui, -apple-system, sans-serif;
 }
 
-/* ─── Web Fonts ──────────────────────────────────────────────────────────────── */
-/* Ubuntu Mono - loaded from public/fonts/ */
-
-@font-face {
-  font-family: "Ubuntu Mono";
-  src: url("/fonts/UbuntuMono-Regular.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: "Ubuntu Mono";
-  src: url("/fonts/UbuntuMono-Italic.ttf") format("truetype");
-  font-weight: 400;
-  font-style: italic;
-}
-
-@font-face {
-  font-family: "Ubuntu Mono";
-  src: url("/fonts/UbuntuMono-Bold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: "Ubuntu Mono";
-  src: url("/fonts/UbuntuMono-BoldItalic.ttf") format("truetype");
-  font-weight: 700;
-  font-style: italic;
-}
-
-/* ─── Reset ──────────────────────────────────────────────────────────────── */
-
+/* ─── Reset & Base ────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
-  width: 100%; height: 100%;
-  background: var(--bg-base); color: var(--fg-base);
-  font-family: var(--font-ui); font-size: 13px; line-height: 1.4;
-  -webkit-font-smoothing: antialiased;
-  /* Everything lowercase by default */
-  text-transform: lowercase;
-}
-
-/* Allow text selection in terminal areas */
-.reterm-root * {
-  user-select: auto;
-  -webkit-user-select: auto;
-  -moz-user-select: auto;
-  -ms-user-select: auto;
-}
-
-/* ─── Monaco Editor Font Fix ──────────────────────────────────────────────────── */
-/* Ensure Monaco editor uses Ubuntu Mono font */
-
-.monaco-editor,
-.monaco-editor .view-line,
-.monaco-editor .margin-view-overlays,
-.monaco-editor .line-numbers {
-  font-family: "Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace !important;
-}
-
-/* Use visual viewport height — stable app shell */
-.reterm-root {
-  display: flex; flex-direction: column;
   width: 100%;
-  height: 100dvh; /* Dynamic viewport height handles browser bars */
-  max-height: 100dvh;
-  background: var(--bg-base);
+  height: 100%;
+  overflow: hidden; /* Main app doesn't scroll, inner content does */
+  font-family: var(--font-ui);
+  background: #000; /* Fallback for video */
+  color: #c9d1d9;
 }
 
-/* ─── Tab bar ────────────────────────────────────────────────────────────── */
-
-.reterm-tabbar {
-  display: flex; align-items: stretch;
-  height: var(--tab-height);
-  background: linear-gradient(180deg, #16161e 0%, #1a1b26 100%);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0; overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+/* ─── Ambient Video Layer ─────────────────────────────────────────────────── */
+.reterm-ambient-layer {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
 }
 
-.reterm-tabs {
-  display: flex; align-items: stretch; flex: 1;
-  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
-}
-.reterm-tabs::-webkit-scrollbar { display: none; }
-
-.reterm-tab {
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 10px 0 12px;
-  min-width: 120px; max-width: 200px; height: 100%;
-  background: transparent; border: none;
-  border-right: 1px solid var(--border-subtle);
-  color: var(--fg-muted); font-family: var(--font-ui); font-size: 12px;
-  cursor: pointer; white-space: nowrap; position: relative;
-  transition: all 0.15s ease; flex-shrink: 0;
-  border-radius: 0;
-  margin: 0;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-@media (hover: hover) {
-  .reterm-tab:hover { background: rgba(48, 54, 61, 0.5); color: var(--fg-base); }
-}
-.reterm-tab--active {
-  background: linear-gradient(180deg, #21262d 0%, #161b22 100%);
-  color: var(--fg-base);
-  border-bottom: none;
-  box-shadow: 0 -2px 4px rgba(87, 155, 213, 0.2);
-}
-.reterm-tab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s, color 0.15s; }
-.reterm-tab--active .reterm-tab-icon { opacity: 1; color: var(--accent-blue); }
-.reterm-tab-title { flex: 1; overflow: hidden; text-overflow: ellipsis; text-align: left; }
-
-.reterm-tab-close {
-  display: flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; border-radius: 0;
-  opacity: 0; color: var(--fg-muted); flex-shrink: 0; cursor: pointer;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
-  margin-left: auto;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-@media (hover: hover) {
-  .reterm-tab:hover .reterm-tab-close { opacity: 1; }
-}
-.reterm-tab--active .reterm-tab-close { opacity: 1; }
-@media (hover: hover) {
-  .reterm-tab-close:hover { background: rgba(233, 40, 136, 0.2); color: var(--accent-red); }
-}
-
-.reterm-tab-new {
-  display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 100%;
-  background: transparent; border: none;
-  border-left: 1px solid var(--border-subtle);
-  color: var(--fg-muted); cursor: pointer; flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
-  border-radius: 0;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-@media (hover: hover) {
-  .reterm-tab-new:hover { background: rgba(87, 155, 213, 0.15); color: var(--accent-blue); }
-}
-
-/* ─── Terminal area ──────────────────────────────────────────────────────── */
-
-.reterm-area {
-  flex: 1; 
-  position: relative;
-  background: linear-gradient(180deg, #1a1b26 0%, #16161e 100%);
-  
-  /* FIX: Allow scrolling for content that overflows */
-  overflow: auto; 
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
-}
-
-/* xterm.js container - allow it to grow beyond viewport for scrolling */
-.xterm { 
-  padding: 8px 12px; 
-  height: auto;
+.reterm-ambient-layer video {
+  min-width: 100%;
   min-height: 100%;
-  position: relative;
+  object-fit: cover;
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  
+  /* THIS IS THE KEY FOR YOUR AESTHETIC */
+  /* Dims the video significantly and tints it towards cyan/green/blue */
+  filter: brightness(0.4) contrast(1.2) saturate(1.3) hue-rotate(20deg); 
 }
 
-/* Enable scroll on xterm viewport - critical for terminal content scrolling */
-.xterm-viewport { 
-  background: #1a1b26 !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: var(--fg-muted) transparent;
-}
-.xterm-viewport::-webkit-scrollbar { width: 6px; }
-.xterm-viewport::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
-@media (hover: hover) {
-  .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
-}
-
-.xterm-screen { background: #1a1b26; }
-
-/* ─── File Browser Scroll Fixes ─────────────────────────────────────────── */
-/* Ensure the file browser fills the area and scrolls internally */
-.fb-root {
+/* ─── App Shell (Main Layout) ─────────────────────────────────────────────── */
+.reterm-root {
   display: flex;
   flex-direction: column;
-  height: 100%;
   width: 100%;
+  /* Uses dynamic viewport height to account for mobile browser bars */
+  height: 100dvh; 
+  max-height: 100dvh;
+  overflow: hidden;
+  background: rgba(15, 15, 20, 0.85); /* Very dark subtle tint over video */
+  backdrop-filter: blur(8px); /* Frosted glass effect over the video */
 }
 
-.fb-tree {
+/* ─── Content Area ────────────────────────────────────────────────────────── */
+.reterm-area {
   flex: 1;
-  overflow-y: auto;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
+  position: relative;
+  overflow-y: auto; /* Allows scrolling inside the area */
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-overlay) transparent;
 }
 
-/* ─── Editor Scroll Fixes ───────────────────────────────────────────────── */
-/* Ensure CodeMirror fills the area */
-.cm-editor {
+.xterm {
+  padding: 12px;
   height: 100% !important;
-  width: 100% !important;
+  /* Crucial for ambient look: Semi-transparent solid background instead of pure black */
+  background: rgba(22, 22, 30, 0.75) !important;
+  border-radius: 0;
 }
 
-/* ─── Empty state ────────────────────────────────────────────────────────── */
-
-.reterm-empty {
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; height: 100%; gap: 12px; color: var(--fg-muted);
+/* ─── Tab Bars & Header (Keep existing styles but ensure z-index) ─────────── */
+.reterm-tabbar {
+  height: 40px;
+  background: rgba(26, 27, 38, 0.9);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 4px;
+  z-index: 10;
+  backdrop-filter: blur(10px);
 }
-.reterm-empty p { font-size: 13px; }
-.reterm-empty-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 16px; background: var(--bg-overlay);
-  border: 1px solid var(--border); border-radius: 5px;
-  color: var(--fg-base); font-size: 12px; cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-@media (hover: hover) {
-  .reterm-empty-btn:hover { background: var(--bg-active); border-color: var(--accent-blue); }
-}
-
-/* ─── Status bar ─────────────────────────────────────────────────────────── */
 
 .reterm-statusbar {
-  display: flex; align-items: center; justify-content: space-between;
-  height: var(--statusbar-height); padding: 0 8px;
-  background: var(--accent-blue); flex-shrink: 0;
-  font-size: 11px; color: #1a1b26; font-weight: 500; user-select: none;
-}
-.reterm-statusbar-left,
-.reterm-statusbar-right { display: flex; align-items: center; gap: 6px; }
-
-/* Connection badge — green text when connected */
-.reterm-conn-badge {
-  display: flex; align-items: center; gap: 5px;
-  padding: 1px 7px 1px 5px; border-radius: 4px;
-  font-size: 11px; font-weight: 600;
-  background: rgba(0,0,0,0.18);
-}
-.reterm-conn-badge--connected {
-  color: #05b65d;
-  background: rgba(158,206,106,0.15);
-}
-
-/* Green pulsing dot */
-.reterm-conn-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-}
-.reterm-conn-dot--connected {
-  background: #05b65d;   /* darker forest green — visible on blue bar */
-  box-shadow: 0 0 0 0 rgba(64,160,43,0.7);
-  animation: reterm-pulse 3s ease-in-out infinite;
-}
-@keyframes reterm-pulse {
-  0%   { box-shadow: 0 0 0 0   rgba(64,160,43,0.7); }
-  50%  { box-shadow: 0 0 0 5px rgba(64,160,43,0);   }
-  100% { box-shadow: 0 0 0 0   rgba(64,160,43,0);   }
-}
-
-.reterm-conn-badge--connected {
-  color: #05b65d;
-  background: rgba(158,206,106,0.2);
-}
-
-.reterm-dims {
-  font-family: var(--font-mono); font-size: 10px; opacity: 0.8;
-}
-.reterm-session-name {
-  font-size: 10px; opacity: 0.7;
-  max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.reterm-statusbar-brand {
-  font-weight: 700; font-size: 11px; letter-spacing: 0.04em; opacity: 1;
-}
-.reterm-statusbar-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; background: transparent; border: none;
-  border-radius: 3px; color: inherit; cursor: pointer;
-  opacity: 0.8; transition: opacity 0.1s, background 0.1s;
-}
-@media (hover: hover) {
-  .reterm-statusbar-btn:hover { opacity: 1; background: rgba(0,0,0,0.3); }
-  .reterm-statusbar-btn--danger:hover { color: #E92888 !important; opacity: 1 !important; }
-}
-
-/* ─── Login screen ───────────────────────────────────────────────────────── */
-
-.reterm-login {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  background: var(--bg-base); padding: 24px;
-}
-.reterm-login-card {
-  width: 100%; max-width: 360px;
-  background: var(--bg-overlay); border: 1px solid var(--border);
-  border-radius: 8px; padding: 32px 28px;
-}
-.reterm-login-logo {
-  display: flex; align-items: center; gap: 10px;
-  color: var(--accent-blue); font-size: 20px; font-weight: 700;
-  letter-spacing: -0.02em; margin-bottom: 6px;
-}
-.reterm-login-subtitle { color: var(--fg-subtle); font-size: 12px; margin-bottom: 24px; }
-.reterm-login-form { display: flex; flex-direction: column; gap: 10px; }
-.reterm-login-label {
-  font-size: 11px; font-weight: 600; color: var(--fg-muted);
-  text-transform: uppercase; letter-spacing: 0.06em;
-}
-.reterm-login-input {
-  width: 100%; padding: 9px 12px;
-  background: var(--bg-surface); border: 1px solid var(--border);
-  border-radius: 5px; color: var(--fg-base);
-  font-family: var(--font-mono); font-size: 13px; outline: none;
-  transition: border-color 0.15s;
-}
-.reterm-login-input:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(122,162,247,0.2); }
-.reterm-login-input::placeholder { color: var(--fg-subtle); opacity: 0.6; }
-.reterm-login-input:disabled { opacity: 0.4; }
-.reterm-login-error {
-  padding: 8px 10px;
-  background: rgba(247,118,142,0.1); border: 1px solid rgba(247,118,142,0.3);
-  border-radius: 4px; color: var(--accent-red); font-size: 12px;
-}
-.reterm-login-btn {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 9px 16px; background: var(--accent-blue); border: none;
-  border-radius: 5px; color: #1a1b26; font-size: 13px; font-weight: 600;
-  cursor: pointer; transition: opacity 0.15s, transform 0.1s, box-shadow 0.1s; margin-top: 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-@media (hover: hover) {
-  .reterm-login-btn:hover:not(:disabled) { opacity: 0.95; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
-}
-.reterm-login-btn:active:not(:disabled) { transform: scale(0.98); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-.reterm-login-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.reterm-login-reconnect {
-  display: flex; align-items: center; gap: 6px; margin-top: 16px;
-  color: var(--fg-muted); font-size: 11px; justify-content: center;
-}
-
-/* ─── Spinner ────────────────────────────────────────────────────────────── */
-
-@keyframes reterm-spin { to { transform: rotate(360deg); } }
-.reterm-spin { animation: reterm-spin 0.8s linear infinite; }
-
-/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
-
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
-@media (hover: hover) {
-  ::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
-}
-::selection { background: rgba(122,162,247,0.25); }
-
-/* ─── Mobile ─────────────────────────────────────────────────────────────── */
-
-@media (max-width: 768px) {
-  /* Increase base font size for better readability */
-  html, body, #root { font-size: 15px; }
-  
-  .reterm-tabbar { height: 42px; }
-
-  /* Tabs shrink more aggressively on small screens */
-  .reterm-tab {
-    min-width: 100px;
-    max-width: 160px;
-    padding: 0 12px 0 10px;
-    font-size: 14px;
-  }
-
-  /* Hide session name text on very small screens, keep icon */
-  .reterm-tab-title { font-size: 14px; }
-
-  /* Status bar — tighter on mobile */
-  .reterm-statusbar { height: 32px; padding: 0 10px; gap: 6px; font-size: 12px; }
-  .reterm-statusbar-left,
-  .reterm-statusbar-right { gap: 6px; }
-
-  /* Hide session name in status bar on small screens */
-  .reterm-session-name { display: none; }
-
-  /* Login card full-width */
-  .reterm-login-card { padding: 28px 20px; }
-  
-  /* Login elements larger on mobile */
-  .reterm-login-logo { font-size: 22px; }
-  .reterm-login-subtitle { font-size: 13px; }
-  .reterm-login-input { padding: 11px 14px; font-size: 15px; }
-  .reterm-login-btn { padding: 11px 18px; font-size: 15px; }
-  .reterm-login-label { font-size: 12px; }
-
-  /* xterm padding tighter on mobile */
-  .xterm { padding: 6px 8px; font-size: 15px; }
-  
-  /* Keybar keys larger for touch */
-  .keybar-key { height: 28px; padding: 0 10px; font-size: 12px; }
-  
-  /* Empty state button larger */
-  .reterm-empty-btn { padding: 9px 18px; font-size: 13px; }
-  .reterm-empty p { font-size: 14px; }
-}
-
-@media (max-width: 400px) {
-  /* Tabs: icon + short name only */
-  .reterm-tab { min-width: 80px; }
-  .reterm-tab-title { max-width: 60px; }
-}
-
-/* ─── Ubuntu Mono — self-hosted ──────────────────────────────────────────── */
-
-@font-face {
-  font-family: 'Ubuntu Mono';
-  src: url('/fonts/UbuntuMono-Regular.ttf') format('truetype');
-  font-weight: 400; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: 'Ubuntu Mono';
-  src: url('/fonts/UbuntuMono-Italic.ttf') format('truetype');
-  font-weight: 400; font-style: italic; font-display: swap;
-}
-@font-face {
-  font-family: 'Ubuntu Mono';
-  src: url('/fonts/UbuntuMono-Bold.ttf') format('truetype');
-  font-weight: 700; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: 'Ubuntu Mono';
-  src: url('/fonts/UbuntuMono-BoldItalic.ttf') format('truetype');
-  font-weight: 700; font-style: italic; font-display: swap;
-}
-
-/* ─── Key Bar — horizontal scrollable strip ──────────────────────────────── */
-
-.keybar {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 6px;
-  background: var(--bg-overlay);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: nowrap;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-}
-.keybar::-webkit-scrollbar { display: none; }
-
-.keybar-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
-  padding: 0 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--fg-base);
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
-  flex-shrink: 0;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-@media (hover: hover) {
-  .keybar-key:hover {
-    background: var(--bg-highlight);
-    border-color: var(--accent-blue);
-    color: var(--accent-blue);
-  }
-}
-.keybar-key:active {
-  background: var(--bg-active);
-  transform: scale(0.98);
-}
-
-.keybar-sep {
-  width: 1px;
-  height: 14px;
-  background: var(--border);
-  flex-shrink: 0;
-  margin: 0;
-}
-
-/* ─── Remove old elements ────────────────────────────────────────────────── */
-.fk-root,
-.fk-drag,
-.fk-pill,
-.fk-panel,
-.fk-grid,
-.fk-grid-scroll,
-.fk-key,
-.hkt-root,
-.floating-pill-wrapper { display: none !important; }
-
-/* ─── Tab type variants ──────────────────────────────────────────────────── */
-
-.reterm-tab--editor .reterm-tab-icon   { color: var(--accent-yellow); }
-.reterm-tab--files  .reterm-tab-icon   { color: var(--accent-cyan);   }
-.reterm-tab--terminal .reterm-tab-icon { color: var(--accent-blue);   }
-
-/* ─── File sub-tab bar ───────────────────────────────────────────────────── */
-
-.reterm-filetabbar {
-  display: flex;
-  align-items: stretch;
-  height: 32px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-  position: relative;
-  z-index: 60;
-}
-.reterm-filetabbar::-webkit-scrollbar { display: none; }
-
-.reterm-filetab {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 10px;
-  height: 100%;
-  background: transparent;
-  border: none;
-  border-right: 1px solid var(--border-subtle);
-  color: var(--fg-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: all 0.15s ease;
-  position: relative;
-  border-radius: 0;
-  margin: 0;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-@media (hover: hover) {
-  .reterm-filetab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
-}
-
-.reterm-filetab--active {
-  background: var(--bg-overlay);
-  color: var(--fg-base);
-  box-shadow: 0 -2px 4px rgba(56,139,253,0.2);
-}
-
-.reterm-filetab--files {
-  color: var(--accent-cyan);
-  opacity: 0.8;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  padding: 0 10px;
-  border-radius: 0;
-  margin: 0;
-}
-.reterm-filetab--files.reterm-filetab--active {
-  opacity: 1;
-  box-shadow: 0 -2px 4px rgba(125,220,255,0.2);
-}
-
-.reterm-filetab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s, color 0.15s; }
-.reterm-filetab--active .reterm-filetab-icon { opacity: 1; }
-
-.reterm-filetab-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 0;
-  opacity: 0;
-  color: var(--fg-muted);
-  cursor: pointer;
-  transition: opacity 0.1s, background 0.1s, color 0.1s;
-  flex-shrink: 0;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-@media (hover: hover) {
-  .reterm-filetab:hover .reterm-filetab-close { opacity: 1; }
-}
-.reterm-filetab--active .reterm-filetab-close { opacity: 1; }
-@media (hover: hover) {
-  .reterm-filetab-close:hover { background: var(--bg-highlight); color: var(--accent-red); }
-}
-
-.reterm-filetab-sep {
-  width: 1px;
-  background: var(--border);
-  margin: 6px 2px;
-  flex-shrink: 0;
-}
-
-.reterm-filetab-new {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 100%;
-  background: transparent;
-  border: none;
-  color: var(--fg-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.1s, color 0.1s;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  border-radius: 0;
-}
-@media (hover: hover) {
-  .reterm-filetab-new:hover { background: var(--bg-highlight); color: var(--fg-base); }
-}
-
-/* ─── File Browser ───────────────────────────────────────────────────────── */
-
-.fb-root {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--bg-base);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--fg-base);
-  overflow: hidden;
-}
-
-.fb-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 8px 4px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.fb-header-title {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--fg-muted);
-  text-transform: uppercase;
-}
-.fb-header-actions { display: flex; align-items: center; gap: 2px; }
-
-.fb-hbtn {
-  background: none;
-  border: none;
-  color: var(--fg-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  cursor: pointer;
-  padding: 3px 6px;
-  border-radius: 3px;
-  transition: color 0.1s, background 0.1s;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  min-width: 28px;
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-@media (hover: hover) {
-  .fb-hbtn:hover { color: var(--fg-base); background: var(--bg-active); }
-}
-
-.fb-root-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  color: var(--fg-muted);
-  font-size: 11px;
-  flex-shrink: 0;
-}
-.fb-root-name { font-weight: 600; color: var(--fg-base); }
-
-.fb-tree {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--fg-subtle) transparent;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-}
-.fb-tree::-webkit-scrollbar { width: 6px; }
-.fb-tree::-webkit-scrollbar-thumb { background: var(--fg-subtle); border-radius: 3px; }
-
-.fb-msg {
-  display: flex;
-  align-items: center;
-  padding: 10px 12px;
-  color: var(--fg-muted);
-  font-size: 11px;
-}
-.fb-msg--error { color: var(--accent-red); }
-
-.fb-node {
-  display: flex;
-  align-items: center;
   height: 24px;
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  position: relative;
-  padding-right: 4px;
-  transition: background 0.12s ease;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-@media (hover: hover) {
-  .fb-node:hover { background: var(--bg-active); }
-}
-.fb-node:active { background: var(--bg-active); }
-.fb-node--selected { background: var(--bg-overlay); }
-
-.fb-node-chevron {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  flex-shrink: 0;
-  color: var(--fg-subtle);
-}
-.fb-node--file .fb-node-chevron { visibility: hidden; }
-
-.fb-node-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 24px;
-  pointer-events: none;
-}
-.fb-node--dir  .fb-node-name { color: var(--accent-yellow); }
-.fb-node--file .fb-node-name { color: var(--fg-base); opacity: 0.95; }
-
-.fb-node-actions { display: none; align-items: center; gap: 1px; flex-shrink: 0; }
-@media (hover: hover) {
-  .fb-node:hover .fb-node-actions { display: flex; }
-}
-.fb-node:active .fb-node-actions,
-.fb-node:focus .fb-node-actions { display: flex; }
-
-.fb-abtn {
-  background: none;
-  border: none;
-  color: var(--fg-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 2px;
-  line-height: 1;
-  transition: color 0.1s, background 0.1s;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  min-width: 24px;
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-@media (hover: hover) {
-  .fb-abtn:hover { color: var(--fg-base); background: var(--bg-overlay); }
-  .fb-abtn--del:hover { color: var(--accent-red); }
-}
-
-/* ─── File Editor ────────────────────────────────────────────────────────── */
-
-.fe-root {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-
-}
-
-.fe-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  height: 100%;
-  color: var(--fg-muted);
-  font-size: 13px;
-}
-.fe-state--error { color: var(--accent-red); }
-
-.fe-save-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 12px;
-  background: rgba(158,206,106,0.1);
-  border-bottom: 1px solid rgba(158,206,106,0.2);
-  color: var(--accent-green);
-  font-size: 11px;
-  flex-shrink: 0;
-}
-.fe-save-bar--error {
-  background: rgba(247,118,142,0.1);
-  border-color: rgba(247,118,142,0.2);
-  color: var(--accent-red);
-}
-
-/* ─── Settings Panel ─────────────────────────────────────────────────────── */
-
-.settings-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 999;
-  backdrop-filter: blur(2px);
-}
-
-.settings-panel {
-  position: fixed;
-  bottom: calc(var(--statusbar-height) + 8px);
-  right: 12px;
-  width: 280px;
-  max-height: 400px;
-  background: var(--bg-overlay);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.settings-header {
+  background: rgba(26, 27, 38, 0.9);
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
-}
-
-.settings-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fg-base);
-  text-transform: lowercase;
-  letter-spacing: 0.05em;
-}
-
-.settings-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: var(--fg-muted);
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s;
-}
-
-.settings-close:hover {
-  background: rgba(233, 40, 136, 0.15);
-  color: var(--accent-red);
-}
-
-.settings-content {
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow-y: auto;
-  max-height: 340px;
-}
-
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.settings-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  padding: 0 8px;
   font-size: 10px;
-  font-weight: 600;
-  color: var(--fg-muted);
-  text-transform: lowercase;
-  letter-spacing: 0.04em;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+  color: #8b949e;
 }
 
-.settings-label .settings-value {
-  margin-left: auto;
-  color: var(--accent-blue);
-  font-family: var(--font-mono);
-  font-size: 9px;
-}
-
-.settings-options {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.settings-options--grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-}
-
-.settings-options--vertical {
-  flex-direction: column;
-}
-
-.settings-option {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--fg-muted);
-  font-size: 10px;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  text-transform: lowercase;
-}
-
-.settings-option:hover {
-  background: var(--bg-active);
-  border-color: var(--accent-blue);
-  color: var(--fg-base);
-}
-
-.settings-option--active {
-  background: rgba(87, 155, 213, 0.15);
-  border-color: var(--accent-blue);
-  color: var(--accent-blue);
-  font-weight: 600;
-}
-
-.settings-option--small {
-  padding: 5px 6px;
-  font-size: 9px;
-  justify-content: center;
-}
-
-.settings-slider {
-  width: 100%;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--bg-surface);
-  border-radius: 2px;
-  outline: none;
-}
-
-.settings-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  background: var(--accent-blue);
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.settings-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  background: var(--accent-blue);
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-@media (max-width: 768px) {
-  .settings-panel {
-    right: 8px;
-    bottom: calc(var(--statusbar-height) + 6px);
-    width: 260px;
-  }
-}
+/* ─── Scrollbars ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
