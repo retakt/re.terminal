@@ -5,29 +5,45 @@ node_modules/
 # Build artifacts
 dist/
 build/
-*.js
-*.ts
+target/
 
-# Cache directories
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Environment variables
-.env
-.env.local
-.env.*
+*.py.class
+.Python
+env/
+venv/
+.venv/
+.venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.pot
+*.po
+*~
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
 
 # Logs
 *.log
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
+# Environment variables
+.env
+.env.local
+*.env.*
 
-# IDE specific
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -36,20 +52,23 @@ htmlcov/
 
 # OS generated
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Python specific
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+# Testing
+coverage/
+htmlcov/
+*.coverage
+
+# Distribution / packaging
 .Python
-build/
+_build/
 develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
+.installed.cfg
 lib/
 lib64/
 parts/
@@ -60,28 +79,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Node.js specific
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-node_modules/
-dist/
-build/
-.nyc_output
-coverage/
-.nyc_output/
-coverage/
-
-# TypeScript/JavaScript build output
-*.js.map
-*.jsx.map
-*.ts.map
-*.tsx.map
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.backup
+# System
+.DS_Store
+Thumbs.db
 ```
