@@ -1,5 +1,5 @@
 /* ─── re.Term — Global Styles ─────────────────────────────────────────────── */
-/* Theme: Tokyo Night                                                          */
+/* Theme: GitHub Dark + Aurelia Colors                                           */
 
 @tailwind base;
 @tailwind components;
@@ -8,23 +8,37 @@
 /* ─── CSS Variables ──────────────────────────────────────────────────────── */
 
 :root {
-  --bg-base:        #1a1b26;
-  --bg-surface:     #16161e;
-  --bg-overlay:     #1f2335;
-  --bg-highlight:   #292e42;
-  --bg-active:      #24283b;
-  --border:         #292e42;
-  --border-subtle:  #1f2335;
-  /* Enhanced contrast for a more vibrant feel */
-  --fg-base:        #e0e6ed;
-  --fg-muted:       #94a3b8;
-  --fg-subtle:      #64748b;
-  --accent-blue:    #7aa2f7;
-  --accent-green:   #9ece6a;
-  --accent-yellow:  #e0af68;
-  --accent-red:     #f7768e;
-  --accent-magenta: #bb9af7;
-  --accent-cyan:    #7dcfff;
+  /* GitHub Dark backgrounds */
+  --bg-base:        #0d1117;
+  --bg-surface:     #161b22;
+  --bg-overlay:     #21262d;
+  --bg-highlight:   #30363d;
+  --bg-active:      #1f2937;
+  --border:         #30363d;
+  --border-subtle:  #21262d;
+  
+  /* Foreground colors */
+  --fg-base:        #c9d1d9;
+  --fg-muted:       #8b949e;
+  --fg-subtle:      #484f58;
+  
+  /* Aurelia accent colors */
+  --accent-blue:    #579BD5;
+  --accent-green:   #4EC9B0;
+  --accent-yellow:  #CE9178;
+  --accent-red:     #E92888;
+  --accent-magenta: #714896;
+  --accent-cyan:    #00B6D6;
+  --accent-pink:    #EA549F;
+  --accent-bright-red:    #EB2A88;
+  --accent-bright-green:  #1AD69C;
+  --accent-bright-blue:   #9CDCFE;
+  --accent-bright-cyan:   #2BC4E2;
+  --accent-bright-yellow: #e9ad95;
+  --accent-bright-purple: #975EAB;
+  --accent-bright-white:  #EAEAEA;
+  --accent-bright-black:  #797979;
+  
   --tab-height:     35px;
   --statusbar-height: 22px;
   /* Clean sans-serif for UI elements, Ubuntu Mono for terminal */
@@ -135,13 +149,13 @@ html, body, #root {
   touch-action: manipulation;
 }
 @media (hover: hover) {
-  .reterm-tab:hover { background: rgba(41, 46, 66, 0.4); color: var(--fg-base); }
+  .reterm-tab:hover { background: rgba(48, 54, 61, 0.5); color: var(--fg-base); }
 }
 .reterm-tab--active {
-  background: linear-gradient(180deg, #24283b 0%, #1f2335 100%);
+  background: linear-gradient(180deg, #21262d 0%, #161b22 100%);
   color: var(--fg-base);
   border-bottom: none;
-  box-shadow: 0 -2px 4px rgba(122,162,247,0.2);
+  box-shadow: 0 -2px 4px rgba(87, 155, 213, 0.2);
 }
 .reterm-tab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s, color 0.15s; }
 .reterm-tab--active .reterm-tab-icon { opacity: 1; color: var(--accent-blue); }
@@ -161,7 +175,7 @@ html, body, #root {
 }
 .reterm-tab--active .reterm-tab-close { opacity: 1; }
 @media (hover: hover) {
-  .reterm-tab-close:hover { background: rgba(247,118,142,0.2); color: var(--accent-red); }
+  .reterm-tab-close:hover { background: rgba(233, 40, 136, 0.2); color: var(--accent-red); }
 }
 
 .reterm-tab-new {
@@ -176,7 +190,7 @@ html, body, #root {
   touch-action: manipulation;
 }
 @media (hover: hover) {
-  .reterm-tab-new:hover { background: rgba(122,162,247,0.15); color: var(--accent-blue); }
+  .reterm-tab-new:hover { background: rgba(87, 155, 213, 0.15); color: var(--accent-blue); }
 }
 
 /* ─── Terminal area ──────────────────────────────────────────────────────── */
@@ -298,7 +312,7 @@ html, body, #root {
 }
 @media (hover: hover) {
   .reterm-statusbar-btn:hover { opacity: 1; background: rgba(0,0,0,0.3); }
-  .reterm-statusbar-btn--danger:hover { color: #f7768e !important; opacity: 1 !important; }
+  .reterm-statusbar-btn--danger:hover { color: #E92888 !important; opacity: 1 !important; }
 }
 
 /* ─── Login screen ───────────────────────────────────────────────────────── */
@@ -455,7 +469,7 @@ html, body, #root {
   align-items: center;
   gap: 3px;
   padding: 3px 6px;
-  background: var(--bg-surface);
+  background: var(--bg-overlay);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   overflow-x: auto;
@@ -475,9 +489,9 @@ html, body, #root {
   padding: 0 7px;
   flex-shrink: 0;
   border-radius: 0;
-  border: 1px solid rgba(192,202,245,0.1);
-  background: rgba(31,35,53,0.9);
-  color: rgba(192,202,245,0.75);
+  border: 1px solid rgba(87, 155, 213, 0.2);
+  background: rgba(33, 38, 45, 0.9);
+  color: #579BD5;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -906,7 +920,7 @@ html, body, #root {
 }
 
 .settings-close:hover {
-  background: rgba(247, 118, 142, 0.15);
+  background: rgba(233, 40, 136, 0.15);
   color: var(--accent-red);
 }
 
@@ -981,7 +995,7 @@ html, body, #root {
 }
 
 .settings-option--active {
-  background: rgba(122, 162, 247, 0.15);
+  background: rgba(87, 155, 213, 0.15);
   border-color: var(--accent-blue);
   color: var(--accent-blue);
   font-weight: 600;
