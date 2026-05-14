@@ -31,8 +31,8 @@ import { useApp } from "@/contexts/app-context";
 
 const aureliaTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#1a1a1a",
-    color: "#EA549F",
+    backgroundColor: "#0d1117",
+    color: "#c9d1d9",
     fontSize: "14px",
   },
   ".cm-content": {
@@ -44,31 +44,31 @@ const aureliaTheme = EditorView.theme({
     padding: "0 4px",
   },
   ".cm-gutters": {
-    backgroundColor: "#1a1a1a",
-    color: "#797979",
+    backgroundColor: "#0d1117",
+    color: "#8b949e",
     border: "none",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "#2a2a2a",
-    color: "#EA549F",
+    backgroundColor: "#161b22",
+    color: "#c9d1d9",
   },
   ".cm-activeLine": {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: "#161b22",
   },
   ".cm-selectionBackground": {
-    backgroundColor: "rgba(234,84,159,0.2) !important",
+    backgroundColor: "rgba(56,139,253,0.3) !important",
   },
   ".cm-cursor": {
-    borderLeftColor: "#EA549F",
+    borderLeftColor: "#c9d1d9",
   },
   ".cm-selectionMatch": {
-    backgroundColor: "#579BD5",
+    backgroundColor: "#3fb950",
   },
   ".cm-matchingBracket": {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: "#21262d",
   },
   "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: "#21262d",
   },
   ".cm-scroller": {
     overflow: "auto",
@@ -79,28 +79,30 @@ const aureliaTheme = EditorView.theme({
       height: "6px",
     },
     "&::-webkit-scrollbar-thumb": {
-      backgroundColor: "#3a3a3a",
+      backgroundColor: "#30363d",
     },
     "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "#4a4a4a",
+      backgroundColor: "#484f58",
     },
   },
 });
 
-// Syntax highlighting colors (Aurelia)
+// Syntax highlighting colors (GitHub Dark with high contrast yellows)
 const aureliaHighlightStyle = EditorView.baseTheme({
-  ".cm-comment": { color: "#797979", fontStyle: "italic" },
-  ".cm-keyword": { color: "#975EAB" },
-  ".cm-string": { color: "#4EC9B0" },
-  ".cm-number": { color: "#e9ad95" },
-  ".cm-typeName": { color: "#00B6D6" },
-  ".cm-function": { color: "#579BD5" },
-  ".cm-variableName": { color: "#EA549F" },
-  ".cm-operator": { color: "#2BC4E2" },
-  ".cm-property": { color: "#EA549F" },
-  ".cm-atom": { color: "#e9ad95" },
-  ".cm-tag": { color: "#E92888" },
-  ".cm-attribute": { color: "#CE9178" },
+  ".cm-comment": { color: "#8b949e", fontStyle: "italic" },
+  ".cm-keyword": { color: "#ff7b72", fontWeight: "bold" },        // bright red/pink for keywords
+  ".cm-string": { color: "#a5d6ff" },                              // light blue for strings
+  ".cm-number": { color: "#79c0ff" },                              // bright blue for numbers
+  ".cm-typeName": { color: "#ffa657" },                            // orange for types
+  ".cm-function": { color: "#d2a8ff" },                            // purple for functions
+  ".cm-variableName": { color: "#c9d1d9" },                        // white for variables
+  ".cm-operator": { color: "#ff7b72" },                            // red for operators
+  ".cm-property": { color: "#79c0ff" },                            // blue for properties
+  ".cm-atom": { color: "#ff7b72" },                                // red for atoms
+  ".cm-tag": { color: "#7ee787" },                                 // green for tags
+  ".cm-attribute": { color: "#d2a8ff" },                           // purple for attributes
+  ".cm-definition": { color: "#f0883e" },                          // orange for definitions
+  ".cm-macro": { color: "#ffa657" },                               // orange for macros
 });
 
 // Detect CodeMirror language from file extension
