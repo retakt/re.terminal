@@ -20,34 +20,36 @@ import "@xterm/xterm/css/xterm.css";
 
 interface Props { sessionId: string; isActive: boolean; }
 
-const THEME_DARK = {
+// GitHub Dark Legacy theme for xterm
+const GITHUB_DARK_LEGACY = {
   background:          "#0d1117",
   foreground:          "#c9d1d9",
-  cursor:              "#58a6ff",
+  cursor:              "#c9d1d9",
   cursorAccent:        "#0d1117",
-  selectionBackground: "rgba(88, 166, 255, 0.3)",
-  black:   "#484f58", red:     "#f85149", green:   "#3fb950",
-  yellow:  "#d29922", blue:    "#58a6ff", magenta: "#bc8cff",
-  cyan:    "#39c5cf", white:   "#b1bac4",
+  selectionBackground: "rgba(110, 118, 129, 0.4)",
+  black:   "#484f58", red:     "#ff7b72", green:   "#7ee787",
+  yellow:  "#d29922", blue:    "#79c0ff", magenta: "#d2a8ff",
+  cyan:    "#76e3ea", white:   "#b1bac4",
   brightBlack:   "#6e7681", brightRed:     "#ff7b72",
-  brightGreen:   "#56d364", brightYellow:  "#e3b341",
+  brightGreen:   "#7ee787", brightYellow:  "#e3b341",
   brightBlue:    "#79c0ff", brightMagenta: "#d2a8ff",
   brightCyan:    "#76e3ea", brightWhite:   "#f0f6fc",
 };
 
-const THEME_LIGHT = {
+// GitHub Light theme for xterm
+const GITHUB_LIGHT = {
   background:          "#ffffff",
   foreground:          "#24292f",
-  cursor:              "#0969da",
+  cursor:              "#24292f",
   cursorAccent:        "#ffffff",
-  selectionBackground: "rgba(9, 105, 218, 0.2)",
-  black:   "#6e7781", red:     "#cf222e", green:   "#2da44e",
+  selectionBackground: "rgba(175, 184, 193, 0.2)",
+  black:   "#24292f", red:     "#cf222e", green:   "#116329",
   yellow:  "#9a6700", blue:    "#0969da", magenta: "#8250df",
-  cyan:    "#1b7c83", white:   "#57606a",
-  brightBlack:   "#8c959f", brightRed:     "#a40e26",
-  brightGreen:   "#1a7f37", brightYellow:  "#9a6700",
+  cyan:    "#1b7c83", white:   "#6e7781",
+  brightBlack:   "#57606a", brightRed:     "#a40e26",
+  brightGreen:   "#1a7f37", brightYellow:  "#b08800",
   brightBlue:    "#0969da", brightMagenta: "#8250df",
-  brightCyan:    "#1b7c83", brightWhite:   "#57606a",
+  brightCyan:    "#1b7c83", brightWhite:   "#6e7781",
 };
 
 const isMobile = () => navigator.maxTouchPoints > 0;
@@ -64,8 +66,8 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
   // Get current theme from document data attribute
   const getTheme = () => {
     const theme = document.documentElement.getAttribute('data-theme');
-    if (theme === 'light') return THEME_LIGHT;
-    return THEME_DARK;
+    if (theme === 'light') return GITHUB_LIGHT;
+    return GITHUB_DARK_LEGACY;
   };
 
   React.useEffect(() => {
