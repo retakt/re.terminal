@@ -122,7 +122,7 @@ html, body, #root {
 .reterm-tabbar {
   display: flex; align-items: stretch;
   height: var(--tab-height);
-  background: linear-gradient(180deg, #16161e 0%, #1a1b26 100%);
+  background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0; overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
@@ -152,10 +152,10 @@ html, body, #root {
   .reterm-tab:hover { background: rgba(48, 54, 61, 0.5); color: var(--fg-base); }
 }
 .reterm-tab--active {
-  background: linear-gradient(180deg, #21262d 0%, #161b22 100%);
+  background: var(--bg-overlay);
   color: var(--fg-base);
   border-bottom: none;
-  box-shadow: 0 -2px 4px rgba(87, 155, 213, 0.2);
+  box-shadow: 0 -2px 4px rgba(56,139,253,0.2);
 }
 .reterm-tab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s, color 0.15s; }
 .reterm-tab--active .reterm-tab-icon { opacity: 1; color: var(--accent-blue); }
@@ -198,7 +198,7 @@ html, body, #root {
 .reterm-area {
   flex: 1; 
   position: relative;
-  background: linear-gradient(180deg, #1a1b26 0%, #16161e 100%);
+  background: var(--bg-base);
   
   /* FIX: Allow scrolling for content that overflows */
   overflow: auto; 
@@ -207,8 +207,8 @@ html, body, #root {
 }
 
 .xterm { padding: 8px 12px; height: 100%; }
-.xterm-viewport { background: #1a1b26 !important; }
-.xterm-screen { background: #1a1b26; }
+.xterm-viewport { background: var(--bg-base) !important; }
+.xterm-screen { background: var(--bg-base); }
 
 /* ─── File Browser Scroll Fixes ─────────────────────────────────────────── */
 /* Ensure the file browser fills the area and scrolls internally */
@@ -256,8 +256,8 @@ html, body, #root {
 .reterm-statusbar {
   display: flex; align-items: center; justify-content: space-between;
   height: var(--statusbar-height); padding: 0 8px;
-  background: var(--accent-blue); flex-shrink: 0;
-  font-size: 11px; color: #1a1b26; font-weight: 500; user-select: none;
+  background: var(--bg-surface); border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--fg-muted); font-weight: 500; user-select: none;
 }
 .reterm-statusbar-left,
 .reterm-statusbar-right { display: flex; align-items: center; gap: 6px; }
@@ -355,7 +355,7 @@ html, body, #root {
 .reterm-login-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 9px 16px; background: var(--accent-blue); border: none;
-  border-radius: 5px; color: #1a1b26; font-size: 13px; font-weight: 600;
+  border-radius: 5px; color: #0d1117; font-size: 13px; font-weight: 600;
   cursor: pointer; transition: opacity 0.15s, transform 0.1s, box-shadow 0.1s; margin-top: 4px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
@@ -541,7 +541,7 @@ html, body, #root {
   display: flex;
   align-items: stretch;
   height: 32px;
-  background: linear-gradient(180deg, #1a1b26 0%, #16161e 100%);
+  background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   overflow-x: auto;
@@ -578,9 +578,9 @@ html, body, #root {
 }
 
 .reterm-filetab--active {
-  background: linear-gradient(180deg, #24283b 0%, #1f2335 100%);
+  background: var(--bg-overlay);
   color: var(--fg-base);
-  box-shadow: 0 -2px 4px rgba(122,162,247,0.2);
+  box-shadow: 0 -2px 4px rgba(56,139,253,0.2);
 }
 
 /* "files" label tab — slightly different style */
@@ -652,13 +652,12 @@ html, body, #root {
 }
 
 /* ─── File Browser ───────────────────────────────────────────────────────── */
-/* ─── File Browser ───────────────────────────────────────────────────────── */
 
 .fb-root {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #16161e;
+  background: var(--bg-base);
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--fg-base);
@@ -671,7 +670,7 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   padding: 5px 8px 4px;
-  background: #1f2335;
+  background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -765,7 +764,7 @@ html, body, #root {
 }
 /* Touch feedback for mobile */
 .fb-node:active { background: var(--bg-active); }
-.fb-node--selected { background: #24283b; }
+.fb-node--selected { background: var(--bg-overlay); }
 
 /* Fixed 16px chevron column — files get an invisible placeholder so names align */
 .fb-node-chevron {
@@ -831,7 +830,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #1a1b26; /* Darker, more vibrant base */
+  background: var(--bg-base);
 }
 
 .fe-state {
