@@ -1,5 +1,5 @@
 /* ─── re.Term — Global Styles ─────────────────────────────────────────────── */
-/* Theme: GitHub Dark + Aurelia Colors + Retro Scanlines                      */
+/* Theme: GitHub Dark + Aurelia Colors                                           */
 
 @tailwind base;
 @tailwind components;
@@ -23,11 +23,11 @@
   --fg-subtle:      #484f58;
   
   /* Aurelia accent colors */
-  --accent-blue:    #6FB3E8;
+  --accent-blue:    #579BD5;
   --accent-green:   #4EC9B0;
   --accent-yellow:  #CE9178;
   --accent-red:     #E92888;
-  --accent-magenta: #A675D9;
+  --accent-magenta: #714896;
   --accent-cyan:    #00B6D6;
   --accent-pink:    #EA549F;
   --accent-bright-red:    #EB2A88;
@@ -41,13 +41,13 @@
   
   --tab-height:     35px;
   --statusbar-height: 22px;
-  
-  /* Fonts */
+  /* Clean sans-serif for UI elements, Ubuntu Mono for terminal */
   --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   --font-mono: "Ubuntu Mono", "JetBrains Mono", monospace;
 }
 
 /* ─── Web Fonts ──────────────────────────────────────────────────────────────── */
+/* Ubuntu Mono - loaded from public/fonts/ */
 
 @font-face {
   font-family: "Ubuntu Mono";
@@ -85,12 +85,12 @@ html, body, #root {
   width: 100%; height: 100%;
   background: var(--bg-base); color: var(--fg-base);
   font-family: var(--font-ui); font-size: 13px; line-height: 1.4;
-  -webkit-font-smoothing: none;
-  -moz-osx-font-smoothing: auto;
+  -webkit-font-smoothing: antialiased;
+  /* Everything lowercase by default */
   text-transform: lowercase;
 }
 
-/* Allow text selection */
+/* Allow text selection in terminal areas */
 .reterm-root * {
   user-select: auto;
   -webkit-user-select: auto;
@@ -98,72 +98,23 @@ html, body, #root {
   -ms-user-select: auto;
 }
 
-/* ─── Font Rendering Fix ──────────────────────────────────────────────────── */
-/* Prevents fonts from blending into the background by adding subtle contrast */
+/* ─── Monaco Editor Font Fix ──────────────────────────────────────────────────── */
+/* Ensure Monaco editor uses Ubuntu Mono font */
 
-.cm-editor,
-.cm-editor .cm-content,
-.cm-editor .cm-line,
-.xterm,
-.xterm-screen,
-.xterm .xterm-rows,
-.xterm .xterm-rows > div {
+.monaco-editor,
+.monaco-editor .view-line,
+.monaco-editor .margin-view-overlays,
+.monaco-editor .line-numbers {
   font-family: "Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace !important;
-  /* Subtle text shadow to lift text off the background */
-  text-shadow: 0 0 1px rgba(0, 0, 0, 0.5); 
 }
 
-/* Specific fix for Aurelia Pink foreground to ensure visibility */
-.xterm .xterm-rows .xterm-fg-214, /* Map Aurelia Pink if needed */
-.xterm .xterm-rows[style*="#EA549F"],
-.fe-root,
-.fb-root {
-  text-shadow: 0 0 2px rgba(234, 84, 159, 0.3);
-}
-
-/* ─── App Shell ───────────────────────────────────────────────────────────── */
-
+/* Use visual viewport height — stable app shell */
 .reterm-root {
   display: flex; flex-direction: column;
   width: 100%;
-  height: 100dvh;
+  height: 100dvh; /* Dynamic viewport height handles browser bars */
   max-height: 100dvh;
   background: var(--bg-base);
-  overflow: hidden;
-  position: relative;
-}
-
-/* ─── Retro CRT Scanline Overlay ──────────────────────────────────────────── */
-/* Adds the "Aurelia" retro line effect globally over the terminal area */
-
-.reterm-area::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none; /* Allows clicking through to terminal */
-  z-index: 50;
-  
-  /* Scanline pattern */
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%, 
-    rgba(0, 0, 0, 0.15) 50%
-  );
-  background-size: 100% 4px; /* Line thickness */
-  
-  /* Subtle vignette for depth */
-  box-shadow: inset 0 0 4rem rgba(0,0,0,0.4);
-  
-  opacity: 0.6; /* Adjust intensity here (0.0 to 1.0) */
-}
-
-/* Optional: Subtle flicker animation for extra retro feel */
-@keyframes reterm-flicker {
-  0% { opacity: 0.6; }
-  50% { opacity: 0.62; }
-  100% { opacity: 0.6; }
-}
-.reterm-area::after {
-  animation: reterm-flicker 0.2s infinite;
 }
 
 /* ─── Tab bar ────────────────────────────────────────────────────────────── */
@@ -171,12 +122,10 @@ html, body, #root {
 .reterm-tabbar {
   display: flex; align-items: stretch;
   height: var(--tab-height);
-
+  background: linear-gradient(180deg, #16161e 0%, #1a1b26 100%);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0; overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  position: relative;
-  z-index: 60; /* Above scanlines */
 }
 
 .reterm-tabs {
@@ -203,10 +152,10 @@ html, body, #root {
   .reterm-tab:hover { background: rgba(48, 54, 61, 0.5); color: var(--fg-base); }
 }
 .reterm-tab--active {
-  background: var(--bg-overlay);
+  background: linear-gradient(180deg, #21262d 0%, #161b22 100%);
   color: var(--fg-base);
   border-bottom: none;
-  box-shadow: 0 -2px 4px rgba(56,139,253,0.2);
+  box-shadow: 0 -2px 4px rgba(87, 155, 213, 0.2);
 }
 .reterm-tab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s, color 0.15s; }
 .reterm-tab--active .reterm-tab-icon { opacity: 1; color: var(--accent-blue); }
@@ -249,23 +198,25 @@ html, body, #root {
 .reterm-area {
   flex: 1; 
   position: relative;
-
+  background: linear-gradient(180deg, #1a1b26 0%, #16161e 100%);
+  
+  /* FIX: Allow scrolling for content that overflows */
   overflow: auto; 
   scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
+  -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
 }
 
 .xterm { padding: 8px 12px; height: 100%; }
+.xterm-viewport { background: #1a1b26 !important; }
+.xterm-screen { background: #1a1b26; }
 
 /* ─── File Browser Scroll Fixes ─────────────────────────────────────────── */
-
+/* Ensure the file browser fills the area and scrolls internally */
 .fb-root {
   display: flex;
   flex-direction: column;
   height: 100%;
   width: 100%;
-  position: relative;
-  z-index: 60; /* File browser sits above scanlines */
 }
 
 .fb-tree {
@@ -276,12 +227,10 @@ html, body, #root {
 }
 
 /* ─── Editor Scroll Fixes ───────────────────────────────────────────────── */
-
+/* Ensure CodeMirror fills the area */
 .cm-editor {
   height: 100% !important;
   width: 100% !important;
-  position: relative;
-  z-index: 60; /* Editor sits above scanlines */
 }
 
 /* ─── Empty state ────────────────────────────────────────────────────────── */
@@ -289,8 +238,6 @@ html, body, #root {
 .reterm-empty {
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; height: 100%; gap: 12px; color: var(--fg-muted);
-  position: relative;
-  z-index: 60;
 }
 .reterm-empty p { font-size: 13px; }
 .reterm-empty-btn {
@@ -309,11 +256,13 @@ html, body, #root {
 .reterm-statusbar {
   display: flex; align-items: center; justify-content: space-between;
   height: var(--statusbar-height); padding: 0 8px;
-
+  background: var(--accent-blue); flex-shrink: 0;
+  font-size: 11px; color: #1a1b26; font-weight: 500; user-select: none;
 }
 .reterm-statusbar-left,
 .reterm-statusbar-right { display: flex; align-items: center; gap: 6px; }
 
+/* Connection badge — green text when connected */
 .reterm-conn-badge {
   display: flex; align-items: center; gap: 5px;
   padding: 1px 7px 1px 5px; border-radius: 4px;
@@ -325,11 +274,12 @@ html, body, #root {
   background: rgba(158,206,106,0.15);
 }
 
+/* Green pulsing dot */
 .reterm-conn-dot {
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
 }
 .reterm-conn-dot--connected {
-  background: #05b65d;
+  background: #05b65d;   /* darker forest green — visible on blue bar */
   box-shadow: 0 0 0 0 rgba(64,160,43,0.7);
   animation: reterm-pulse 3s ease-in-out infinite;
 }
@@ -337,6 +287,11 @@ html, body, #root {
   0%   { box-shadow: 0 0 0 0   rgba(64,160,43,0.7); }
   50%  { box-shadow: 0 0 0 5px rgba(64,160,43,0);   }
   100% { box-shadow: 0 0 0 0   rgba(64,160,43,0);   }
+}
+
+.reterm-conn-badge--connected {
+  color: #05b65d;
+  background: rgba(158,206,106,0.2);
 }
 
 .reterm-dims {
@@ -365,8 +320,6 @@ html, body, #root {
 .reterm-login {
   flex: 1; display: flex; align-items: center; justify-content: center;
   background: var(--bg-base); padding: 24px;
-  position: relative;
-  z-index: 60;
 }
 .reterm-login-card {
   width: 100%; max-width: 360px;
@@ -402,7 +355,7 @@ html, body, #root {
 .reterm-login-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 9px 16px; background: var(--accent-blue); border: none;
-  border-radius: 5px; color: #0d1117; font-size: 13px; font-weight: 600;
+  border-radius: 5px; color: #1a1b26; font-size: 13px; font-weight: 600;
   cursor: pointer; transition: opacity 0.15s, transform 0.1s, box-shadow 0.1s; margin-top: 4px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
@@ -434,37 +387,81 @@ html, body, #root {
 /* ─── Mobile ─────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
+  /* Increase base font size for better readability */
   html, body, #root { font-size: 15px; }
+  
   .reterm-tabbar { height: 42px; }
+
+  /* Tabs shrink more aggressively on small screens */
   .reterm-tab {
     min-width: 100px;
     max-width: 160px;
     padding: 0 12px 0 10px;
     font-size: 14px;
   }
+
+  /* Hide session name text on very small screens, keep icon */
   .reterm-tab-title { font-size: 14px; }
+
+  /* Status bar — tighter on mobile */
   .reterm-statusbar { height: 32px; padding: 0 10px; gap: 6px; font-size: 12px; }
   .reterm-statusbar-left,
   .reterm-statusbar-right { gap: 6px; }
+
+  /* Hide session name in status bar on small screens */
   .reterm-session-name { display: none; }
+
+  /* Login card full-width */
   .reterm-login-card { padding: 28px 20px; }
+  
+  /* Login elements larger on mobile */
   .reterm-login-logo { font-size: 22px; }
   .reterm-login-subtitle { font-size: 13px; }
   .reterm-login-input { padding: 11px 14px; font-size: 15px; }
   .reterm-login-btn { padding: 11px 18px; font-size: 15px; }
   .reterm-login-label { font-size: 12px; }
+
+  /* xterm padding tighter on mobile */
   .xterm { padding: 6px 8px; font-size: 15px; }
+  
+  /* Keybar keys larger for touch */
   .keybar-key { height: 28px; padding: 0 10px; font-size: 12px; }
+  
+  /* Empty state button larger */
   .reterm-empty-btn { padding: 9px 18px; font-size: 13px; }
   .reterm-empty p { font-size: 14px; }
 }
 
 @media (max-width: 400px) {
+  /* Tabs: icon + short name only */
   .reterm-tab { min-width: 80px; }
   .reterm-tab-title { max-width: 60px; }
 }
 
-/* ─── Key Bar ────────────────────────────────────────────────────────────── */
+/* ─── Ubuntu Mono — self-hosted ──────────────────────────────────────────── */
+
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('/fonts/UbuntuMono-Regular.ttf') format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('/fonts/UbuntuMono-Italic.ttf') format('truetype');
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('/fonts/UbuntuMono-Bold.ttf') format('truetype');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('/fonts/UbuntuMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700; font-style: italic; font-display: swap;
+}
+
+/* ─── Key Bar — horizontal scrollable strip ──────────────────────────────── */
 
 .keybar {
   display: flex;
@@ -481,8 +478,6 @@ html, body, #root {
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  position: relative;
-  z-index: 60;
 }
 .keybar::-webkit-scrollbar { display: none; }
 
@@ -491,26 +486,31 @@ html, body, #root {
   align-items: center;
   justify-content: center;
   height: 22px;
-  padding: 0 7px;
-  flex-shrink: 0;
-  border-radius: 0;
-  border: 1px solid rgba(87, 155, 213, 0.2);
-  background: rgba(33, 38, 45, 0.9);
-  color: #579BD5;
-  font-family: var(--font-mono);
-  font-size: 10px;
+  padding: 0 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-base);
+  font-family: var(--font-ui);
+  font-size: 11px;
   font-weight: 500;
-  cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.4);
-  transition: background 0.07s, transform 0.05s, box-shadow 0.05s;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  text-transform: inherit;
+}
+@media (hover: hover) {
+  .keybar-key:hover {
+    background: var(--bg-highlight);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+  }
 }
 .keybar-key:active {
-  transform: translateY(1px);
-  box-shadow: none;
+  background: var(--bg-active);
+  transform: scale(0.98);
 }
 
 .keybar-sep {
@@ -817,11 +817,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100%;
-<<<<<<< HEAD
-  background: #1a1b26;
-=======
-  background: var(--bg-base);
->>>>>>> 305c9b954942507135297ea75be914baa5222a45
+
 }
 
 .fe-state {
