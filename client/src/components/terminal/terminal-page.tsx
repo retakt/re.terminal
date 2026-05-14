@@ -435,22 +435,21 @@ export function TerminalPage() {
             </button>
           </div>
         ) : (
+          // Simplified: No rotateY, no exit animation. Instant switch + fade.
           <AnimatePresence mode="wait">
             {pages.map(page => {
               const isVisible = page.id === activePageId;
               return (
                 <motion.div
                   key={page.id}
-                  initial={{ rotateY: 0, opacity: 1 }}
-                  animate={{ rotateY: isVisible ? 0 : -5, opacity: isVisible ? 1 : 0 }}
-                  exit={{ rotateY: 5, opacity: 0 }}
-                  transition={{ duration: 0.15, ease: "easeInOut" }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: isVisible ? 1 : 0 }}
+                  transition={{ duration: 0.1 }} // Fast fade
                   style={{
-                    position:      "absolute",
-                    inset:         0,
+                    position: "absolute",
+                    inset: 0,
                     pointerEvents: isVisible ? "auto" : "none",
                     display: !isVisible ? "none" : undefined,
-                    transformOrigin: "left center",
                   }}
                 >
                   <PageContent page={page} />
