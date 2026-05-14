@@ -263,7 +263,7 @@ html, body, #root {
 .reterm-area {
   flex: 1; 
   position: relative;
-  background: linear-gradient(180deg, #1a1b26 0%, #16161e 100%);
+  background: var(--bg-base);
   
   /* FIX: Allow scrolling for content that overflows */
   overflow: auto; 
@@ -281,7 +281,7 @@ html, body, #root {
 
 /* Enable scroll on xterm viewport - critical for terminal content scrolling */
 .xterm-viewport { 
-  background: #1a1b26 !important;
+  background: var(--bg-base) !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
   -webkit-overflow-scrolling: touch;
@@ -294,7 +294,7 @@ html, body, #root {
   .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
 }
 
-.xterm-screen { background: #1a1b26; }
+.xterm-screen { background: var(--bg-base); }
 
 /* ─── File Browser Scroll Fixes ─────────────────────────────────────────── */
 /* Ensure the file browser fills the area and scrolls internally */
@@ -443,7 +443,7 @@ html, body, #root {
 .reterm-login-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 9px 16px; background: var(--accent-blue); border: none;
-  border-radius: 5px; color: #1a1b26; font-size: 13px; font-weight: 600;
+  border-radius: 5px; color: var(--bg-base); font-size: 13px; font-weight: 600;
   cursor: pointer; transition: opacity 0.15s, transform 0.1s, box-shadow 0.1s; margin-top: 4px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
