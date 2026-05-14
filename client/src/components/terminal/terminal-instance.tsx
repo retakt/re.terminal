@@ -20,36 +20,40 @@ import "@xterm/xterm/css/xterm.css";
 
 interface Props { sessionId: string; isActive: boolean; }
 
-// GitHub Dark Legacy theme for xterm
-const GITHUB_DARK_LEGACY = {
-  background:          "#0d1117",
-  foreground:          "#c9d1d9",
-  cursor:              "#c9d1d9",
-  cursorAccent:        "#0d1117",
-  selectionBackground: "rgba(110, 118, 129, 0.4)",
-  black:   "#484f58", red:     "#ff7b72", green:   "#7ee787",
-  yellow:  "#d29922", blue:    "#79c0ff", magenta: "#d2a8ff",
-  cyan:    "#76e3ea", white:   "#b1bac4",
-  brightBlack:   "#6e7681", brightRed:     "#ff7b72",
-  brightGreen:   "#7ee787", brightYellow:  "#e3b341",
-  brightBlue:    "#79c0ff", brightMagenta: "#d2a8ff",
-  brightCyan:    "#76e3ea", brightWhite:   "#f0f6fc",
+// Tokyo Night Dark theme - exact colors from iTerm2 plist (P3 converted to sRGB approx)
+const TOKYO_NIGHT_DARK = {
+  background:          "#040404",
+  foreground:          "#f5f5f3",
+  cursor:              "#f5f5f3",
+  cursorAccent:        "#040404",
+  selectionBackground: "rgba(125, 207, 255, 0.3)",
+  // ANSI 0-7
+  black:   "#3b4261", red:     "#f7768e", green:   "#9ece6a",
+  yellow:  "#e0af68", blue:    "#7aa2f7", magenta: "#bb9af7",
+  cyan:    "#7dcfff", white:   "#a9b1d6",
+  // ANSI 8-15 (bright)
+  brightBlack:   "#414868", brightRed:     "#f7768e",
+  brightGreen:   "#9ece6a", brightYellow:  "#e0af68",
+  brightBlue:    "#7aa2f7", brightMagenta: "#bb9af7",
+  brightCyan:    "#7dcfff", brightWhite:   "#c0caf5",
 };
 
-// GitHub Light theme for xterm
-const GITHUB_LIGHT = {
+// Tokyo Night Light theme - exact colors from iTerm2 plist (P3 converted to sRGB approx)
+const TOKYO_NIGHT_LIGHT = {
   background:          "#ffffff",
-  foreground:          "#24292f",
-  cursor:              "#24292f",
+  foreground:          "#0f0f0f",
+  cursor:              "#0f0f0f",
   cursorAccent:        "#ffffff",
-  selectionBackground: "rgba(175, 184, 193, 0.2)",
-  black:   "#24292f", red:     "#cf222e", green:   "#116329",
-  yellow:  "#9a6700", blue:    "#0969da", magenta: "#8250df",
-  cyan:    "#1b7c83", white:   "#6e7781",
-  brightBlack:   "#57606a", brightRed:     "#a40e26",
-  brightGreen:   "#1a7f37", brightYellow:  "#b08800",
-  brightBlue:    "#0969da", brightMagenta: "#8250df",
-  brightCyan:    "#1b7c83", brightWhite:   "#6e7781",
+  selectionBackground: "rgba(44, 125, 150, 0.25)",
+  // ANSI 0-7
+  black:   "#0f0f0f", red:     "#8c4351", green:   "#33635c",
+  yellow:  "#8f5e15", blue:    "#34548a", magenta: "#5a4a78",
+  cyan:    "#0f4b6e", white:   "#787c99",
+  // ANSI 8-15 (bright)
+  brightBlack:   "#5b5876", brightRed:     "#db4b5c",
+  brightGreen:   "#3d7465", brightYellow:  "#a38f3e",
+  brightBlue:    "#4d7ac7", brightMagenta: "#755b99",
+  brightCyan:    "#2c7d96", brightWhite:   "#848cb3",
 };
 
 const isMobile = () => navigator.maxTouchPoints > 0;
@@ -66,8 +70,8 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
   // Get current theme from document data attribute
   const getTheme = () => {
     const theme = document.documentElement.getAttribute('data-theme');
-    if (theme === 'light') return GITHUB_LIGHT;
-    return GITHUB_DARK_LEGACY;
+    if (theme === 'light') return TOKYO_NIGHT_LIGHT;
+    return TOKYO_NIGHT_DARK;
   };
 
   React.useEffect(() => {

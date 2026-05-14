@@ -1,5 +1,5 @@
 /* ─── re.Term — Global Styles ─────────────────────────────────────────────── */
-/* Theme: GitHub Dark Legacy + GitHub Light (switchable)                       */
+/* Theme: Tokyo Night inspired (dark) / Tokyo Night Light (light)              */
 
 @tailwind base;
 @tailwind components;
@@ -7,108 +7,119 @@
 
 /* ─── CSS Variables ──────────────────────────────────────────────────────── */
 
-/* GitHub Dark Legacy (default) */
+/* Tokyo Night Dark (default) - true dark, minimal blue tint */
 :root, [data-theme="dark"] {
-  /* GitHub Dark Legacy backgrounds */
-  --bg-base:        #0d1117;
-  --bg-surface:     #161b22;
-  --bg-overlay:     #21262d;
-  --bg-highlight:   #30363d;
-  --bg-active:      #21262d;
-  --border:         #30363d;
-  --border-subtle:  #21262d;
+  /* Background colors - matching the plist exactly */
+  --bg-base:        #040404;
+  --bg-surface:     #0a0a0a;
+  --bg-overlay:     #111111;
+  --bg-highlight:   #1a1a1a;
+  --bg-active:      #0f0f0f;
+  --border:         #2a2a2a;
+  --border-subtle:  #1a1a1a;
   
   /* Foreground colors */
-  --fg-base:        #c9d1d9;
-  --fg-muted:       #8b949e;
-  --fg-subtle:      #484f58;
+  --fg-base:        #f5f5f3;
+  --fg-muted:       #a9b0c3;
+  --fg-subtle:      #63697d;
   
-  /* GitHub accent colors */
-  --accent-blue:    #58a6ff;
-  --accent-green:   #3fb950;
-  --accent-yellow:  #d29922;
-  --accent-red:     #f85149;
-  --accent-magenta: #bc8cff;
-  --accent-cyan:    #39c5cf;
-  --accent-pink:    #f778ba;
-  --accent-bright-red:    #ff7b72;
-  --accent-bright-green:  #56d364;
-  --accent-bright-blue:   #79c0ff;
-  --accent-bright-cyan:   #76e3ea;
-  --accent-bright-yellow: #e3b341;
-  --accent-bright-purple: #d2a8ff;
-  --accent-bright-white:  #f0f6fc;
-  --accent-bright-black:  #6e7681;
+  /* ANSI colors from iTerm2 plist (converted from P3 to sRGB approx) */
+  /* These are the exact Tokyo Night palette colors */
+  --ansi-black:     #24283b;
+  --ansi-red:       #f7768e;
+  --ansi-green:     #9ece6a;
+  --ansi-yellow:    #e0af68;
+  --ansi-blue:      #7aa2f7;
+  --ansi-magenta:   #bb9af7;
+  --ansi-cyan:      #7dcfff;
+  --ansi-white:     #a9b1d6;
   
-  /* Bar gradients - GitHub page style */
-  --bar-gradient-start: #161b22;
-  --bar-gradient-end: #0d1117;
-  --bar-border: #30363d;
-  --bar-text: #c9d1d9;
-  --bar-text-muted: #8b949e;
-  --bar-active-bg: #21262d;
-  --bar-hover-bg: rgba(48, 54, 61, 0.5);
+  /* Bright ANSI colors */
+  --ansi-bright-black:     #414868;
+  --ansi-bright-red:       #f7768e;
+  --ansi-bright-green:     #9ece6a;
+  --ansi-bright-yellow:    #e0af68;
+  --ansi-bright-blue:      #7aa2f7;
+  --ansi-bright-magenta:   #bb9af7;
+  --ansi-bright-cyan:      #7dcfff;
+  --ansi-bright-white:     #c0caf5;
   
-  /* Status bar - GitHub page style (dark) */
-  --statusbar-bg: #161b22;
-  --statusbar-border: #30363d;
-  --statusbar-text: #c9d1d9;
-  --statusbar-text-muted: #8b949e;
+  /* Bar gradients - subtle dark gradient */
+  --bar-gradient-start: #0a0a0a;
+  --bar-gradient-end: #040404;
+  --bar-border: #2a2a2a;
+  --bar-text: #f5f5f3;
+  --bar-text-muted: #a9b0c3;
+  --bar-active-bg: #0f0f0f;
+  --bar-hover-bg: rgba(42, 42, 42, 0.5);
+  
+  /* Status bar */
+  --statusbar-bg: #0a0a0a;
+  --statusbar-border: #2a2a2a;
+  --statusbar-text: #f5f5f3;
+  --statusbar-text-muted: #a9b0c3;
   
   --tab-height:     35px;
   --statusbar-height: 22px;
-  /* Clean sans-serif for UI elements, Ubuntu Mono for terminal */
-  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  --font-mono: "Ubuntu Mono", "JetBrains Mono", monospace;
+  /* macOS-style fonts */
+  --font-ui:   -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Monaco", "Ubuntu Mono", monospace;
 }
 
-/* GitHub Light */
+/* Tokyo Night Light */
 [data-theme="light"] {
-  /* GitHub Light backgrounds */
+  /* Background colors - matching the plist exactly */
   --bg-base:        #ffffff;
-  --bg-surface:     #f6f8fa;
+  --bg-surface:     #f6f6f7;
   --bg-overlay:     #ffffff;
-  --bg-highlight:   #f3f4f6;
-  --bg-active:      #f6f8fa;
+  --bg-highlight:   #ebebf0;
+  --bg-active:      #f6f6f7;
   --border:         #d0d7de;
-  --border-subtle:  #eaeef2;
+  --border-subtle:  #e5e5ea;
   
   /* Foreground colors */
-  --fg-base:        #24292f;
-  --fg-muted:       #57606a;
-  --fg-subtle:      #8c959f;
+  --fg-base:        #0f0f0f;
+  --fg-muted:       #565a6e;
+  --fg-subtle:      #848cb3;
   
-  /* GitHub accent colors (same as dark, they work on light too) */
-  --accent-blue:    #0969da;
-  --accent-green:   #2da44e;
-  --accent-yellow:  #9a6700;
-  --accent-red:     #cf222e;
-  --accent-magenta: #8250df;
-  --accent-cyan:    #0550ae;
-  --accent-pink:    #cf222e;
-  --accent-bright-red:    #a40e26;
-  --accent-bright-green:  #1a7f37;
-  --accent-bright-blue:   #0969da;
-  --accent-bright-cyan:   #0969da;
-  --accent-bright-yellow: #9a6700;
-  --accent-bright-purple: #8250df;
-  --accent-bright-white:  #ffffff;
-  --accent-bright-black:  #6e7781;
+  /* ANSI colors from iTerm2 plist (light variant) */
+  --ansi-black:     #0f0f0f;
+  --ansi-red:       #8c4351;
+  --ansi-green:     #33635c;
+  --ansi-yellow:    #8f5e15;
+  --ansi-blue:      #34548a;
+  --ansi-magenta:   #5a4a78;
+  --ansi-cyan:      #0f4b6e;
+  --ansi-white:     #787c99;
   
-  /* Bar gradients - GitHub page style (light) */
-  --bar-gradient-start: #f6f8fa;
+  /* Bright ANSI colors */
+  --ansi-bright-black:     #5b5876;
+  --ansi-bright-red:       #db4b5c;
+  --ansi-bright-green:     #3d7465;
+  --ansi-bright-yellow:    #a38f3e;
+  --ansi-bright-blue:      #4d7ac7;
+  --ansi-bright-magenta:   #755b99;
+  --ansi-bright-cyan:      #2c7d96;
+  --ansi-bright-white:     #848cb3;
+  
+  /* Bar gradients - light gradient */
+  --bar-gradient-start: #f6f6f7;
   --bar-gradient-end: #ffffff;
   --bar-border: #d0d7de;
-  --bar-text: #24292f;
-  --bar-text-muted: #57606a;
+  --bar-text: #0f0f0f;
+  --bar-text-muted: #565a6e;
   --bar-active-bg: #ffffff;
   --bar-hover-bg: rgba(208, 215, 222, 0.4);
   
-  /* Status bar - GitHub page style (light) */
-  --statusbar-bg: #f6f8fa;
+  /* Status bar */
+  --statusbar-bg: #f6f6f7;
   --statusbar-border: #d0d7de;
-  --statusbar-text: #24292f;
-  --statusbar-text-muted: #57606a;
+  --statusbar-text: #0f0f0f;
+  --statusbar-text-muted: #565a6e;
+  
+  /* macOS-style fonts */
+  --font-ui:   -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Monaco", "Ubuntu Mono", monospace;
 }
 
 /* ─── Web Fonts ──────────────────────────────────────────────────────────────── */
@@ -470,8 +481,15 @@ html, body, #root {
 @media (hover: hover) {
   ::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
 }
-::selection { background: rgba(122,162,247,0.25); }
+::selection { background: rgba(125, 207, 255, 0.3); color: var(--fg-base); }
 
+/* ─── Utility classes ────────────────────────────────────────────────────── */
+
+.text-accent-blue { color: var(--accent-blue); }
+.text-accent-red { color: var(--accent-red); }
+.bg-accent-blue { background: var(--accent-blue); }
+.bg-accent-red { background: var(--accent-red); }
+.border-accent-blue { border-color: var(--accent-blue); }
 /* ─── Mobile ─────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
