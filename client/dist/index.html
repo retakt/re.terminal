@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Viewport fixed to prevent zooming and handle safe areas for mobile apps -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>re.Term — Ambient</title>
+    <!-- Prevents the browser from forcing the layout to resize when keyboard appears -->
+    <script>
+      // Fix for iOS Safari address bar shrinking/hiding
+      document.documentElement.style.height = '100%';
+      window.addEventListener('resize', () => {
+        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+          window.scrollTo(0, 0);
+        }
+      });
+    </script>
+    <script type="module" crossorigin src="/assets/index-To0ILGRK.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CaqFqvo3.css">
+  </head>
+  <body class="overflow-hidden antialiased select-none">
+
+    <div class="reterm-ambient-layer">
+      <video
+        autoplay
+        loop
+        muted
+        playsinline
+        id="ambient-video"
+      >
+        <source src="/loopback.mp4" type="video/mp4">
+      </video>
+    </div>
+
+    <div id="root"></div>
+
+  </body>
+</html>
