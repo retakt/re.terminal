@@ -27,12 +27,12 @@ import { Save, AlertCircle, Loader2 } from "lucide-react";
 import { fileApi } from "@/lib/file-api";
 import { useApp } from "@/contexts/app-context";
 
-// ─── Tokyo Night theme for CodeMirror ─────────────────────────────────────────────
+// ─── Aurelia theme for CodeMirror ─────────────────────────────────────────────
 
-const tokyoNightTheme = EditorView.theme({
+const aureliaTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#1a1b26",
-    color: "#c0caf5",
+    backgroundColor: "#1a1a1a",
+    color: "#EA549F",
     fontSize: "14px",
   },
   ".cm-content": {
@@ -44,31 +44,31 @@ const tokyoNightTheme = EditorView.theme({
     padding: "0 4px",
   },
   ".cm-gutters": {
-    backgroundColor: "#1a1b26",
-    color: "#3b4261",
+    backgroundColor: "#1a1a1a",
+    color: "#797979",
     border: "none",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "#1f2335",
-    color: "#737aa2",
+    backgroundColor: "#2a2a2a",
+    color: "#EA549F",
   },
   ".cm-activeLine": {
-    backgroundColor: "#1f2335",
+    backgroundColor: "#2a2a2a",
   },
   ".cm-selectionBackground": {
-    backgroundColor: "#283457 !important",
+    backgroundColor: "rgba(234,84,159,0.2) !important",
   },
   ".cm-cursor": {
-    borderLeftColor: "#c0caf5",
+    borderLeftColor: "#EA549F",
   },
   ".cm-selectionMatch": {
-    backgroundColor: "#3d59a1",
+    backgroundColor: "#579BD5",
   },
   ".cm-matchingBracket": {
-    backgroundColor: "#292e42",
+    backgroundColor: "#2a2a2a",
   },
   "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "#292e42",
+    backgroundColor: "#2a2a2a",
   },
   ".cm-scroller": {
     overflow: "auto",
@@ -79,28 +79,28 @@ const tokyoNightTheme = EditorView.theme({
       height: "6px",
     },
     "&::-webkit-scrollbar-thumb": {
-      backgroundColor: "#292e4280",
+      backgroundColor: "#3a3a3a",
     },
     "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "#3b426180",
+      backgroundColor: "#4a4a4a",
     },
   },
 });
 
-// Syntax highlighting colors (Tokyo Night)
-const tokyoNightHighlightStyle = EditorView.baseTheme({
-  ".cm-comment": { color: "#565f89", fontStyle: "italic" },
-  ".cm-keyword": { color: "#bb9af7" },
-  ".cm-string": { color: "#9ece6a" },
-  ".cm-number": { color: "#ff9e64" },
-  ".cm-typeName": { color: "#2ac3de" },
-  ".cm-function": { color: "#7aa2f7" },
-  ".cm-variableName": { color: "#c0caf5" },
-  ".cm-operator": { color: "#89ddff" },
-  ".cm-property": { color: "#c0caf5" },
-  ".cm-atom": { color: "#ff9e64" },
-  ".cm-tag": { color: "#f7768e" },
-  ".cm-attribute": { color: "#e0af68" },
+// Syntax highlighting colors (Aurelia)
+const aureliaHighlightStyle = EditorView.baseTheme({
+  ".cm-comment": { color: "#797979", fontStyle: "italic" },
+  ".cm-keyword": { color: "#975EAB" },
+  ".cm-string": { color: "#4EC9B0" },
+  ".cm-number": { color: "#e9ad95" },
+  ".cm-typeName": { color: "#00B6D6" },
+  ".cm-function": { color: "#579BD5" },
+  ".cm-variableName": { color: "#EA549F" },
+  ".cm-operator": { color: "#2BC4E2" },
+  ".cm-property": { color: "#EA549F" },
+  ".cm-atom": { color: "#e9ad95" },
+  ".cm-tag": { color: "#E92888" },
+  ".cm-attribute": { color: "#CE9178" },
 });
 
 // Detect CodeMirror language from file extension
@@ -229,8 +229,8 @@ export function FileEditor({ pageId, filePath }: Props) {
       dropCursor(),
       rectangularSelection(),
       crosshairCursor(),
-      tokyoNightTheme,
-      tokyoNightHighlightStyle,
+      aureliaTheme,
+      aureliaHighlightStyle,
     ];
     
     // Add language extension
@@ -260,7 +260,7 @@ export function FileEditor({ pageId, filePath }: Props) {
   }
 
   return (
-    <div className="fe-root">
+    <div className="fe-root h-full w-full overflow-hidden">
       {/* Save indicator */}
       {(saving || saveMsg || error) && (
         <div className={`fe-save-bar ${error ? "fe-save-bar--error" : ""}`}>
@@ -273,7 +273,7 @@ export function FileEditor({ pageId, filePath }: Props) {
       <CodeMirror
         value={content ?? ""}
         height="100%"
-        theme={tokyoNightTheme}
+        theme={aureliaTheme}
         extensions={extensions}
         onChange={handleChange}
         basicSetup={{
