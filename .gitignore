@@ -50,15 +50,3 @@ Dockerfile
 .cache/
 .temp/
 
-# Test files
-*.test.ts
-*.test.tsx
-*.spec.ts
-*.spec.tsx
-__tests__/
-test/
-tests/
-
-# Documentation (optional - uncomment if not needed in production)
-# *.md
-# docs/
