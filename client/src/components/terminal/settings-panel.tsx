@@ -7,13 +7,25 @@
     Terminal,
     FlaskConical,
     ChevronRight,
+    Moon,
+    Sun,
+    Monitor,
   } from "lucide-react";
 
   import { motion, AnimatePresence } from "framer-motion";
 
+  interface SettingsState {
+    theme: 'dark' | 'light' | 'system';
+    fontSize: number;
+    fontFamily: string;
+    terminalOpacity: number;
+  }
+
   interface Props {
     isOpen: boolean;
     onClose: () => void;
+    settings: SettingsState;
+    onUpdate: (updates: Partial<SettingsState>) => void;
   }
 
   const ITEMS = [
@@ -52,6 +64,8 @@
   export function SettingsPanel({
     isOpen,
     onClose,
+    settings,
+    onUpdate,
   }: Props) {
     return (
       <AnimatePresence>
@@ -99,6 +113,34 @@
                   aria-label="close settings"
                 >
                   <X size={14} />
+                </button>
+              </div>
+
+              {/* Theme Toggle */}
+              <div className="settings-theme-toggle">
+                <button
+                  type="button"
+                  className={`settings-theme-btn ${settings.theme === 'dark' ? 'active' : ''}`}
+                  onClick={() => onUpdate({ theme: 'dark' })}
+                  title="Dark theme"
+                >
+                  <Moon size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={`settings-theme-btn ${settings.theme === 'light' ? 'active' : ''}`}
+                  onClick={() => onUpdate({ theme: 'light' })}
+                  title="Light theme"
+                >
+                  <Sun size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={`settings-theme-btn ${settings.theme === 'system' ? 'active' : ''}`}
+                  onClick={() => onUpdate({ theme: 'system' })}
+                  title="System theme"
+                >
+                  <Monitor size={14} />
                 </button>
               </div>
 

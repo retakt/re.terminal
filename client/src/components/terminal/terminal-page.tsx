@@ -25,7 +25,7 @@ import { SettingsPanel } from "./settings-panel";
 import {
   Plus, X, Terminal, FileText, FolderOpen,
   WifiOff, Loader2, ChevronRight, Settings, Circle,
-  GitBranch, Bell,
+  GitBranch, Bell, Moon, Sun, Monitor,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -333,6 +333,28 @@ function StatusBar() {
           <span className="reterm-statusbar-brand">re.Term</span>
           <button className="reterm-statusbar-btn" title="notifications"><Bell size={11} strokeWidth={1.8} /></button>
           <button className="reterm-statusbar-btn" title="git"><GitBranch size={11} strokeWidth={1.8} /></button>
+          
+          {/* Theme toggle dropdown */}
+          <div className="reterm-theme-toggle">
+            <button 
+              className="reterm-statusbar-btn" 
+              title="toggle theme"
+              onClick={() => {
+                const nextTheme = settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark';
+                handleSettingsUpdate({ theme: nextTheme as 'dark' | 'light' | 'system' });
+              }}
+            >
+              {settings.theme === 'dark' && <Moon size={11} strokeWidth={1.8} />}
+              {settings.theme === 'light' && <Sun size={11} strokeWidth={1.8} />}
+              {settings.theme === 'system' && <Monitor size={11} strokeWidth={1.8} />}
+            </button>
+          </div>
+          
+          {isConnected && (
+            <button className="reterm-statusbar-btn reterm-statusbar-btn--danger" onClick={disconnect} title="disconnect">
+              <WifiOff size={11} strokeWidth={1.8} />
+            </button>
+          )}
           <button 
             className="reterm-statusbar-btn" 
             title="settings"
@@ -340,11 +362,6 @@ function StatusBar() {
           >
             <Settings size={11} strokeWidth={1.8} />
           </button>
-          {isConnected && (
-            <button className="reterm-statusbar-btn reterm-statusbar-btn--danger" onClick={disconnect} title="disconnect">
-              <WifiOff size={11} strokeWidth={1.8} />
-            </button>
-          )}
         </div>
       </div>
       
