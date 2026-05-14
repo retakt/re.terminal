@@ -1,24 +1,46 @@
-Nothing should be ignored since the changes only include source code files (.tsx, .css) without any build artifacts, dependencies, or temporary files.# Dependencies
+```
+# Video files
+*.mp4
+
+# Dependencies
 node_modules/
-re.Term/node_modules/
-re.Term/client/node_modules/
-re.Term/server/node_modules/
 
-# Environment files
-.env
-.env.local
-.env.production
-.env.development
-re.Term/.env
-re.Term/server/.env
-re.Term/client/.env
-
-# Build outputs
+# Build directories
 dist/
 build/
-re.Term/client/dist/
+target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
 *.log
-re.Term/server/re-term.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*
 
 # IDE
 .vscode/
@@ -26,27 +48,46 @@ re.Term/server/re-term.log
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
-
 # Logs
-logs/
 *.log
 
-# Temporary files
-tmp/
-temp/
+# Temp files
 *.tmp
 
 # Coverage
 coverage/
+htmlcov/
+.coverage
 
-# Docker
-Dockerfile
-.dockerignore
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Cache
-.cache/
-.temp/
+# PyTest
+.pytest_cache/
 
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+```

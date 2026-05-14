@@ -112,3 +112,429 @@ html, body, #root {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ─── Login Screen ────────────────────────────────────────────────────────── */
+.reterm-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  background: transparent;
+}
+
+.reterm-login-card {
+  background: rgba(26, 27, 38, 0.9);
+  backdrop-filter: blur(12px);
+  padding: 32px 28px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  width: 100%;
+  max-width: 340px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.reterm-login-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent-green);
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.reterm-login-subtitle {
+  color: #8b949e;
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+
+.reterm-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reterm-login-label {
+  font-size: 12px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reterm-login-input {
+  background: rgba(15, 15, 20, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #c9d1d9;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.reterm-login-input:focus {
+  border-color: var(--accent-green);
+}
+
+.reterm-login-error {
+  color: #f87171;
+  font-size: 12px;
+  background: rgba(248, 113, 113, 0.1);
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.reterm-login-btn {
+  background: var(--accent-green);
+  color: #0f172a;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+
+.reterm-login-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.reterm-login-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Tab Bar Styles ──────────────────────────────────────────────────────── */
+.reterm-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.reterm-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #8b949e;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.reterm-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #c9d1d9;
+}
+
+.reterm-tab--active {
+  background: rgba(59, 217, 139, 0.1);
+  border-color: rgba(59, 217, 139, 0.3);
+  color: var(--accent-green);
+}
+
+.reterm-tab-icon {
+  opacity: 0.8;
+}
+
+.reterm-tab-title {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reterm-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 3px;
+  opacity: 0.6;
+  transition: all 0.15s;
+}
+
+.reterm-tab-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+}
+
+.reterm-tab-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 4px;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.reterm-tab-new:hover {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
+/* ─── File Tab Bar ────────────────────────────────────────────────────────── */
+.reterm-filetabbar {
+  height: 32px;
+  background: rgba(26, 27, 38, 0.7);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 4px;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+}
+
+.reterm-filetab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #8b949e;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.reterm-filetab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #c9d1d9;
+}
+
+.reterm-filetab--active {
+  background: rgba(59, 217, 139, 0.1);
+  border-color: rgba(59, 217, 139, 0.3);
+  color: var(--accent-green);
+}
+
+.reterm-filetab--files {
+  font-weight: 500;
+}
+
+.reterm-filetab-icon {
+  opacity: 0.7;
+}
+
+.reterm-filetab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+  border-radius: 2px;
+  opacity: 0.6;
+  transition: all 0.15s;
+}
+
+.reterm-filetab-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+}
+
+.reterm-filetab-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border-subtle);
+  margin: 0 4px;
+}
+
+.reterm-filetab-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 3px;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: 4px;
+}
+
+.reterm-filetab-new:hover {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
+/* ─── Empty State ─────────────────────────────────────────────────────────── */
+.reterm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #8b949e;
+  gap: 16px;
+}
+
+.reterm-empty-btn {
+  background: var(--accent-green);
+  color: #0f172a;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+
+.reterm-empty-btn:hover {
+  opacity: 0.9;
+}
+
+/* ─── Key Bar ─────────────────────────────────────────────────────────────── */
+.keybar {
+  height: 44px;
+  background: rgba(26, 27, 38, 0.85);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+}
+
+.keybar-key {
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.1s;
+  white-space: nowrap;
+}
+
+.keybar-key:hover {
+  filter: brightness(1.2);
+  transform: translateY(-1px);
+}
+
+.keybar-key:active {
+  transform: translateY(0);
+}
+
+.keybar-sep {
+  width: 1px;
+  height: 24px;
+  background: var(--border-subtle);
+  margin: 0 4px;
+}
+
+/* ─── Status Bar Items ────────────────────────────────────────────────────── */
+.reterm-statusbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reterm-statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reterm-statusbar-brand {
+  color: var(--accent-green);
+  font-weight: 600;
+  font-size: 11px;
+  margin-right: 8px;
+  opacity: 0.8;
+}
+
+.reterm-statusbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.reterm-statusbar-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #c9d1d9;
+}
+
+.reterm-statusbar-btn--danger:hover {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.reterm-statusbar-item {
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.reterm-dims {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+
+/* ─── Connection Badge ────────────────────────────────────────────────────── */
+.reterm-conn-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.reterm-conn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4b5563;
+}
+
+.reterm-conn-dot--connected {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px var(--accent-green);
+}
+
+/* ─── Spin Animation ──────────────────────────────────────────────────────── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.reterm-spin {
+  animation: spin 1s linear infinite;
+}
