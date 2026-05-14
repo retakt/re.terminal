@@ -1,8 +1,18 @@
 ```
+# Build artifacts
+client/dist/
 # Dependencies
 node_modules/
-
-# Build artifacts
-client/node_modules/
-
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+# Logs
+*.log
+# Environment
+.env
+.env.local
+.env.*
 ```
