@@ -31,8 +31,8 @@ import { useApp } from "@/contexts/app-context";
 
 const aureliaTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#0d1117",
-    color: "#c9d1d9",
+    backgroundColor: "#1a1a1a",
+    color: "#EA549F",
     fontSize: "14px",
   },
   ".cm-content": {
@@ -44,31 +44,31 @@ const aureliaTheme = EditorView.theme({
     padding: "0 4px",
   },
   ".cm-gutters": {
-    backgroundColor: "#0d1117",
-    color: "#8b949e",
+    backgroundColor: "#1a1a1a",
+    color: "#797979",
     border: "none",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "#161b22",
-    color: "#c9d1d9",
+    backgroundColor: "#2a2a2a",
+    color: "#EA549F",
   },
   ".cm-activeLine": {
-    backgroundColor: "#161b22",
+    backgroundColor: "#2a2a2a",
   },
   ".cm-selectionBackground": {
-    backgroundColor: "rgba(56,139,253,0.3) !important",
+    backgroundColor: "rgba(234,84,159,0.2) !important",
   },
   ".cm-cursor": {
-    borderLeftColor: "#c9d1d9",
+    borderLeftColor: "#EA549F",
   },
   ".cm-selectionMatch": {
-
+    backgroundColor: "#579BD5",
   },
   ".cm-matchingBracket": {
-    backgroundColor: "#21262d",
+    backgroundColor: "#2a2a2a",
   },
   "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "#21262d",
+    backgroundColor: "#2a2a2a",
   },
   ".cm-scroller": {
     overflow: "auto",
@@ -79,41 +79,28 @@ const aureliaTheme = EditorView.theme({
       height: "6px",
     },
     "&::-webkit-scrollbar-thumb": {
-      backgroundColor: "#30363d",
+      backgroundColor: "#3a3a3a",
     },
     "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "#484f58",
+      backgroundColor: "#4a4a4a",
     },
   },
 });
 
-// Syntax highlighting colors (Aurelia - Updated Blue & Purple)
+// Syntax highlighting colors (Aurelia)
 const aureliaHighlightStyle = EditorView.baseTheme({
   ".cm-comment": { color: "#797979", fontStyle: "italic" },
-  
-  // KEYWORDS (def, function, import, return, etc.) -> Bright Purple
-  ".cm-keyword": { color: "#A675D9" },
-  
+  ".cm-keyword": { color: "#975EAB" },
   ".cm-string": { color: "#4EC9B0" },
   ".cm-number": { color: "#e9ad95" },
-  
-  // TYPES & CLASSES -> Bright Blue
-  ".cm-typeName": { color: "#6FB3E8" },
-  
-  // FUNCTIONS (html_escape, myFunc) -> Bright Blue
-  ".cm-function": { color: "#6FB3E8" },
-  
+  ".cm-typeName": { color: "#00B6D6" },
+  ".cm-function": { color: "#579BD5" },
   ".cm-variableName": { color: "#EA549F" },
   ".cm-operator": { color: "#2BC4E2" },
   ".cm-property": { color: "#EA549F" },
   ".cm-atom": { color: "#e9ad95" },
   ".cm-tag": { color: "#E92888" },
   ".cm-attribute": { color: "#CE9178" },
-  
-  // Ensure definitions are also bright
-  ".cm-definition": { color: "#6FB3E8" },
-  ".cm-macro": { color: "#A675D9" },
-
 });
 
 // Detect CodeMirror language from file extension
