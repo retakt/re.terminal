@@ -268,18 +268,37 @@ function StatusBar() {
 
   const editorPath = activePage?.type === "editor" ? activePage.filePath : null;
 
-  // Save settings to localStorage
+  // Save settings to localStorage and apply theme
   React.useEffect(() => {
     try {
       localStorage.setItem("reterm_settings", JSON.stringify(settings));
     } catch {}
-  }, [settings]);
+    // Apply theme to document root
+    if (settings.theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', systemTheme);
+    } else {
+      document.documentElement.setAttribute('data-theme', settings.theme);
+    }
+  }, [settings.theme, settings]);
 
   // Apply font settings
   React.useEffect(() => {
     document.documentElement.style.setProperty('--term-font-size', `${settings.fontSize}px`);
     document.documentElement.style.setProperty('--term-font-family', settings.fontFamily);
   }, [settings.fontSize, settings.fontFamily]);
+
+  // Listen for system theme changes
+  React.useEffect(() => {
+    if (settings.theme !== 'system') return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
+    const handler = () => {
+      const systemTheme = mediaQuery.matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', systemTheme);
+    };
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, [settings.theme]);
 
   const handleSettingsUpdate = (updates: Partial<typeof settings>) => {
     setSettings((prev: typeof settings) => ({ ...prev, ...updates }));
