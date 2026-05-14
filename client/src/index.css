@@ -94,15 +94,13 @@ html, body, #root {
   font-family: "Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace !important;
 }
 
-/* Use visual viewport height — shrinks when keyboard appears on mobile */
+/* Use visual viewport height — stable app shell */
 .reterm-root {
   display: flex; flex-direction: column;
   width: 100%;
-  height: var(--vvh, 100dvh);
-  max-height: var(--vvh, 100dvh);
+  height: 100dvh; /* Dynamic viewport height handles browser bars */
+  max-height: 100dvh;
   background: var(--bg-base); overflow: hidden;
-  /* GPU layer for the whole app */
-  will-change: contents;
 }
 
 /* ─── Tab bar ────────────────────────────────────────────────────────────── */
@@ -689,8 +687,6 @@ html, body, #root {
   /* Mobile touch optimization */
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  /* GPU acceleration for smoother scrolling */
-  will-change: scroll-position;
 }
 .fb-tree::-webkit-scrollbar { width: 6px; }
 .fb-tree::-webkit-scrollbar-thumb { background: var(--fg-subtle); border-radius: 3px; }
