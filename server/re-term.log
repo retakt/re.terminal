@@ -379,3 +379,49 @@
 {"ts":"2026-05-14T09:53:18.136Z","level":"EVENT","category":"file","message":"file read","path":"/Users/admin/Documents/bot.py","size":118219}
 {"ts":"2026-05-14T09:53:18.137Z","level":"EVENT","category":"file","message":"file read","path":"/Users/admin/Documents/bot.py","size":118219}
 {"ts":"2026-05-14T10:00:32.816Z","level":"EVENT","category":"file","message":"file read","path":"/Users/admin/Documents/bot.py","size":118219}
+{"ts":"2026-05-14T10:36:13.471Z","level":"EVENT","category":"client","message":"client connected","clients":2,"sessions":2,"ip":"127.0.0.1","totalConnections":4}
+{"ts":"2026-05-14T10:36:13.798Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T10:36:13.801Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T10:37:53.782Z","level":"EVENT","category":"client","message":"client disconnected","clients":1,"sessionsAlive":2,"uptime":"3625s"}
+{"ts":"2026-05-14T10:56:04.615Z","level":"EVENT","category":"client","message":"client disconnected","clients":0,"sessionsAlive":2,"uptime":"4715s"}
+{"ts":"2026-05-14T10:56:17.533Z","level":"EVENT","category":"client","message":"client connected","clients":1,"sessions":2,"ip":"127.0.0.1","totalConnections":5}
+{"ts":"2026-05-14T10:56:17.602Z","level":"EVENT","category":"session","message":"session created","sessionId":"1778756177548-zt73vq","title":"terminal 1","cols":80,"rows":24,"total":3}
+{"ts":"2026-05-14T10:56:17.848Z","level":"EVENT","category":"file","message":"file read","path":"/Users/admin/Documents/bot.py","size":118219}
+{"ts":"2026-05-14T10:56:17.851Z","level":"EVENT","category":"file","message":"file read","path":"/Users/admin/Documents/bot.py","size":118219}
+{"ts":"2026-05-14T10:56:25.237Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T10:56:25.242Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T11:12:11.600Z","level":"EVENT","category":"client","message":"client connected","clients":2,"sessions":3,"ip":"100.98.225.50","totalConnections":6}
+{"ts":"2026-05-14T11:12:11.753Z","level":"EVENT","category":"session","message":"session created","sessionId":"1778757131705-hd8aek","title":"terminal 1","cols":80,"rows":24,"total":4}
+{"ts":"2026-05-14T11:12:51.454Z","level":"EVENT","category":"session","message":"session destroyed","sessionId":"1778752342930-vpps4z","title":"terminal 1","remaining":3}
+{"ts":"2026-05-14T11:12:51.523Z","level":"EVENT","category":"session","message":"PTY process exited","sessionId":"1778752342930-vpps4z","title":"terminal 1","exitCode":-1073741510}
+{"ts":"2026-05-14T11:12:52.076Z","level":"EVENT","category":"session","message":"session destroyed","sessionId":"1778756177548-zt73vq","title":"terminal 1","remaining":2}
+{"ts":"2026-05-14T11:12:52.143Z","level":"EVENT","category":"session","message":"PTY process exited","sessionId":"1778756177548-zt73vq","title":"terminal 1","exitCode":-1073741510}
+{"ts":"2026-05-14T11:12:54.699Z","level":"EVENT","category":"session","message":"session destroyed","sessionId":"1778757131705-hd8aek","title":"terminal 1","remaining":1}
+{"ts":"2026-05-14T11:12:54.770Z","level":"EVENT","category":"session","message":"PTY process exited","sessionId":"1778757131705-hd8aek","title":"terminal 1","exitCode":-1073741510}
+{"ts":"2026-05-14T11:15:59.648Z","level":"EVENT","category":"client","message":"client disconnected","clients":1,"sessionsAlive":1,"uptime":"5910s"}
+{"ts":"2026-05-14T11:17:54.403Z","level":"EVENT","category":"client","message":"client connected","clients":2,"sessions":1,"ip":"100.98.225.50","totalConnections":7}
+{"ts":"2026-05-14T11:18:31.340Z","level":"EVENT","category":"client","message":"client disconnected","clients":1,"sessionsAlive":1,"uptime":"6062s"}
+{"ts":"2026-05-14T11:27:21.307Z","level":"EVENT","category":"client","message":"client connected","clients":2,"sessions":1,"ip":"100.98.225.50","totalConnections":8}
+{"ts":"2026-05-14T11:29:16.982Z","level":"EVENT","category":"client","message":"client disconnected","clients":1,"sessionsAlive":1,"uptime":"6708s"}
+{"ts":"2026-05-14T11:38:49.813Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T11:40:07.720Z","level":"EVENT","category":"client","message":"client disconnected","clients":0,"sessionsAlive":1,"uptime":"7358s"}
+{"ts":"2026-05-14T11:40:08.130Z","level":"EVENT","category":"client","message":"client connected","clients":1,"sessions":1,"ip":"127.0.0.1","totalConnections":9}
+{"ts":"2026-05-14T11:40:08.174Z","level":"EVENT","category":"session","message":"session created","sessionId":"1778758808139-56pygz","title":"terminal 1","cols":80,"rows":24,"total":2}
+{"ts":"2026-05-14T11:40:08.443Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T11:40:08.446Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T11:40:15.221Z","level":"EVENT","category":"client","message":"client disconnected","clients":0,"sessionsAlive":2,"uptime":"7366s"}
+{"ts":"2026-05-14T11:40:15.592Z","level":"EVENT","category":"client","message":"client connected","clients":1,"sessions":2,"ip":"127.0.0.1","totalConnections":10}
+{"ts":"2026-05-14T11:40:15.598Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T11:40:15.600Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/number8m/number8.py","size":62152}
+{"ts":"2026-05-14T11:40:20.839Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
+{"ts":"2026-05-14T11:40:20.840Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
+{"ts":"2026-05-14T11:40:39.421Z","level":"EVENT","category":"client","message":"client disconnected","clients":0,"sessionsAlive":2,"uptime":"7390s"}
+{"ts":"2026-05-14T11:40:39.819Z","level":"EVENT","category":"client","message":"client connected","clients":1,"sessions":2,"ip":"127.0.0.1","totalConnections":11}
+{"ts":"2026-05-14T11:40:39.827Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
+{"ts":"2026-05-14T11:40:39.828Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
+{"ts":"2026-05-14T11:40:53.987Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
+{"ts":"2026-05-14T11:40:53.989Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
+{"ts":"2026-05-14T11:40:58.421Z","level":"EVENT","category":"client","message":"client disconnected","clients":0,"sessionsAlive":2,"uptime":"7409s"}
+{"ts":"2026-05-14T11:40:58.812Z","level":"EVENT","category":"client","message":"client connected","clients":1,"sessions":2,"ip":"127.0.0.1","totalConnections":12}
+{"ts":"2026-05-14T11:40:58.819Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
+{"ts":"2026-05-14T11:40:58.820Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}

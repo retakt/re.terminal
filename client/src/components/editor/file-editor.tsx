@@ -27,12 +27,12 @@ import { Save, AlertCircle, Loader2 } from "lucide-react";
 import { fileApi } from "@/lib/file-api";
 import { useApp } from "@/contexts/app-context";
 
-// ─── GitHub Dark Legacy theme for CodeMirror ──────────────────────────────────
+// ─── Tokyo Night Dark theme for CodeMirror ──────────────────────────────────
 
-const githubDarkLegacyTheme = EditorView.theme({
+const tokyoNightDarkTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#0d1117",
-    color: "#c9d1d9",
+    backgroundColor: "#040404",
+    color: "#f5f5f3",
     fontSize: "14px",
   },
   ".cm-content": {
@@ -44,31 +44,32 @@ const githubDarkLegacyTheme = EditorView.theme({
     padding: "0 4px",
   },
   ".cm-gutters": {
-    backgroundColor: "#0d1117",
-    color: "#8b949e",
+    backgroundColor: "#040404",
+    color: "#63697d",
     border: "none",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "#161b22",
-    color: "#c9d1d9",
+    backgroundColor: "#0a0a0a",
+    color: "#f5f5f3",
   },
   ".cm-activeLine": {
-    backgroundColor: "#161b22",
+    backgroundColor: "#0a0a0a",
   },
+  // Light teal selection - visible in both dark and light modes
   ".cm-selectionBackground": {
-    backgroundColor: "rgba(110, 118, 129, 0.4) !important",
+    backgroundColor: "rgba(125, 207, 255, 0.25) !important",
   },
   ".cm-cursor": {
-    borderLeftColor: "#c9d1d9",
+    borderLeftColor: "#f5f5f3",
   },
   ".cm-selectionMatch": {
-    backgroundColor: "#388bfd26",
+    backgroundColor: "#7dcfff30",
   },
   ".cm-matchingBracket": {
-    backgroundColor: "#3fb95040",
+    backgroundColor: "#9ece6a40",
   },
   "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "#3fb95040",
+    backgroundColor: "#9ece6a40",
   },
   ".cm-scroller": {
     overflow: "auto",
@@ -79,38 +80,38 @@ const githubDarkLegacyTheme = EditorView.theme({
       height: "6px",
     },
     "&::-webkit-scrollbar-thumb": {
-      backgroundColor: "#30363d",
+      backgroundColor: "#2a2a2a",
     },
     "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "#484f58",
+      backgroundColor: "#414868",
     },
   },
 });
 
-// Syntax highlighting colors (GitHub Dark Legacy)
-const githubDarkLegacyHighlightStyle = EditorView.baseTheme({
-  ".cm-comment": { color: "#8b949e", fontStyle: "italic" },
-  ".cm-keyword": { color: "#ff7b72" },
-  ".cm-string": { color: "#a5d6ff" },
-  ".cm-number": { color: "#79c0ff" },
-  ".cm-typeName": { color: "#79c0ff" },
-  ".cm-function": { color: "#d2a8ff" },
-  ".cm-variableName": { color: "#ffa657" },
-  ".cm-operator": { color: "#ff7b72" },
-  ".cm-property": { color: "#79c0ff" },
-  ".cm-atom": { color: "#ff7b72" },
-  ".cm-tag": { color: "#7ee787" },
-  ".cm-attribute": { color: "#79c0ff" },
-  ".cm-definitionKeyword": { color: "#ff7b72" },
-  ".cm-macroName": { color: "#d2a8ff" },
+// Syntax highlighting colors (Tokyo Night Dark)
+const tokyoNightDarkHighlightStyle = EditorView.baseTheme({
+  ".cm-comment": { color: "#63697d", fontStyle: "italic" },
+  ".cm-keyword": { color: "#f7768e" },
+  ".cm-string": { color: "#9ece6a" },
+  ".cm-number": { color: "#7aa2f7" },
+  ".cm-typeName": { color: "#7aa2f7" },
+  ".cm-function": { color: "#bb9af7" },
+  ".cm-variableName": { color: "#e0af68" },
+  ".cm-operator": { color: "#f7768e" },
+  ".cm-property": { color: "#7aa2f7" },
+  ".cm-atom": { color: "#f7768e" },
+  ".cm-tag": { color: "#9ece6a" },
+  ".cm-attribute": { color: "#7aa2f7" },
+  ".cm-definitionKeyword": { color: "#f7768e" },
+  ".cm-macroName": { color: "#bb9af7" },
 });
 
-// ─── GitHub Light theme for CodeMirror ────────────────────────────────────────
+// ─── Tokyo Night Light theme for CodeMirror ─────────────────────────────────
 
-const githubLightTheme = EditorView.theme({
+const tokyoNightLightTheme = EditorView.theme({
   "&": {
     backgroundColor: "#ffffff",
-    color: "#24292f",
+    color: "#0f0f0f",
     fontSize: "14px",
   },
   ".cm-content": {
@@ -123,30 +124,31 @@ const githubLightTheme = EditorView.theme({
   },
   ".cm-gutters": {
     backgroundColor: "#ffffff",
-    color: "#57606a",
+    color: "#848cb3",
     border: "none",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "#f6f8fa",
-    color: "#24292f",
+    backgroundColor: "#f6f6f7",
+    color: "#0f0f0f",
   },
   ".cm-activeLine": {
-    backgroundColor: "#f6f8fa",
+    backgroundColor: "#f6f6f7",
   },
+  // Light teal selection - visible in both dark and light modes
   ".cm-selectionBackground": {
-    backgroundColor: "rgba(175, 184, 193, 0.2) !important",
+    backgroundColor: "rgba(44, 125, 150, 0.2) !important",
   },
   ".cm-cursor": {
-    borderLeftColor: "#24292f",
+    borderLeftColor: "#0f0f0f",
   },
   ".cm-selectionMatch": {
-    backgroundColor: "#0969da1a",
+    backgroundColor: "#2c7d9630",
   },
   ".cm-matchingBracket": {
-    backgroundColor: "#1a7f3740",
+    backgroundColor: "#33635c40",
   },
   "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "#1a7f3740",
+    backgroundColor: "#33635c40",
   },
   ".cm-scroller": {
     overflow: "auto",
@@ -160,36 +162,36 @@ const githubLightTheme = EditorView.theme({
       backgroundColor: "#d0d7de",
     },
     "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "#8c959f",
+      backgroundColor: "#848cb3",
     },
   },
 });
 
-// Syntax highlighting colors (GitHub Light)
-const githubLightHighlightStyle = EditorView.baseTheme({
-  ".cm-comment": { color: "#57606a", fontStyle: "italic" },
-  ".cm-keyword": { color: "#cf222e" },
-  ".cm-string": { color: "#0a3069" },
-  ".cm-number": { color: "#0969da" },
-  ".cm-typeName": { color: "#0969da" },
-  ".cm-function": { color: "#8250df" },
-  ".cm-variableName": { color: "#953800" },
-  ".cm-operator": { color: "#cf222e" },
-  ".cm-property": { color: "#0969da" },
-  ".cm-atom": { color: "#cf222e" },
-  ".cm-tag": { color: "#116329" },
-  ".cm-attribute": { color: "#0969da" },
-  ".cm-definitionKeyword": { color: "#cf222e" },
-  ".cm-macroName": { color: "#8250df" },
+// Syntax highlighting colors (Tokyo Night Light)
+const tokyoNightLightHighlightStyle = EditorView.baseTheme({
+  ".cm-comment": { color: "#848cb3", fontStyle: "italic" },
+  ".cm-keyword": { color: "#8c4351" },
+  ".cm-string": { color: "#33635c" },
+  ".cm-number": { color: "#34548a" },
+  ".cm-typeName": { color: "#34548a" },
+  ".cm-function": { color: "#5a4a78" },
+  ".cm-variableName": { color: "#8f5e15" },
+  ".cm-operator": { color: "#8c4351" },
+  ".cm-property": { color: "#34548a" },
+  ".cm-atom": { color: "#8c4351" },
+  ".cm-tag": { color: "#33635c" },
+  ".cm-attribute": { color: "#34548a" },
+  ".cm-definitionKeyword": { color: "#8c4351" },
+  ".cm-macroName": { color: "#5a4a78" },
 });
 
 // Get current theme based on document data attribute
 function getCurrentCodeMirrorTheme() {
   const theme = document.documentElement.getAttribute('data-theme');
   if (theme === 'light') {
-    return [githubLightTheme, githubLightHighlightStyle];
+    return [tokyoNightLightTheme, tokyoNightLightHighlightStyle];
   }
-  return [githubDarkLegacyTheme, githubDarkLegacyHighlightStyle];
+  return [tokyoNightDarkTheme, tokyoNightDarkHighlightStyle];
 }
 
 // Detect CodeMirror language from file extension
