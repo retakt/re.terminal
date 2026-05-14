@@ -28,6 +28,13 @@ const FONT_FAMILIES = [
   { label: "Consolas", value: '"Consolas", monospace' },
 ];
 
+// Theme display names
+const THEME_LABELS = {
+  dark: 'github dark legacy',
+  light: 'github light',
+  system: 'system default',
+};
+
 export function SettingsPanel({ isOpen, onClose, settings, onUpdate }: Props) {
   return (
     <AnimatePresence>
@@ -74,7 +81,7 @@ export function SettingsPanel({ isOpen, onClose, settings, onUpdate }: Props) {
                       {theme === 'dark' && <Moon size={11} />}
                       {theme === 'light' && <Sun size={11} />}
                       {theme === 'system' && <Monitor size={11} />}
-                      <span>{theme}</span>
+                      <span>{THEME_LABELS[theme]}</span>
                     </button>
                   ))}
                 </div>
