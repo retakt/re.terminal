@@ -334,21 +334,19 @@ function StatusBar() {
           <button className="reterm-statusbar-btn" title="notifications"><Bell size={11} strokeWidth={1.8} /></button>
           <button className="reterm-statusbar-btn" title="git"><GitBranch size={11} strokeWidth={1.8} /></button>
           
-          {/* Theme toggle dropdown */}
-          <div className="reterm-theme-toggle">
-            <button 
-              className="reterm-statusbar-btn" 
-              title="toggle theme"
-              onClick={() => {
-                const nextTheme = settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark';
-                handleSettingsUpdate({ theme: nextTheme as 'dark' | 'light' | 'system' });
-              }}
-            >
-              {settings.theme === 'dark' && <Moon size={11} strokeWidth={1.8} />}
-              {settings.theme === 'light' && <Sun size={11} strokeWidth={1.8} />}
-              {settings.theme === 'system' && <Monitor size={11} strokeWidth={1.8} />}
-            </button>
-          </div>
+          {/* Theme toggle */}
+          <button 
+            className="reterm-statusbar-btn" 
+            title="toggle theme"
+            onClick={() => {
+              const nextTheme = settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark';
+              handleSettingsUpdate({ theme: nextTheme as 'dark' | 'light' | 'system' });
+            }}
+          >
+            {settings.theme === 'dark' && <Moon size={11} strokeWidth={1.8} />}
+            {settings.theme === 'light' && <Sun size={11} strokeWidth={1.8} />}
+            {settings.theme === 'system' && <Monitor size={11} strokeWidth={1.8} />}
+          </button>
           
           {isConnected && (
             <button className="reterm-statusbar-btn reterm-statusbar-btn--danger" onClick={disconnect} title="disconnect">
@@ -368,8 +366,6 @@ function StatusBar() {
       <SettingsPanel
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        settings={settings}
-        onUpdate={handleSettingsUpdate}
       />
     </>
   );
