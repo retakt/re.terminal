@@ -1,85 +1,29 @@
-```
-# Dependencies
-node_modules/
+# Examples 1:
+(empty)
 
-# Build artifacts
+# Example 2 (Project with artifacts):
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
 dist/
 build/
-target/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.py.class
-.Python
-env/
-venv/
+# Dependencies
 .venv/
-.venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
+venv/
+node_modules/
+# Logs and temp files
 *.log
-*.pot
-*.po
-*~
-.pytest_cache/
-.mypy_cache/
-.hypothesis/
-
-# Logs
-*.log
-
-# Environment variables
+*.tmp
+*.swp
+# Environment
 .env
 .env.local
-*.env.*
-
-# IDE
+.env.*
+# Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-*.tmp
 
-# OS generated
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Testing
-coverage/
-htmlcov/
-*.coverage
-
-# Distribution / packaging
-.Python
-_build/
-develop-eggs/
-.installed.cfg
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# System
-.DS_Store
-Thumbs.db
-```
+# Original rules preserved
+*.log
