@@ -198,8 +198,8 @@ export function RadialMenu({
                         <motion.path
                           d={slicePath(index, menuItems.length, outerRingOuterRadius, outerRingInnerRadius)}
                           className={cn({
-                            "fill-[#292e42]": isActive,
-                            "fill-[#1f2335]": !isActive,
+                            "fill-[#30363d]": isActive,
+                            "fill-[#161b22]": !isActive,
                           })}
                           initial={false}
                           transition={wedgeTransition}
@@ -209,10 +209,10 @@ export function RadialMenu({
                         <motion.path
                           d={slicePath(index, menuItems.length, wedgeOuterRadius, wedgeInnerRadius)}
                           className={cn(
-                            "stroke-[#292e42] stroke-1",
+                            "stroke-[#30363d] stroke-1",
                             {
-                              "fill-[#292e42]": isActive,
-                              "fill-[#1f2335]": !isActive,
+                              "fill-[#30363d]": isActive,
+                              "fill-[#161b22]": !isActive,
                             }
                           )}
                           initial={false}
@@ -249,11 +249,11 @@ export function RadialMenu({
                   {/* Center dot */}
                   <circle
                     cx={0} cy={0} r={centerRadius}
-                    className="fill-[#16161e] stroke-1 stroke-[#292e42]"
+                    className="fill-[#0d1117] stroke-1 stroke-[#30363d]"
                   />
                   <circle
                     cx={0} cy={0} r={3}
-                    className="fill-none stroke-[#414868]"
+                    className="fill-none stroke-[#484f58]"
                   />
                 </svg>
               </ContextMenu.Popup>
