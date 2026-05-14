@@ -215,25 +215,7 @@ export function FileEditor({ pageId, filePath }: Props) {
     markDirty(pageId, true);
   };
 
-  if (loading) {
-    return (
-      <div className="fe-state">
-        <Loader2 size={18} className="reterm-spin" />
-        <span>loading {filePath.split(/[/\\]/).pop()}…</span>
-      </div>
-    );
-  }
-
-  if (error && content === null) {
-    return (
-      <div className="fe-state fe-state--error">
-        <AlertCircle size={18} />
-        <span>{error}</span>
-      </div>
-    );
-  }
-
-  // Get extensions for CodeMirror
+  // Get extensions for CodeMirror - MUST be before early returns to satisfy Rules of Hooks
   const languageExt = React.useMemo(() => getLanguageExtension(filePath), [filePath]);
   const extensions = React.useMemo(() => {
     const exts = [
@@ -258,6 +240,24 @@ export function FileEditor({ pageId, filePath }: Props) {
     
     return exts;
   }, [languageExt]);
+
+  if (loading) {
+    return (
+      <div className="fe-state">
+        <Loader2 size={18} className="reterm-spin" />
+        <span>loading {filePath.split(/[/\\]/).pop()}…</span>
+      </div>
+    );
+  }
+
+  if (error && content === null) {
+    return (
+      <div className="fe-state fe-state--error">
+        <AlertCircle size={18} />
+        <span>{error}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="fe-root">
