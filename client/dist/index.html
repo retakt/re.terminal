@@ -2,38 +2,55 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <!-- Viewport fixed to prevent zooming and handle safe areas for mobile apps -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>re.Term — Ambient</title>
-    <!-- Prevents the browser from forcing the layout to resize when keyboard appears -->
-    <script>
-      // Fix for iOS Safari address bar shrinking/hiding
-      document.documentElement.style.height = '100%';
-      window.addEventListener('resize', () => {
-        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-          window.scrollTo(0, 0);
-        }
-      });
-    </script>
-    <script type="module" crossorigin src="/assets/index-To0ILGRK.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CaqFqvo3.css">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0,
+               user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>re.Term</title>
+    <!-- Preload Ubuntu Mono so xterm gets it on first render -->
+    <link rel="preload" href="/fonts/UbuntuMono-Regular.ttf" as="font" type="font/ttf" crossorigin="anonymous" />
+    <style>
+      /* Use dvh (dynamic viewport height) — shrinks when keyboard appears */
+      html {
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+        background: #0d1117;
+      }
+      body {
+        margin: 0; padding: 0;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+        background: #0d1117;
+        /* Prevent iOS bounce scroll */
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: auto;
+        /* Prevent text selection flash on touch */
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+      }
+      /* Block back navigation gestures at CSS level */
+      #root {
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+        /* Prevent swipe-to-navigate on mobile browsers */
+        overscroll-behavior-y: contain;
+        overscroll-behavior-x: contain;
+        touch-action: manipulation;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-Dw7f9yq4.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-hRygSQHk.css">
   </head>
-  <body class="overflow-hidden antialiased select-none">
-
-    <div class="reterm-ambient-layer">
-      <video
-        autoplay
-        loop
-        muted
-        playsinline
-        id="ambient-video"
-      >
-        <source src="/loopback.mp4" type="video/mp4">
-      </video>
-    </div>
-
+  <body>
     <div id="root"></div>
-
   </body>
 </html>

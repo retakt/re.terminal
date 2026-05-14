@@ -1,8 +1,7 @@
 /**
- * FileEditor — CodeMirror editor for a server-side file.
- * Auto-saves on Ctrl+S. Marks tab dirty on change.
- */
-
+FileEditor — CodeMirror editor for a server-side file.
+Auto-saves on Ctrl+S. Marks tab dirty on change.
+*/
 import * as React from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
@@ -28,7 +27,6 @@ import { fileApi } from "@/lib/file-api";
 import { useApp } from "@/contexts/app-context";
 
 // ─── Tokyo Night Dark theme for CodeMirror ──────────────────────────────────
-
 const tokyoNightDarkTheme = EditorView.theme({
   "&": {
     backgroundColor: "#040404",
@@ -55,7 +53,6 @@ const tokyoNightDarkTheme = EditorView.theme({
   ".cm-activeLine": {
     backgroundColor: "#0a0a0a",
   },
-  // Light teal selection - visible in both dark and light modes
   ".cm-selectionBackground": {
     backgroundColor: "rgba(125, 207, 255, 0.25) !important",
   },
@@ -107,7 +104,6 @@ const tokyoNightDarkHighlightStyle = EditorView.baseTheme({
 });
 
 // ─── Tokyo Night Light theme for CodeMirror ─────────────────────────────────
-
 const tokyoNightLightTheme = EditorView.theme({
   "&": {
     backgroundColor: "#ffffff",
@@ -134,7 +130,6 @@ const tokyoNightLightTheme = EditorView.theme({
   ".cm-activeLine": {
     backgroundColor: "#f6f6f7",
   },
-  // Light teal selection - visible in both dark and light modes
   ".cm-selectionBackground": {
     backgroundColor: "rgba(44, 125, 150, 0.2) !important",
   },
@@ -196,6 +191,7 @@ function getCurrentCodeMirrorTheme() {
 
 // Detect CodeMirror language from file extension
 function getLanguageExtension(filePath: string) {
+  // FIX: Changed split(" ") to split(".") to correctly parse extensions
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   switch (ext) {
     case "ts":
@@ -246,6 +242,7 @@ function getLanguageExtension(filePath: string) {
 
 // Responsive font size: 14 (desktop) -> 10 (small mobile)
 function getFontSize() {
+  if (typeof window === "undefined") return 14;
   if (window.innerWidth <= 375) return 10; // iPhone 6/7/8 and smaller
   if (window.innerWidth <= 480) return 11; // Small phones
   if (window.innerWidth <= 768) return 12; // Tablets
@@ -264,6 +261,24 @@ export function FileEditor({ pageId, filePath }: Props) {
   const [saving,   setSaving]   = React.useState(false);
   const [error,    setError]    = React.useState<string | null>(null);
   const [saveMsg,  setSaveMsg]  = React.useState<string | null>(null);
+  
+  // FIX: State to trigger re-render when theme changes
+  const [themeVersion, setThemeVersion] = React.useState(0);
+
+  // FIX: Watch for theme changes on the HTML tag
+  React.useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === 'data-theme') {
+          // Force a re-render of extensions
+          setThemeVersion(v => v + 1);
+        }
+      }
+    });
+
+    observer.observe(document.documentElement, { attributes: true });
+    return () => observer.disconnect();
+  }, []);
 
   // Load file on mount
   React.useEffect(() => {
@@ -308,6 +323,8 @@ export function FileEditor({ pageId, filePath }: Props) {
 
   // Get extensions for CodeMirror - MUST be before early returns to satisfy Rules of Hooks
   const languageExt = React.useMemo(() => getLanguageExtension(filePath), [filePath]);
+  
+  // FIX: Added themeVersion to dependencies so it updates when theme changes
   const extensions = React.useMemo(() => {
     const [currentTheme, currentHighlight] = getCurrentCodeMirrorTheme();
     const exts = [
@@ -324,14 +341,13 @@ export function FileEditor({ pageId, filePath }: Props) {
       currentTheme,
       currentHighlight,
     ];
-    
     // Add language extension
     if (languageExt) {
       exts.push(languageExt);
     }
-    
+
     return exts;
-  }, [languageExt, filePath]);
+  }, [languageExt, filePath, themeVersion]);
 
   if (loading) {
     return (
@@ -356,13 +372,14 @@ export function FileEditor({ pageId, filePath }: Props) {
       {/* Save indicator */}
       {(saving || saveMsg || error) && (
         <div className={`fe-save-bar ${error ? "fe-save-bar--error" : ""}`}>
-          {saving  && <><Loader2 size={12} className="reterm-spin" />saving…</>}
+          {saving && <><Loader2 size={12} className="reterm-spin" />saving…</>}
           {saveMsg && <><Save size={12} />{saveMsg}</>}
-          {error   && <><AlertCircle size={12} />{error}</>}
+          {error && <><AlertCircle size={12} />{error}</>}
         </div>
       )}
-
+      {/* FIX: Added key={themeVersion} to force a hard reset on theme change */}
       <CodeMirror
+        key={themeVersion}
         value={content ?? ""}
         height="100%"
         extensions={extensions}

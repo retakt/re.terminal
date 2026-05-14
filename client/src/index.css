@@ -58,6 +58,12 @@
   --statusbar-border: #2a2a2a;
   --statusbar-text: #f5f5f3;
   --statusbar-text-muted: #a9b0c3;
+
+  /* glass vars */
+  --glass-bg: rgba(255,255,255,0.045);
+  --glass-border: rgba(255,255,255,0.08);
+  --glass-highlight: rgba(255,255,255,0.12);
+  --glass-shadow: rgba(0,0,0,0.45);
   
   --tab-height:     35px;
   --statusbar-height: 22px;
@@ -116,6 +122,12 @@
   --statusbar-border: #d0d7de;
   --statusbar-text: #0f0f0f;
   --statusbar-text-muted: #565a6e;
+
+  /* glass vars */
+  --glass-bg: rgba(255,255,255,0.58);
+  --glass-border: rgba(0,0,0,0.08);
+  --glass-highlight: rgba(255,255,255,0.65);
+  --glass-shadow: rgba(0,0,0,0.08);
   
   /* macOS-style fonts */
   --font-ui:   -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
@@ -196,12 +208,69 @@ html, body, #root {
 /* ─── Tab bar ────────────────────────────────────────────────────────────── */
 
 .reterm-tabbar {
-  display: flex; align-items: stretch;
+  display: flex;
+  align-items: stretch;
+
   height: var(--tab-height);
-  background: linear-gradient(180deg, var(--bar-gradient-start) 0%, var(--bar-gradient-end) 100%);
-  border-bottom: 1px solid var(--bar-border);
-  flex-shrink: 0; overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.06) 0%,
+      rgba(255,255,255,0.02) 100%
+    );
+
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+
+  border-bottom: 1px solid var(--glass-border);
+
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+
+  box-shadow:
+    0 8px 32px var(--glass-shadow),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+/* glossy top line */
+.reterm-tabbar::before {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.12),
+      transparent 45%
+    );
+
+  pointer-events: none;
+}
+
+/* bottom separator glow */
+.reterm-tabbar::after {
+  content: "";
+
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  height: 1px;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(255,255,255,0.16),
+      transparent
+    );
+
+  pointer-events: none;
 }
 
 .reterm-tabs {
@@ -211,27 +280,116 @@ html, body, #root {
 .reterm-tabs::-webkit-scrollbar { display: none; }
 
 .reterm-tab {
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 10px 0 12px;
-  min-width: 120px; max-width: 200px; height: 100%;
-  background: transparent; border: none;
-  border-right: 1px solid var(--border-subtle);
-  color: var(--bar-text-muted); font-family: var(--font-ui); font-size: 12px;
-  cursor: pointer; white-space: nowrap; position: relative;
-  transition: all 0.15s ease; flex-shrink: 0;
-  border-radius: 0;
-  margin: 0;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 0 14px;
+
+  min-width: 120px;
+  max-width: 220px;
+  height: 100%;
+
+  background: transparent;
+
+  border: none;
+
+  color: rgba(255,255,255,0.62);
+
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  white-space: nowrap;
+
+  position: relative;
+
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+
+  flex-shrink: 0;
+
+  overflow: hidden;
+
+  isolation: isolate;
 }
-@media (hover: hover) {
-  .reterm-tab:hover { background: var(--bar-hover-bg); color: var(--bar-text); }
+
+.reterm-tab::after {
+  content: "";
+
+  position: absolute;
+
+  top: 7px;
+  right: 0;
+
+  width: 1px;
+  height: calc(100% - 14px);
+
+  background:
+    linear-gradient(
+      180deg,
+      transparent,
+      rgba(255,255,255,0.10),
+      transparent
+    );
+
+  opacity: 0.7;
 }
+
+.reterm-tab:last-child::after {
+  display: none;
+}
+
+.reterm-tab:hover {
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.92);
+}
+
 .reterm-tab--active {
-  background: linear-gradient(180deg, var(--bar-active-bg) 0%, var(--bar-gradient-end) 100%);
-  color: var(--bar-text);
-  border-bottom: none;
-  box-shadow: 0 -2px 4px rgba(88, 166, 255, 0.2);
+  color: #ffffff;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.12),
+      rgba(255,255,255,0.05)
+    );
+
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.16),
+    0 0 0 1px rgba(255,255,255,0.05);
+
+  z-index: 2;
+}
+
+.reterm-tab--active::before {
+  content: "";
+
+  position: absolute;
+
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+
+  height: 1px;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(122,162,247,0.95),
+      transparent
+    );
+
+  box-shadow:
+    0 0 12px rgba(122,162,247,0.7);
 }
 .reterm-tab-icon { opacity: 0.7; flex-shrink: 0; transition: opacity 0.15s, color 0.15s; }
 .reterm-tab--active .reterm-tab-icon { opacity: 1; color: var(--accent-blue); }
@@ -246,13 +404,9 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-@media (hover: hover) {
-  .reterm-tab:hover .reterm-tab-close { opacity: 1; }
-}
+.reterm-tab:hover .reterm-tab-close { opacity: 1; }
 .reterm-tab--active .reterm-tab-close { opacity: 1; }
-@media (hover: hover) {
-  .reterm-tab-close:hover { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
-}
+.reterm-tab-close:hover { background: rgba(255,255,255,0.08); color: #ffffff; }
 
 .reterm-tab-new {
   display: flex; align-items: center; justify-content: center;
@@ -301,9 +455,7 @@ html, body, #root {
 }
 .xterm-viewport::-webkit-scrollbar { width: 6px; }
 .xterm-viewport::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
-@media (hover: hover) {
-  .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
-}
+.xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
 
 .xterm-screen { background: var(--bg-base); }
 
@@ -328,8 +480,16 @@ html, body, #root {
 .cm-editor {
   height: 100% !important;
   width: 100% !important;
+  background: var(--bg-base) !important;
 }
 
+.cm-scroller {
+  background: var(--bg-base) !important;
+}
+
+.cm-gutters {
+  background: var(--bg-base) !important;
+}
 /* ─── Empty state ────────────────────────────────────────────────────────── */
 
 .reterm-empty {
@@ -478,9 +638,7 @@ html, body, #root {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
-@media (hover: hover) {
-  ::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
-}
+::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
 ::selection { background: rgba(125, 207, 255, 0.3); color: var(--fg-base); }
 
 /* ─── Utility classes ────────────────────────────────────────────────────── */
@@ -490,11 +648,15 @@ html, body, #root {
 .bg-accent-blue { background: var(--accent-blue); }
 .bg-accent-red { background: var(--accent-red); }
 .border-accent-blue { border-color: var(--accent-blue); }
+
 /* ─── Mobile ─────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
   /* Increase base font size for better readability */
   html, body, #root { font-size: 15px; }
+  :root {
+  --statusbar-height: 32px;
+}
   
   .reterm-tabbar { height: 42px; }
 
@@ -510,7 +672,12 @@ html, body, #root {
   .reterm-tab-title { font-size: 14px; }
 
   /* Status bar — tighter on mobile */
-  .reterm-statusbar { height: 32px; padding: 0 10px; gap: 6px; font-size: 12px; }
+  .reterm-statusbar {
+    height: var(--statusbar-height);
+    padding: 0 10px;
+    gap: 6px;
+    font-size: 12px;
+  }
   .reterm-statusbar-left,
   .reterm-statusbar-right { gap: 6px; }
 
@@ -923,7 +1090,16 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100%;
+  background: var(--bg-base); /* ADD THIS */
+}
+.w-codemirror {
+  height: 100%;
+  background: var(--bg-base) !important;
+}
 
+.w-codemirror > div {
+  height: 100%;
+  background: var(--bg-base) !important;
 }
 
 .fe-state {
@@ -955,185 +1131,190 @@ html, body, #root {
 }
 
 /* ─── Settings Panel ─────────────────────────────────────────────────────── */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  z-index: 999;
+  pointer-events: auto;
+}
+
+/* ─── Settings Panel ─────────────────────────────────────────────────────── */
+
+/* ─── Settings Panel ─────────────────────────────────────────────────────── */
+
+.settings-panel {
+  position: fixed;
+  right: 0;
+  bottom: var(--statusbar-height);
+
+  width: 190px;
+
+  background: rgba(20,20,20,0.58);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+
+  border-top: 1px solid rgba(255,255,255,0.08);
+  border-left: 1px solid rgba(255,255,255,0.08);
+
+  border-radius: 6px 0 0 0;
+
+  overflow: hidden;
+  z-index: 1000;
+
+  box-shadow:
+    0 20px 60px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+/* light mode */
+[data-theme="light"] .settings-panel {
+  background: rgba(255,255,255,0.58);
+
+  border-top: 1px solid rgba(0,0,0,0.08);
+  border-left: 1px solid rgba(0,0,0,0.08);
+
+  box-shadow:
+    0 20px 60px rgba(0,0,0,0.10),
+    inset 0 1px 0 rgba(255,255,255,0.55);
+}
 
 .settings-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: transparent;
   z-index: 999;
-  backdrop-filter: blur(2px);
+  pointer-events: auto;
 }
 
-.settings-panel {
-  position: fixed;
-  bottom: calc(var(--statusbar-height) + 8px);
-  right: 12px;
-  width: 280px;
-  max-height: 400px;
-  background: var(--bg-overlay);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+@media (max-width: 520px) {
+  .settings-panel {
+    right: 0;
+    bottom: var(--statusbar-height);
+
+    width: min(170px, calc(100vw - 12px));
+    min-width: 148px;
+    max-width: 170px;
+
+    border-radius: 4px 0 0 0;
+  }
+
+  .settings-menu-item {
+    height: 30px;
+  }
+
+  .settings-header {
+    height: 28px;
+    padding: 0 7px;
+  }
+
+  .settings-title {
+    font-size: 10px;
+  }
 }
 
 .settings-header {
+  height: 30px;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
+
+  padding: 0 8px;
+
+  background: transparent;
+
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .settings-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fg-base);
-  text-transform: lowercase;
-  letter-spacing: 0.05em;
+  font-size: 11px;
+  font-weight: 500;
+  color: #cccccc;
 }
 
 .settings-close {
+  width: 20px;
+  height: 20px;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  background: transparent;
+
   border: none;
-  border-radius: 4px;
-  color: var(--fg-muted);
+  border-radius: 0;
+
+  background: transparent;
+
+  color: #a8a8a8;
+
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
 }
 
 .settings-close:hover {
-  background: rgba(233, 40, 136, 0.15);
-  color: var(--accent-red);
+  background: rgba(255,255,255,0.06);
+  color: white;
 }
 
-.settings-content {
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow-y: auto;
-  max-height: 340px;
+.settings-menu {
+  padding: 2px 0;
 }
 
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.settings-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--fg-muted);
-  text-transform: lowercase;
-  letter-spacing: 0.04em;
-}
-
-.settings-label .settings-value {
-  margin-left: auto;
-  color: var(--accent-blue);
-  font-family: var(--font-mono);
-  font-size: 9px;
-}
-
-.settings-options {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.settings-options--grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-}
-
-.settings-options--vertical {
-  flex-direction: column;
-}
-
-.settings-option {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--fg-muted);
-  font-size: 10px;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  text-transform: lowercase;
-}
-
-.settings-option:hover {
-  background: var(--bg-active);
-  border-color: var(--accent-blue);
-  color: var(--fg-base);
-}
-
-.settings-option--active {
-  background: rgba(88, 166, 255, 0.15);
-  border-color: var(--accent-blue);
-  color: var(--accent-blue);
-  font-weight: 600;
-}
-
-.settings-option--small {
-  padding: 5px 6px;
-  font-size: 9px;
-  justify-content: center;
-}
-
-.settings-slider {
+.settings-menu-item {
   width: 100%;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--bg-surface);
-  border-radius: 2px;
-  outline: none;
-}
+  height: 28px;
 
-.settings-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  background: var(--accent-blue);
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 
-.settings-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  background: var(--accent-blue);
-  border-radius: 50%;
-  cursor: pointer;
+  padding: 0 10px;
+
   border: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  border-radius: 0;
+
+  background: transparent;
+
+  color: #d4d4d4;
+
+  cursor: pointer;
+
+  transition: background 100ms ease;
 }
 
-@media (max-width: 768px) {
+.settings-menu-item:hover {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(10px);
+}
+
+.settings-menu-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  font-size: 12px;
+}
+
+.settings-menu-item svg {
+  flex-shrink: 0;
+}
+
+/* remove separators */
+.settings-menu-item + .settings-menu-item {
+  border-top: none;
+}
+
+/* phones */
+@media (max-width: 520px) {
   .settings-panel {
-    right: 8px;
-    bottom: calc(var(--statusbar-height) + 6px);
-    width: 260px;
+    right: 0;
+    bottom: var(--statusbar-height);
+
+    min-width: 160px;
+    max-width: 180px;
+  }
+
+  .settings-menu-item {
+    height: 30px;
   }
 }
