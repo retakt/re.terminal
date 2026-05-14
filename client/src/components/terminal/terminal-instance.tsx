@@ -21,18 +21,18 @@ import "@xterm/xterm/css/xterm.css";
 interface Props { sessionId: string; isActive: boolean; }
 
 const THEME = {
-  background:          "#1a1b26",
-  foreground:          "#c0caf5",
-  cursor:              "#c0caf5",
-  cursorAccent:        "#1a1b26",
-  selectionBackground: "rgba(192,202,245,0.2)",
-  black:   "#15161e", red:     "#f7768e", green:   "#9ece6a",
-  yellow:  "#e0af68", blue:    "#7aa2f7", magenta: "#bb9af7",
-  cyan:    "#7dcfff", white:   "#a9b1d6",
-  brightBlack:   "#414868", brightRed:     "#f7768e",
-  brightGreen:   "#9ece6a", brightYellow:  "#e0af68",
-  brightBlue:    "#7aa2f7", brightMagenta: "#bb9af7",
-  brightCyan:    "#7dcfff", brightWhite:   "#c0caf5",
+  background:          "#1a1a1a",
+  foreground:          "#EA549F",
+  cursor:              "#EA549F",
+  cursorAccent:        "#1a1a1a",
+  selectionBackground: "rgba(234,84,159,0.2)",
+  black:   "#000000", red:     "#E92888", green:   "#4EC9B0",
+  yellow:  "#CE9178", blue:    "#579BD5", magenta: "#714896",
+  cyan:    "#00B6D6", white:   "#EAEAEA",
+  brightBlack:   "#797979", brightRed:     "#EB2A88",
+  brightGreen:   "#1AD69C", brightYellow:  "#e9ad95",
+  brightBlue:    "#9CDCFE", brightMagenta: "#975EAB",
+  brightCyan:    "#2BC4E2", brightWhite:   "#EAEAEA",
 };
 
 const isMobile = () => navigator.maxTouchPoints > 0;
