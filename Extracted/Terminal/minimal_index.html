@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Minimal Terminal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    /* Basic reset */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    
+    #terminal-container {
+      height: 100%;
+      width: 100%;
+    }
+    
+    /* Optional: Simple toolbar */
+    .toolbar {
+      position: absolute;
+      top: 0;
+      right: 0;
+      z-index: 1000;
+      padding: 5px;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      gap: 5px;
+    }
+    
+    .toolbar button, .toolbar select {
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 3px;
+    }
+    
+    .toolbar button:hover, .toolbar select:hover {
+      background: #555;
+    }
+  </style>
+</head>
+<body>
+  <!-- Terminal container -->
+  <div id="terminal-container"></div>
+  
+  <!-- Optional toolbar for theme/font controls -->
+  <div class="toolbar" id="toolbar" style="display: none;">
+    <select id="theme-select" onchange="setTheme(this.value)">
+      <option value="Dracula">Dracula</option>
+      <option value="OneHalfDark">OneHalfDark</option>
+      <option value="Gruvbox_Dark">Gruvbox Dark</option>
+      <option value="Solarized_Dark">Solarized Dark</option>
+      <option value="Tomorrow_Night">Tomorrow Night</option>
+      <option value="Monokai_Vivid">Monokai Vivid</option>
+    </select>
+    
+    <select id="font-select" onchange="setFontSize(parseInt(this.value))">
+      <option value="12">12px</option>
+      <option value="14" selected>14px</option>
+      <option value="16">16px</option>
+      <option value="18">18px</option>
+      <option value="20">20px</option>
+    </select>
+    
+    <button onclick="clearTerminal()">Clear</button>
+  </div>
+  
+  <!-- Load themes first -->
+  <script src="themes.js"></script>
+  
+  <!-- Make themes available globally -->
+  <script>
+    window.xtermTheme = NeoTerminalThemes || {};
+  </script>
+  
+  <!-- Load minimal terminal script -->
+  <script src="minimal_terminal.js"></script>
+  
+  <!-- Initialize terminal -->
+  <script>
+    // Configuration
+    const TERMINAL_CONFIG = {
+      theme: 'Dracula',
+      fontSize: 14,
+      fontFamily: "'JetBrains Mono Nerd', 'DejaVu Sans Mono', monospace",
+      enableWebSocket: false,  // Set to true to enable WebSocket connection
+      webSocketUrl: 'ws://localhost:8089/ws'
+    };
+    
+    // Initialize on DOM ready
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        console.log('Initializing terminal...');
+        
+        // Initialize terminal
+        const { term, fitAddon } = await initTerminal('terminal-container', TERMINAL_CONFIG);
+        
+        // Show welcome message
+        term.writeln('\x1b[1;32mWelcome to Minimal Terminal!\x1b[0m');
+        term.writeln('\x1b[36mType commands and press Enter\x1b[0m');
+        term.writeln('');
+        
+        // Optional: Connect to WebSocket backend
+        if (TERMINAL_CONFIG.enableWebSocket) {
+          try {
+            term.write('\x1b[33mConnecting to server...\x1b[0m');
+            await connectWebSocket(term, TERMINAL_CONFIG.webSocketUrl);
+          } catch (err) {
+            console.error('WebSocket connection failed:', err);
+          }
+        }
+        
+        // Show toolbar
+        document.getElementById('toolbar').style.display = 'flex';
+        
+        // Handle keyboard shortcuts
+        term.attachCustomKeyEventHandler((arg) => {
+          // Ctrl+C: Copy
+          if (arg.ctrlKey && arg.key === 'c') {
+            const selection = term.getSelection();
+            if (selection) {
+              navigator.clipboard.writeText(selection);
+              return false;
+            }
+          }
+          // Ctrl+V: Paste
+          if (arg.ctrlKey && arg.key === 'v') {
+            navigator.clipboard.readText().then(text => {
+              term.write(text);
+            });
+            return false;
+          }
+          return true;
+        });
+        
+        console.log('Terminal initialized successfully');
+        
+      } catch (error) {
+        console.error('Failed to initialize terminal:', error);
+        document.body.innerHTML = `
+          <div style="color: red; padding: 20px; font-family: monospace;">
+            <h2>Terminal Initialization Error</h2>
+            <pre>${error.message}</pre>
+            <p>Please check the console for more details.</p>
+          </div>
+        `;
+      }
+    });
+  </script>
+</body>
+</html>
