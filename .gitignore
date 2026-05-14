@@ -1,4 +1,4 @@
-# Dependencies
+Nothing should be ignored since the changes only include source code files (.tsx, .css) without any build artifacts, dependencies, or temporary files.# Dependencies
 node_modules/
 re.Term/node_modules/
 re.Term/client/node_modules/

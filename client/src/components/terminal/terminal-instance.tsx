@@ -1,16 +1,10 @@
 /**
- * TerminalInstance
- *
- * Mobile fixes:
- * - NO auto-focus on mobile (prevents keyboard popup on load)
- * - Touch tap on terminal = focus + show keyboard (intentional)
- * - xterm selection works because we don't intercept touch on canvas
- *
- * Performance:
- * - GPU-accelerated visibility toggle via opacity
- * - Reduced scrollback on mobile
- */
-
+TerminalInstance
+Modified for Ambient Mode:
+- Semi-transparent background allows the video to bleed through.
+- High contrast text colors.
+- Fixed sizing logic for the new containerized layout.
+*/
 import * as React from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -20,67 +14,47 @@ import "@xterm/xterm/css/xterm.css";
 
 interface Props { sessionId: string; isActive: boolean; }
 
+// Enhanced Aurelia Theme for Ambient Background
 const THEME = {
-  background:          "#1a1a1a",
-  foreground:          "#EA549F",
-  cursor:              "#EA549F",
-  cursorAccent:        "#1a1a1a",
-  selectionBackground: "rgba(234,84,159,0.2)",
-  black:   "#000000", red:     "#E92888", green:   "#4EC9B0",
-  yellow:  "#CE9178", blue:    "#579BD5", magenta: "#714896",
-  cyan:    "#00B6D6", white:   "#EAEAEA",
-  brightBlack:   "#797979", brightRed:     "#EB2A88",
-  brightGreen:   "#1AD69C", brightYellow:  "#e9ad95",
-  brightBlue:    "#9CDCFE", brightMagenta: "#975EAB",
-  brightCyan:    "#2BC4E2", brightWhite:   "#EAEAEA",
+  background:           "rgba(22, 22, 30, 0.7)", // Transparent-ish
+  foreground:           "#e2e8f0",
+  cursor:               "#3bd98b",                // Neon Green Cursor
+  cursorAccent:         "rgba(22, 22, 30, 0.7)",
+  selectionBackground:  "rgba(59, 217, 139, 0.3)",
+  black:    "#18181b", red:      "#f87171", green:    "#4ade80",
+  yellow:   "#fbbf24", blue:     "#60a5fa", magenta:  "#c084fc",
+  cyan:     "#22d3ee", white:    "#f8fafc",
+  brightBlack:    "#64748b", brightRed:      "#fca5a5",
+  brightGreen:    "#86efac", brightYellow:   "#fde68a",
+  brightBlue:     "#93c5fd", brightMagenta:  "#d8b4fe",
+  brightCyan:     "#67e8f9", brightWhite:    "#ffffff",
 };
 
-const isMobile = () => navigator.maxTouchPoints > 0;
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export function TerminalInstance({ sessionId, isActive }: Props) {
-  const { registerXterm, unregisterXterm, sendInput, sendResize } = useTerminal();
+  const { registerXterm, unregisterXterm, sendInput } = useTerminal();
   const containerRef = React.useRef<HTMLDivElement>(null);
   const xtermRef     = React.useRef<XTerm | null>(null);
   const fitRef       = React.useRef<FitAddon | null>(null);
-  const mobile       = React.useRef(isMobile());
 
   React.useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
     let disposed = false;
 
-    // Responsive font size: 15 (mobile) -> 14 (desktop)
-    const getFontSize = () => {
-      if (window.innerWidth <= 375) return 11; // iPhone 6/7/8 and smaller
-      if (window.innerWidth <= 480) return 12; // Small phones
-      if (window.innerWidth <= 768) return 15; // Tablets/mobile
-      return 14; // Desktop
-    };
-    const fontSize = mobile.current ? getFontSize() : 17;
-
     const xterm = new XTerm({
       cursorBlink:        true,
       cursorStyle:        "block",
-      fontSize:           fontSize,
-      lineHeight:         mobile.current ? 1.2 : 1.25,
-      fontFamily:         '"Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace',
-      fontWeight:         "400",
+      fontSize:           15,
+      fontFamily:         '"JetBrains Mono", "Ubuntu Mono", monospace',
+      fontWeight:          "500",
       theme:              THEME,
-      scrollback:         mobile.current ? 3000 : 10000,
-      overviewRulerWidth: 0,
-      disableStdin:       false,
-      // Auto-copy selected text to clipboard — fixes Ctrl+Shift+C conflict
-      // (browser intercepts Ctrl+Shift+C for devtools; copyOnSelect bypasses this)
-      // copyOnSelect:       true, // Removed due to xterm compatibility issue
       allowProposedApi:   true,
+      scrollback:         5000,
     });
 
-    const fitAddon   = new FitAddon();
-    const linksAddon = new WebLinksAddon();
+    const fitAddon = new FitAddon();
     xterm.loadAddon(fitAddon);
-    xterm.loadAddon(linksAddon);
+    xterm.loadAddon(new WebLinksAddon());
 
     if (disposed) { xterm.dispose(); return; }
 
@@ -88,10 +62,8 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
 
     requestAnimationFrame(() => {
       if (disposed) return;
-      try { fitAddon.fit(); sendResize(sessionId, xterm.cols, xterm.rows); } catch (_) {}
-
-      // Only auto-focus on desktop — on mobile this triggers keyboard popup
-      if (!mobile.current) xterm.focus();
+      fitAddon.fit();
+      xterm.focus();
     });
 
     xtermRef.current = xterm;
@@ -102,75 +74,36 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
 
     const ro = new ResizeObserver(() => {
       if (disposed) return;
-      try { fitAddon.fit(); sendResize(sessionId, xterm.cols, xterm.rows); } catch (_) {}
+      try { fitAddon.fit(); } catch (_) {}
     });
     ro.observe(el);
-
-    // Handle window resize for responsive font size
-    const handleResize = () => {
-      if (disposed || !xtermRef.current) return;
-      const newFontSize = getFontSize();
-      if (newFontSize !== xtermRef.current.options.fontSize) {
-        xtermRef.current.options.fontSize = newFontSize;
-        xtermRef.current.refresh(0, xtermRef.current.rows - 1);
-      }
-    };
-    window.addEventListener("resize", handleResize);
 
     return () => {
       disposed = true;
       ro.disconnect();
-      window.removeEventListener("resize", handleResize);
       unregisterXterm(sessionId);
       xterm.dispose();
-      xtermRef.current = null;
-      fitRef.current   = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Re-focus on tab switch (desktop only)
+  // Refocus when switching tabs
   React.useEffect(() => {
-    if (!isActive || mobile.current) return;
-    const t = setTimeout(() => {
-      xtermRef.current?.focus();
-      try { fitRef.current?.fit(); } catch (_) {}
-    }, 30);
-    return () => clearTimeout(t);
+    if (isActive) xtermRef.current?.focus();
   }, [isActive]);
-
-  // Mobile: scroll to end when terminal becomes active (e.g., after keyboard opens)
-  React.useEffect(() => {
-    if (!isActive || !mobile.current) return;
-    const t = setTimeout(() => {
-      if (xtermRef.current) {
-        // Scroll to bottom of terminal buffer
-        xtermRef.current.scrollToBottom();
-      }
-    }, 150);
-    return () => clearTimeout(t);
-  }, [isActive]);
-
-  // Desktop: re-focus on click in padding/scrollbar area
-  const handlePointerDown = React.useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === "touch") return;
-    requestAnimationFrame(() => xtermRef.current?.focus());
-  }, []);
 
   return (
     <div
       ref={containerRef}
-      onPointerDown={handlePointerDown}
       style={{
-        position:   "absolute",
-        inset:      0,
-        background: THEME.background,
-        opacity:     isActive ? 1 : 0,
-        // Keep pointer events only when active — prevents ghost touches on hidden tabs
+        position: "absolute",
+        inset: 0,
+        // Use opacity transition for smooth tab switching
+        opacity: isActive ? 1 : 0,
         pointerEvents: isActive ? "auto" : "none",
-        // Allow text selection for copy functionality
-        userSelect: "auto",
-        WebkitUserSelect: "auto",
+        zIndex: isActive ? 1 : 0,
+        transition: "opacity 0.1s ease",
+        // Allow content to scroll naturally
+        overflow: "hidden", 
       }}
     />
   );
