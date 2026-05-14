@@ -9,14 +9,12 @@ import "./index.css";
 // Prevents browser back navigation from mouse back button and phone swipe gestures
 
 (function blockBackNavigation() {
-  // Push a state to history to intercept back actions
   if (typeof window !== "undefined") {
     // Push initial state
     history.pushState(null, "", location.href);
     
     // Listen for popstate (triggered by back button/gesture)
     window.addEventListener("popstate", function(event) {
-      // Prevent default back behavior
       event.preventDefault();
       event.stopPropagation();
       
@@ -28,7 +26,6 @@ import "./index.css";
     
     // Also block beforeunload to prevent accidental navigation
     window.addEventListener("beforeunload", function(event) {
-      // Modern browsers ignore custom messages but still show a prompt
       event.preventDefault();
       event.returnValue = "";
     });
