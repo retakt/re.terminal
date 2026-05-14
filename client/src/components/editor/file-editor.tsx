@@ -31,8 +31,8 @@ import { useApp } from "@/contexts/app-context";
 
 const aureliaTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#1a1a1a",
-    color: "#EA549F",
+    backgroundColor: "#0d1117",
+    color: "#c9d1d9",
     fontSize: "14px",
   },
   ".cm-content": {
@@ -44,31 +44,31 @@ const aureliaTheme = EditorView.theme({
     padding: "0 4px",
   },
   ".cm-gutters": {
-    backgroundColor: "#1a1a1a",
-    color: "#797979",
+    backgroundColor: "#0d1117",
+    color: "#8b949e",
     border: "none",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "#2a2a2a",
-    color: "#EA549F",
+    backgroundColor: "#161b22",
+    color: "#c9d1d9",
   },
   ".cm-activeLine": {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: "#161b22",
   },
   ".cm-selectionBackground": {
-    backgroundColor: "rgba(234,84,159,0.2) !important",
+    backgroundColor: "rgba(56,139,253,0.3) !important",
   },
   ".cm-cursor": {
-    borderLeftColor: "#EA549F",
+    borderLeftColor: "#c9d1d9",
   },
   ".cm-selectionMatch": {
-    backgroundColor: "#6FB3E8", // Updated to brighter blue
+
   },
   ".cm-matchingBracket": {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: "#21262d",
   },
   "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: "#21262d",
   },
   ".cm-scroller": {
     overflow: "auto",
@@ -79,10 +79,10 @@ const aureliaTheme = EditorView.theme({
       height: "6px",
     },
     "&::-webkit-scrollbar-thumb": {
-      backgroundColor: "#3a3a3a",
+      backgroundColor: "#30363d",
     },
     "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "#4a4a4a",
+      backgroundColor: "#484f58",
     },
   },
 });
@@ -113,6 +113,7 @@ const aureliaHighlightStyle = EditorView.baseTheme({
   // Ensure definitions are also bright
   ".cm-definition": { color: "#6FB3E8" },
   ".cm-macro": { color: "#A675D9" },
+
 });
 
 // Detect CodeMirror language from file extension
