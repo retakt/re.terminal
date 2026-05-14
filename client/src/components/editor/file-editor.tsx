@@ -62,7 +62,7 @@ const aureliaTheme = EditorView.theme({
     borderLeftColor: "#EA549F",
   },
   ".cm-selectionMatch": {
-    backgroundColor: "#579BD5",
+    backgroundColor: "#6FB3E8", // Updated to brighter blue
   },
   ".cm-matchingBracket": {
     backgroundColor: "#2a2a2a",
@@ -87,20 +87,32 @@ const aureliaTheme = EditorView.theme({
   },
 });
 
-// Syntax highlighting colors (Aurelia)
+// Syntax highlighting colors (Aurelia - Updated Blue & Purple)
 const aureliaHighlightStyle = EditorView.baseTheme({
   ".cm-comment": { color: "#797979", fontStyle: "italic" },
-  ".cm-keyword": { color: "#975EAB" },
+  
+  // KEYWORDS (def, function, import, return, etc.) -> Bright Purple
+  ".cm-keyword": { color: "#A675D9" },
+  
   ".cm-string": { color: "#4EC9B0" },
   ".cm-number": { color: "#e9ad95" },
-  ".cm-typeName": { color: "#00B6D6" },
-  ".cm-function": { color: "#579BD5" },
+  
+  // TYPES & CLASSES -> Bright Blue
+  ".cm-typeName": { color: "#6FB3E8" },
+  
+  // FUNCTIONS (html_escape, myFunc) -> Bright Blue
+  ".cm-function": { color: "#6FB3E8" },
+  
   ".cm-variableName": { color: "#EA549F" },
   ".cm-operator": { color: "#2BC4E2" },
   ".cm-property": { color: "#EA549F" },
   ".cm-atom": { color: "#e9ad95" },
   ".cm-tag": { color: "#E92888" },
   ".cm-attribute": { color: "#CE9178" },
+  
+  // Ensure definitions are also bright
+  ".cm-definition": { color: "#6FB3E8" },
+  ".cm-macro": { color: "#A675D9" },
 });
 
 // Detect CodeMirror language from file extension
