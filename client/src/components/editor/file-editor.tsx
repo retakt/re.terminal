@@ -1,68 +1,156 @@
 /**
- * FileEditor — Monaco editor for a server-side file.
+ * FileEditor — CodeMirror editor for a server-side file.
  * Auto-saves on Ctrl+S. Marks tab dirty on change.
  */
 
 import * as React from "react";
-import Editor, { type OnMount, loader } from "@monaco-editor/react";
-import { Loader2, Save, AlertCircle } from "lucide-react";
+import CodeMirror from "@uiw/react-codemirror";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { rust } from "@codemirror/lang-rust";
+import { go } from "@codemirror/lang-go";
+import { json } from "@codemirror/lang-json";
+import { yaml } from "@codemirror/lang-yaml";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { html } from "@codemirror/lang-html";
+import { css } from "@codemirror/lang-css";
+import { cpp } from "@codemirror/lang-cpp";
+import { java } from "@codemirror/lang-java";
+import { php } from "@codemirror/lang-php";
+import { sql } from "@codemirror/lang-sql";
+import { xml } from "@codemirror/lang-xml";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { bracketMatching } from "@codemirror/language";
+import { drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
+import { Save, AlertCircle, Loader2 } from "lucide-react";
 import { fileApi } from "@/lib/file-api";
 import { useApp } from "@/contexts/app-context";
 
-// ─── Tokyo Night theme for Monaco ─────────────────────────────────────────────
+// ─── Tokyo Night theme for CodeMirror ─────────────────────────────────────────────
 
-loader.init().then(monaco => {
-  monaco.editor.defineTheme("tokyo-night", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "comment",    foreground: "565f89", fontStyle: "italic" },
-      { token: "keyword",    foreground: "bb9af7" },
-      { token: "string",     foreground: "9ece6a" },
-      { token: "number",     foreground: "ff9e64" },
-      { token: "type",       foreground: "2ac3de" },
-      { token: "function",   foreground: "7aa2f7" },
-      { token: "variable",   foreground: "c0caf5" },
-      { token: "operator",   foreground: "89ddff" },
-      { token: "delimiter",  foreground: "89ddff" },
-      { token: "tag",        foreground: "f7768e" },
-      { token: "attribute",  foreground: "e0af68" },
-    ],
-    colors: {
-      "editor.background":            "#1a1b26",
-      "editor.foreground":            "#c0caf5",
-      "editor.lineHighlightBackground":"#1f2335",
-      "editor.selectionBackground":   "#283457",
-      "editor.inactiveSelectionBackground": "#1f2335",
-      "editorLineNumber.foreground":  "#3b4261",
-      "editorLineNumber.activeForeground": "#737aa2",
-      "editorCursor.foreground":      "#c0caf5",
-      "editorWhitespace.foreground":  "#3b4261",
-      "editorIndentGuide.background": "#1f2335",
-      "editorIndentGuide.activeBackground": "#292e42",
-      "editor.findMatchBackground":   "#3d59a1",
-      "editor.findMatchHighlightBackground": "#1f2335",
-      "editorGutter.background":      "#1a1b26",
-      "scrollbar.shadow":             "#00000000",
-      "scrollbarSlider.background":   "#292e4280",
-      "scrollbarSlider.hoverBackground": "#3b426180",
-      "scrollbarSlider.activeBackground": "#565f8980",
+const tokyoNightTheme = EditorView.theme({
+  "&": {
+    backgroundColor: "#1a1b26",
+    color: "#c0caf5",
+    fontSize: "14px",
+  },
+  ".cm-content": {
+    fontFamily: '"Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace',
+    lineHeight: "1.25",
+    padding: "8px 0",
+  },
+  ".cm-line": {
+    padding: "0 4px",
+  },
+  ".cm-gutters": {
+    backgroundColor: "#1a1b26",
+    color: "#3b4261",
+    border: "none",
+  },
+  ".cm-activeLineGutter": {
+    backgroundColor: "#1f2335",
+    color: "#737aa2",
+  },
+  ".cm-activeLine": {
+    backgroundColor: "#1f2335",
+  },
+  ".cm-selectionBackground": {
+    backgroundColor: "#283457 !important",
+  },
+  ".cm-cursor": {
+    borderLeftColor: "#c0caf5",
+  },
+  ".cm-selectionMatch": {
+    backgroundColor: "#3d59a1",
+  },
+  ".cm-matchingBracket": {
+    backgroundColor: "#292e42",
+  },
+  "&.cm-focused .cm-matchingBracket": {
+    backgroundColor: "#292e42",
+  },
+  ".cm-scroller": {
+    overflow: "auto",
+  },
+  ".cm-scrollbar": {
+    "&::-webkit-scrollbar": {
+      width: "6px",
+      height: "6px",
     },
-  });
+    "&::-webkit-scrollbar-thumb": {
+      backgroundColor: "#292e4280",
+    },
+    "&::-webkit-scrollbar-thumb:hover": {
+      backgroundColor: "#3b426180",
+    },
+  },
 });
 
-// Detect Monaco language from file extension
-function langFromPath(filePath: string): string {
+// Syntax highlighting colors (Tokyo Night)
+const tokyoNightHighlightStyle = EditorView.baseTheme({
+  ".cm-comment": { color: "#565f89", fontStyle: "italic" },
+  ".cm-keyword": { color: "#bb9af7" },
+  ".cm-string": { color: "#9ece6a" },
+  ".cm-number": { color: "#ff9e64" },
+  ".cm-typeName": { color: "#2ac3de" },
+  ".cm-function": { color: "#7aa2f7" },
+  ".cm-variableName": { color: "#c0caf5" },
+  ".cm-operator": { color: "#89ddff" },
+  ".cm-property": { color: "#c0caf5" },
+  ".cm-atom": { color: "#ff9e64" },
+  ".cm-tag": { color: "#f7768e" },
+  ".cm-attribute": { color: "#e0af68" },
+});
+
+// Detect CodeMirror language from file extension
+function getLanguageExtension(filePath: string) {
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  const map: Record<string, string> = {
-    ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
-    py: "python", rs: "rust", go: "go", sh: "shell", bash: "shell",
-    json: "json", yaml: "yaml", yml: "yaml", toml: "toml",
-    md: "markdown", html: "html", css: "css", scss: "scss",
-    c: "c", cpp: "cpp", h: "cpp", java: "java", rb: "ruby",
-    php: "php", sql: "sql", xml: "xml",
-  };
-  return map[ext] || "plaintext";
+  switch (ext) {
+    case "ts":
+    case "tsx":
+      return javascript({ jsx: true, typescript: true });
+    case "js":
+    case "jsx":
+      return javascript({ jsx: true });
+    case "py":
+      return python();
+    case "rs":
+      return rust();
+    case "go":
+      return go();
+    case "sh":
+    case "bash":
+      return javascript(); // fallback for shell scripts
+    case "json":
+      return json();
+    case "yaml":
+    case "yml":
+      return yaml();
+    case "md":
+      return markdown({ base: markdownLanguage });
+    case "html":
+      return html();
+    case "css":
+    case "scss":
+      return css();
+    case "c":
+    case "cpp":
+    case "h":
+      return cpp();
+    case "java":
+      return java();
+    case "rb":
+      return javascript(); // fallback for ruby
+    case "php":
+      return php();
+    case "sql":
+      return sql();
+    case "xml":
+      return xml();
+    default:
+      return [];
+  }
 }
 
 // Responsive font size: 14 (desktop) -> 10 (small mobile)
@@ -85,7 +173,6 @@ export function FileEditor({ pageId, filePath }: Props) {
   const [saving,   setSaving]   = React.useState(false);
   const [error,    setError]    = React.useState<string | null>(null);
   const [saveMsg,  setSaveMsg]  = React.useState<string | null>(null);
-  const editorRef = React.useRef<Parameters<OnMount>[0] | null>(null);
 
   // Load file on mount
   React.useEffect(() => {
@@ -97,11 +184,10 @@ export function FileEditor({ pageId, filePath }: Props) {
   }, [filePath]);
 
   const save = React.useCallback(async () => {
-    const value = editorRef.current?.getValue();
-    if (value === undefined) return;
+    if (content === null) return;
     setSaving(true);
     try {
-      await fileApi.write(filePath, value);
+      await fileApi.write(filePath, content);
       markDirty(pageId, false);
       setSaveMsg("saved");
       setTimeout(() => setSaveMsg(null), 1500);
@@ -110,7 +196,7 @@ export function FileEditor({ pageId, filePath }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [filePath, pageId, markDirty]);
+  }, [filePath, pageId, content, markDirty]);
 
   // Ctrl+S to save
   React.useEffect(() => {
@@ -124,18 +210,9 @@ export function FileEditor({ pageId, filePath }: Props) {
     return () => window.removeEventListener("keydown", handler);
   }, [save]);
 
-  const handleMount: OnMount = (editor) => {
-    editorRef.current = editor;
-    // Add Ctrl+S keybinding inside Monaco
-    editor.addCommand(
-      // Monaco.KeyMod.CtrlCmd | Monaco.KeyCode.KeyS
-      2048 | 49,
-      () => save()
-    );
-  };
-
-  const handleChange = (value: string | undefined) => {
-    if (value !== undefined) markDirty(pageId, true);
+  const handleChange = (value: string) => {
+    setContent(value);
+    markDirty(pageId, true);
   };
 
   if (loading) {
@@ -156,6 +233,32 @@ export function FileEditor({ pageId, filePath }: Props) {
     );
   }
 
+  // Get extensions for CodeMirror
+  const languageExt = React.useMemo(() => getLanguageExtension(filePath), [filePath]);
+  const extensions = React.useMemo(() => {
+    const exts = [
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      history(),
+      lineNumbers(),
+      highlightActiveLine(),
+      highlightActiveLineGutter(),
+      bracketMatching(),
+      drawSelection(),
+      dropCursor(),
+      rectangularSelection(),
+      crosshairCursor(),
+      tokyoNightTheme,
+      tokyoNightHighlightStyle,
+    ];
+    
+    // Add language extension
+    if (languageExt) {
+      exts.push(languageExt);
+    }
+    
+    return exts;
+  }, [languageExt]);
+
   return (
     <div className="fe-root">
       {/* Save indicator */}
@@ -167,36 +270,39 @@ export function FileEditor({ pageId, filePath }: Props) {
         </div>
       )}
 
-      <Editor
-        height="100%"
-        language={langFromPath(filePath)}
+      <CodeMirror
         value={content ?? ""}
-        theme="tokyo-night"
-        onMount={handleMount}
+        height="100%"
+        theme={tokyoNightTheme}
+        extensions={extensions}
         onChange={handleChange}
-        options={{
-          fontSize:             getFontSize(),
-          fontFamily:           '"Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace',
-          fontLigatures:        true,
-          lineHeight:           1.25,
-          minimap:              { enabled: false },
-          scrollBeyondLastLine: false,
-          wordWrap:             "off",
-          tabSize:              2,
-          renderWhitespace:     "boundary",
-          smoothScrolling:      true,
-          cursorBlinking:       "smooth",
-          cursorStyle:          "block",
-          padding:              { top: 8, bottom: 8 },
-          lineNumbers:          "on",
-          lineNumbersMinChars:  3,
-          glyphMargin:          false,
-          folding:              true,
-          renderLineHighlight:  "line",
-          scrollbar: {
-            verticalScrollbarSize:   6,
-            horizontalScrollbarSize: 6,
-          },
+        basicSetup={{
+          lineNumbers: true,
+          highlightActiveLineGutter: true,
+          highlightSpecialChars: true,
+          foldGutter: true,
+          drawSelection: true,
+          dropCursor: true,
+          allowMultipleSelections: true,
+          indentOnInput: true,
+          syntaxHighlighting: true,
+          bracketMatching: true,
+          closeBrackets: true,
+          autocompletion: true,
+          rectangularSelection: true,
+          crosshairCursor: true,
+          highlightActiveLine: true,
+          highlightSelectionMatches: true,
+          closeBracketsKeymap: true,
+          defaultKeymap: true,
+          searchKeymap: true,
+          historyKeymap: true,
+          foldKeymap: true,
+          completionKeymap: true,
+          lintKeymap: false,
+        }}
+        style={{
+          fontSize: `${getFontSize()}px`,
         }}
       />
     </div>
