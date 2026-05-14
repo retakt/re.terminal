@@ -7,8 +7,7 @@
  * - xterm selection works because we don't intercept touch on canvas
  *
  * Performance:
- * - will-change: transform on container
- * - GPU-composited visibility toggle
+ * - GPU-accelerated visibility toggle via opacity
  * - Reduced scrollback on mobile
  */
 
@@ -166,8 +165,6 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
         position:   "absolute",
         inset:      0,
         background: THEME.background,
-        // GPU layer — avoids repaints when switching tabs
-        willChange:  "opacity",
         opacity:     isActive ? 1 : 0,
         // Keep pointer events only when active — prevents ghost touches on hidden tabs
         pointerEvents: isActive ? "auto" : "none",
