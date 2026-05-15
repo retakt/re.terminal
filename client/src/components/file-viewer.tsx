@@ -1,8 +1,5 @@
 "use client";
 
-// UNCOMMENT THIS LINE ONCE INSTALLED TO RENDER ALL THE CODE WITH SHIKI
-// import { createHighlighter } from "shiki";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +19,6 @@ import {
   FolderIcon,
   FolderOpenIcon,
 } from "lucide-react";
-import { useTheme } from "next-themes";
 import {
   createContext,
   useCallback,
@@ -30,8 +26,11 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import { toast } from "sonner";
+import * as monaco from "monaco-editor";
+import { getMonacoLanguageId } from "@/lib/file-routing";
 
 export interface ApiComponent {
   name: string;
@@ -66,105 +65,144 @@ const useTree = () => {
   return context;
 };
 
-// --- Shiki Code Viewer ---
-function ShikiViewer({
+// --- Monaco Editor Viewer ---
+function MonacoViewer({
   code,
-  lang = "tsx",
-  showLineNumbers = true,
-  className,
+  filePath,
+  onChange,
 }: {
   code: string;
-  lang?: string;
-  showLineNumbers?: boolean;
-  className?: string;
+  filePath: string;
+  onChange?: (value: string) => void;
 }) {
-  const [html, setHtml] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(true);
-  const { resolvedTheme } = useTheme();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<typeof monaco | null>(null);
+
   useEffect(() => {
-    let mounted = true;
-    async function highlight() {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let cancelled = false;
+
+    async function init() {
       try {
-        setIsLoading(true);
-        const shikiTheme =
-          resolvedTheme === "dark" ? "github-dark" : "github-light";
-        const highlighter = await createHighlighter({
-          langs: [
-            "tsx",
-            "typescript",
-            "javascript",
-            "jsx",
-            "json",
-            "css",
-            "scss",
-            "html",
-            "markdown",
-          ],
-          themes: [shikiTheme],
+        const monacoInstance = await import("monaco-editor");
+        if (cancelled) return;
+        
+        monacoRef.current = monacoInstance.default || monacoInstance;
+
+        const languageId = getMonacoLanguageId(filePath);
+        
+        // Load language support dynamically
+        const LANGUAGE_LOADERS: Record<string, () => Promise<unknown>> = {
+          cpp: () => import("monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js"),
+          css: () => import("monaco-editor/esm/vs/language/css/monaco.contribution.js"),
+          go: () => import("monaco-editor/esm/vs/basic-languages/go/go.contribution.js"),
+          html: () => import("monaco-editor/esm/vs/language/html/monaco.contribution.js"),
+          java: () => import("monaco-editor/esm/vs/basic-languages/java/java.contribution.js"),
+          javascript: () => import("monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js"),
+          json: () => import("monaco-editor/esm/vs/language/json/monaco.contribution.js"),
+          markdown: () => import("monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution.js"),
+          php: () => import("monaco-editor/esm/vs/basic-languages/php/php.contribution.js"),
+          python: () => import("monaco-editor/esm/vs/basic-languages/python/python.contribution.js"),
+          ruby: () => import("monaco-editor/esm/vs/basic-languages/ruby/ruby.contribution.js"),
+          rust: () => import("monaco-editor/esm/vs/basic-languages/rust/rust.contribution.js"),
+          shell: () => import("monaco-editor/esm/vs/basic-languages/shell/shell.contribution.js"),
+          sql: () => import("monaco-editor/esm/vs/basic-languages/sql/sql.contribution.js"),
+          typescript: () => import("monaco-editor/esm/vs/language/typescript/monaco.contribution.js"),
+          xml: () => import("monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js"),
+          yaml: () => import("monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js"),
+        };
+
+        const loadLanguage = LANGUAGE_LOADERS[languageId];
+        if (loadLanguage) {
+          await loadLanguage();
+        }
+
+        if (cancelled) return;
+
+        // Define custom theme
+        const isLight = document.documentElement.getAttribute("data-theme") === "light";
+        monaco.editor.defineTheme("file-viewer-theme", {
+          base: isLight ? "vs" : "vs-dark",
+          inherit: true,
+          rules: [],
+          colors: {
+            "editor.background": isLight ? "#ffffff" : "#1e1e1e",
+            "editor.foreground": isLight ? "#0f0f0f" : "#d4d4d4",
+            "editor.lineHighlightBackground": isLight ? "#ececf1" : "#2a2a2a",
+            "editorLineNumber.foreground": isLight ? "#848cb3" : "#6e7681",
+            "editorCursor.foreground": isLight ? "#0f0f0f" : "#aeafad",
+          },
         });
-        const highlightedHtml = highlighter.codeToHtml(code, {
-          lang: lang === "tsx" ? "typescript" : lang,
-          theme: shikiTheme,
+
+        const editor = monaco.editor.create(container as HTMLElement, {
+          value: code,
+          language: languageId === "plaintext" ? "plaintext" : languageId,
+          theme: "file-viewer-theme",
+          automaticLayout: true,
+          readOnly: !onChange,
+          minimap: { enabled: false },
+          fontSize: 13,
+          lineHeight: 20,
+          scrollBeyondLastLine: false,
+          scrollbar: {
+            verticalScrollbarSize: 8,
+            horizontalScrollbarSize: 8,
+            useShadows: false,
+          },
+          padding: { top: 8, bottom: 8 },
+          renderWhitespace: "selection",
+          smoothScrolling: true,
+          tabSize: 2,
+          insertSpaces: true,
+          wordWrap: "on",
         });
-        if (mounted) {
-          setHtml(highlightedHtml);
-          setIsLoading(false);
+
+        editorRef.current = editor;
+
+        if (onChange) {
+          editor.onDidChangeModelContent(() => {
+            onChange(editor.getValue());
+          });
         }
       } catch (error) {
-        if (mounted) {
-          setHtml(`<pre><code>${code}</code></pre>`);
-          setIsLoading(false);
-        }
+        console.error("Failed to initialize Monaco editor:", error);
       }
     }
-    highlight();
+
+    void init();
+
     return () => {
-      mounted = false;
+      cancelled = true;
+      editorRef.current?.dispose();
+      editorRef.current = null;
+      monacoRef.current = null;
     };
-  }, [code, lang, resolvedTheme]);
-  const addLineNumbers = (html: string) => {
-    if (!showLineNumbers) return html;
-    const lines = code.split("");
-    const lineNumbers = lines.map((_, i) => `<span>${i + 1}</span>`).join("");
-    return html.replace(
-      /<pre[^>]*>([\s\S]*)<\/pre>/,
-      `<pre class="line-numbers"><span class="line-numbers-rows">${lineNumbers}</span>$1</pre>`
-    );
-  };
+  }, [filePath]);
+
+  // Update content when code changes
+  useEffect(() => {
+    if (editorRef.current && code !== editorRef.current.getValue()) {
+      editorRef.current.setValue(code);
+    }
+  }, [code]);
+
   return (
-    <>
-      <style>{`
-        .shiki-viewer { border-radius: 0.5rem; overflow: hidden; border: 1px solid hsl(var(--border)); }
-        .shiki-viewer pre { margin: 0; padding: 1rem; overflow-x: auto; background: transparent; font-size: 0.875rem; line-height: 1.5; white-space: pre; }
-        .shiki-viewer code { background: transparent; padding: 0; border-radius: 0; font-family: inherit; font-size: inherit; line-height: inherit; white-space: pre; }
-        .shiki-viewer .line-numbers { display: flex; }
-        .shiki-viewer .line-numbers .line-numbers-rows { display: flex; flex-direction: column; padding-right: 0.2rem; margin-right: 0.2rem; border-right: 1px solid hsl(var(--border)); text-align: right; color: hsl(var(--muted-foreground)); font-size: 0.8755rem; user-select: none; }
-        .shiki-viewer .line-numbers .line-numbers-rows > span { display: block; min-width: 2rem; }
-      `}</style>
-      <div className={cn("shiki-viewer", className)}>
-        {isLoading ? (
-          <div className="flex items-center justify-center p-8">
-            <div className="animate-pulse text-oklch(0.556 0 0) dark:text-oklch(0.708 0 0)">
-              Loading code...
-            </div>
-          </div>
-        ) : (
-          <div dangerouslySetInnerHTML={{ __html: addLineNumbers(html) }} />
-        )}
-      </div>
-    </>
+    <div className="w-full h-full">
+      <div ref={containerRef} className="w-full h-full" />
+    </div>
   );
 }
 
 // --- File Header ---
 function FileHeader({
   file,
-  component,
   onCopy,
   copied,
 }: {
   file: { path: string; content?: string };
-  component: ApiComponent;
   onCopy: () => void;
   copied: boolean;
 }) {
@@ -227,7 +265,6 @@ function TreeIndicator({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  const { direction } = useTree();
   return (
     <div
       className={cn(
@@ -254,7 +291,6 @@ function Folder({
   className?: string;
 }) {
   const {
-    direction,
     handleExpand,
     expandedItems,
     indicator,
@@ -286,8 +322,7 @@ function Folder({
         <AccordionPrimitive.Root
           type="multiple"
           className={cn(
-            "ml-5 flex flex-col gap-1 py-1",
-            direction === "rtl" && "mr-5"
+            "ml-5 flex flex-col gap-1 py-1"
           )}
           value={expandedItems}
         >
@@ -584,18 +619,14 @@ export default function ComponentFileViewer({
           <div className="h-full flex flex-col">
             <FileHeader
               file={selected}
-              component={component}
               onCopy={handleCopy}
               copied={copied}
             />
             <div className="flex-1 overflow-hidden">
-              <ScrollArea className="w-full h-[calc(100vh-20rem)]">
-                <ShikiViewer
-                  code={selected.content || ""}
-                  lang={selected.path.split(".").pop() || "txt"}
-                  className="min-h-full"
-                />
-              </ScrollArea>
+              <MonacoViewer
+                code={selected.content || ""}
+                filePath={selected.path}
+              />
             </div>
           </div>
         )}
