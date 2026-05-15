@@ -24,6 +24,13 @@ export interface DirListing {
   items: FileEntry[];
 }
 
+export interface BinaryFileData {
+  path: string;
+  mime: string;
+  size: number;
+  contentBase64: string;
+}
+
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     method,
@@ -44,6 +51,7 @@ async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
 export const fileApi = {
   list:   (path: string)                 => req<DirListing>("GET",    `/api/files?path=${encodeURIComponent(path)}`),
   read:   (path: string)                 => req<{ path: string; content: string }>("GET", `/api/file?path=${encodeURIComponent(path)}`),
+  readBinary: (path: string)             => req<BinaryFileData>("GET", `/api/file-binary?path=${encodeURIComponent(path)}`),
   write:  (path: string, content: string)=> req<{ ok: boolean }>("PUT",    "/api/file",   { path, content }),
   delete: (path: string)                 => req<{ ok: boolean }>("DELETE", `/api/file?path=${encodeURIComponent(path)}`),
   mkdir:  (path: string)                 => req<{ ok: boolean }>("POST",   "/api/mkdir",  { path }),

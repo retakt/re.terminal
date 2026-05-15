@@ -243,6 +243,38 @@ function resolveSafe(clientPath) {
 
 app.use(express.json({ limit: "10mb" }));
 
+const BINARY_FILE_MAX = 25 * 1024 * 1024;
+const MIME_BY_EXT = {
+  ".bmp":  "image/bmp",
+  ".csv":  "text/csv",
+  ".doc":  "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".gif":  "image/gif",
+  ".htm":  "text/html",
+  ".html": "text/html",
+  ".jpeg": "image/jpeg",
+  ".jpg":  "image/jpeg",
+  ".json": "application/json",
+  ".md":   "text/markdown",
+  ".pdf":  "application/pdf",
+  ".png":  "image/png",
+  ".ppt":  "application/vnd.ms-powerpoint",
+  ".pptx":  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".svg":  "image/svg+xml",
+  ".txt":  "text/plain",
+  ".webp": "image/webp",
+  ".xls":  "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".xml":  "application/xml",
+  ".yaml": "text/yaml",
+  ".yml":  "text/yaml",
+};
+
+function guessMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return MIME_BY_EXT[ext] || "application/octet-stream";
+}
+
 // List directory
 app.get("/api/files", async (req, res) => {
   try {
@@ -276,6 +308,30 @@ app.get("/api/file", async (req, res) => {
     res.json({ path: req.query.path, content });
   } catch (err) {
     log("WARN", "file", "file read failed", { path: req.query.path, error: err.message });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Read file as base64 for binary viewers
+app.get("/api/file-binary", async (req, res) => {
+  try {
+    const clientPath = (req.query.path || "") + "";
+    const filePath = resolveSafe(clientPath);
+    const stat = await fs.promises.stat(filePath);
+    if (stat.size > BINARY_FILE_MAX) {
+      return res.status(413).json({ error: "file too large (max 25MB)" });
+    }
+    const content = await fs.promises.readFile(filePath);
+    stats.totalFilesRead++;
+    log("EVENT", "file", "binary file read", { path: clientPath, size: stat.size });
+    res.json({
+      path: clientPath,
+      mime: guessMimeType(filePath),
+      size: stat.size,
+      contentBase64: content.toString("base64"),
+    });
+  } catch (err) {
+    log("WARN", "file", "binary file read failed", { path: req.query.path, error: err.message });
     res.status(400).json({ error: err.message });
   }
 });

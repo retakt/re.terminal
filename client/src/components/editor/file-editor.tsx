@@ -1,418 +1,388 @@
-/**
-FileEditor — CodeMirror editor for a server-side file.
-Auto-saves on Ctrl+S. Marks tab dirty on change.
-*/
 import * as React from "react";
-import CodeMirror from "@uiw/react-codemirror";
-import { javascript } from "@codemirror/lang-javascript";
-import { python } from "@codemirror/lang-python";
-import { rust } from "@codemirror/lang-rust";
-import { go } from "@codemirror/lang-go";
-import { json } from "@codemirror/lang-json";
-import { yaml } from "@codemirror/lang-yaml";
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { html } from "@codemirror/lang-html";
-import { css } from "@codemirror/lang-css";
-import { cpp } from "@codemirror/lang-cpp";
-import { java } from "@codemirror/lang-java";
-import { php } from "@codemirror/lang-php";
-import { sql } from "@codemirror/lang-sql";
-import { xml } from "@codemirror/lang-xml";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching } from "@codemirror/language";
-import { drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
-import { Save, AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, RotateCcw, Save } from "lucide-react";
 import { fileApi } from "@/lib/file-api";
+import { getBaseName, getMonacoLanguageId } from "@/lib/file-routing";
 import { useApp } from "@/contexts/app-context";
 
-// ─── Tokyo Night Dark theme for CodeMirror ──────────────────────────────────
-const tokyoNightDarkTheme = EditorView.theme({
-  "&": {
-    backgroundColor: "#040404",
-    color: "#f5f5f3",
-    fontSize: "14px",
-  },
-  ".cm-content": {
-    fontFamily: '"Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace',
-    lineHeight: "1.25",
-    padding: "8px 0",
-  },
-  ".cm-line": {
-    padding: "0 4px",
-  },
-  ".cm-gutters": {
-    backgroundColor: "#040404",
-    color: "#63697d",
-    border: "none",
-  },
-  ".cm-activeLineGutter": {
-    backgroundColor: "#0a0a0a",
-    color: "#f5f5f3",
-  },
-  ".cm-activeLine": {
-    backgroundColor: "#0a0a0a",
-  },
-  ".cm-selectionBackground": {
-    backgroundColor: "rgba(125, 207, 255, 0.25) !important",
-  },
-  ".cm-cursor": {
-    borderLeftColor: "#f5f5f3",
-  },
-  ".cm-selectionMatch": {
-    backgroundColor: "#7dcfff30",
-  },
-  ".cm-matchingBracket": {
-    backgroundColor: "#9ece6a40",
-  },
-  "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "#9ece6a40",
-  },
-  ".cm-scroller": {
-    overflow: "auto",
-  },
-  ".cm-scrollbar": {
-    "&::-webkit-scrollbar": {
-      width: "6px",
-      height: "6px",
-    },
-    "&::-webkit-scrollbar-thumb": {
-      backgroundColor: "#2a2a2a",
-    },
-    "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "#414868",
-    },
-  },
-});
-
-// Syntax highlighting colors (Tokyo Night Dark)
-const tokyoNightDarkHighlightStyle = EditorView.baseTheme({
-  ".cm-comment": { color: "#63697d", fontStyle: "italic" },
-  ".cm-keyword": { color: "#f7768e" },
-  ".cm-string": { color: "#9ece6a" },
-  ".cm-number": { color: "#7aa2f7" },
-  ".cm-typeName": { color: "#7aa2f7" },
-  ".cm-function": { color: "#bb9af7" },
-  ".cm-variableName": { color: "#e0af68" },
-  ".cm-operator": { color: "#f7768e" },
-  ".cm-property": { color: "#7aa2f7" },
-  ".cm-atom": { color: "#f7768e" },
-  ".cm-tag": { color: "#9ece6a" },
-  ".cm-attribute": { color: "#7aa2f7" },
-  ".cm-definitionKeyword": { color: "#f7768e" },
-  ".cm-macroName": { color: "#bb9af7" },
-});
-
-// ─── Tokyo Night Light theme for CodeMirror ─────────────────────────────────
-const tokyoNightLightTheme = EditorView.theme({
-  "&": {
-    backgroundColor: "#ffffff",
-    color: "#0f0f0f",
-    fontSize: "14px",
-  },
-  ".cm-content": {
-    fontFamily: '"Ubuntu Mono", "JetBrains Mono", "Fira Code", "Consolas", monospace',
-    lineHeight: "1.25",
-    padding: "8px 0",
-  },
-  ".cm-line": {
-    padding: "0 4px",
-  },
-  ".cm-gutters": {
-    backgroundColor: "#ffffff",
-    color: "#848cb3",
-    border: "none",
-  },
-  ".cm-activeLineGutter": {
-    backgroundColor: "#f6f6f7",
-    color: "#0f0f0f",
-  },
-  ".cm-activeLine": {
-    backgroundColor: "#f6f6f7",
-  },
-  ".cm-selectionBackground": {
-    backgroundColor: "rgba(44, 125, 150, 0.2) !important",
-  },
-  ".cm-cursor": {
-    borderLeftColor: "#0f0f0f",
-  },
-  ".cm-selectionMatch": {
-    backgroundColor: "#2c7d9630",
-  },
-  ".cm-matchingBracket": {
-    backgroundColor: "#33635c40",
-  },
-  "&.cm-focused .cm-matchingBracket": {
-    backgroundColor: "#33635c40",
-  },
-  ".cm-scroller": {
-    overflow: "auto",
-  },
-  ".cm-scrollbar": {
-    "&::-webkit-scrollbar": {
-      width: "6px",
-      height: "6px",
-    },
-    "&::-webkit-scrollbar-thumb": {
-      backgroundColor: "#d0d7de",
-    },
-    "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "#848cb3",
-    },
-  },
-});
-
-// Syntax highlighting colors (Tokyo Night Light)
-const tokyoNightLightHighlightStyle = EditorView.baseTheme({
-  ".cm-comment": { color: "#848cb3", fontStyle: "italic" },
-  ".cm-keyword": { color: "#8c4351" },
-  ".cm-string": { color: "#33635c" },
-  ".cm-number": { color: "#34548a" },
-  ".cm-typeName": { color: "#34548a" },
-  ".cm-function": { color: "#5a4a78" },
-  ".cm-variableName": { color: "#8f5e15" },
-  ".cm-operator": { color: "#8c4351" },
-  ".cm-property": { color: "#34548a" },
-  ".cm-atom": { color: "#8c4351" },
-  ".cm-tag": { color: "#33635c" },
-  ".cm-attribute": { color: "#34548a" },
-  ".cm-definitionKeyword": { color: "#8c4351" },
-  ".cm-macroName": { color: "#5a4a78" },
-});
-
-// Get current theme based on document data attribute
-function getCurrentCodeMirrorTheme() {
-  const theme = document.documentElement.getAttribute('data-theme');
-  if (theme === 'light') {
-    return [tokyoNightLightTheme, tokyoNightLightHighlightStyle];
-  }
-  return [tokyoNightDarkTheme, tokyoNightDarkHighlightStyle];
-}
-
-// Detect CodeMirror language from file extension
-function getLanguageExtension(filePath: string) {
-  // FIX: Changed split(" ") to split(".") to correctly parse extensions
-  const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  switch (ext) {
-    case "ts":
-    case "tsx":
-      return javascript({ jsx: true, typescript: true });
-    case "js":
-    case "jsx":
-      return javascript({ jsx: true });
-    case "py":
-      return python();
-    case "rs":
-      return rust();
-    case "go":
-      return go();
-    case "sh":
-    case "bash":
-      return javascript(); // fallback for shell scripts
-    case "json":
-      return json();
-    case "yaml":
-    case "yml":
-      return yaml();
-    case "md":
-      return markdown({ base: markdownLanguage });
-    case "html":
-      return html();
-    case "css":
-    case "scss":
-      return css();
-    case "c":
-    case "cpp":
-    case "h":
-      return cpp();
-    case "java":
-      return java();
-    case "rb":
-      return javascript(); // fallback for ruby
-    case "php":
-      return php();
-    case "sql":
-      return sql();
-    case "xml":
-      return xml();
-    default:
-      return [];
-  }
-}
-
-// Responsive font size: 14 (desktop) -> 10 (small mobile)
-function getFontSize() {
-  if (typeof window === "undefined") return 14;
-  if (window.innerWidth <= 375) return 10; // iPhone 6/7/8 and smaller
-  if (window.innerWidth <= 480) return 11; // Small phones
-  if (window.innerWidth <= 768) return 12; // Tablets
-  return 14; // Desktop
-}
-
 interface Props {
-  pageId:   string;
+  pageId: string;
   filePath: string;
+}
+
+const MONACO_THEME_DARK = "reterm-dark";
+const MONACO_THEME_LIGHT = "reterm-light";
+
+const LANGUAGE_LOADERS: Record<string, () => Promise<unknown>> = {
+  cpp: () => import("monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js"),
+  css: () => import("monaco-editor/esm/vs/language/css/monaco.contribution.js"),
+  go: () => import("monaco-editor/esm/vs/basic-languages/go/go.contribution.js"),
+  html: () => import("monaco-editor/esm/vs/language/html/monaco.contribution.js"),
+  java: () => import("monaco-editor/esm/vs/basic-languages/java/java.contribution.js"),
+  javascript: () => import("monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js"),
+  json: () => import("monaco-editor/esm/vs/language/json/monaco.contribution.js"),
+  markdown: () => import("monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution.js"),
+  php: () => import("monaco-editor/esm/vs/basic-languages/php/php.contribution.js"),
+  python: () => import("monaco-editor/esm/vs/basic-languages/python/python.contribution.js"),
+  ruby: () => import("monaco-editor/esm/vs/basic-languages/ruby/ruby.contribution.js"),
+  rust: () => import("monaco-editor/esm/vs/basic-languages/rust/rust.contribution.js"),
+  shell: () => import("monaco-editor/esm/vs/basic-languages/shell/shell.contribution.js"),
+  sql: () => import("monaco-editor/esm/vs/basic-languages/sql/sql.contribution.js"),
+  typescript: () => import("monaco-editor/esm/vs/language/typescript/monaco.contribution.js"),
+  xml: () => import("monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js"),
+  yaml: () => import("monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js"),
+};
+
+function getThemeName() {
+  return document.documentElement.getAttribute("data-theme") === "light"
+    ? MONACO_THEME_LIGHT
+    : MONACO_THEME_DARK;
+}
+
+function readEditorMetrics() {
+  const styles = getComputedStyle(document.documentElement);
+  const fontSize = Number.parseFloat(styles.getPropertyValue("--term-font-size")) || 14;
+  const fontFamily = styles.getPropertyValue("--term-font-family").trim() || '"Ubuntu Mono", monospace';
+  const isCompact = window.matchMedia("(max-width: 760px)").matches;
+  const compactFontSize = isCompact ? Math.max(11, fontSize - 3) : Math.max(12, fontSize - 1);
+
+  return { fontSize: compactFontSize, fontFamily, isCompact };
+}
+
+function defineMonacoTheme(monaco: any) {
+  const styles = getComputedStyle(document.documentElement);
+  const isLight = document.documentElement.getAttribute("data-theme") === "light";
+
+  const bgBase = styles.getPropertyValue("--bg-base").trim() || (isLight ? "#ffffff" : "#040404");
+  const bgSurface = styles.getPropertyValue("--bg-surface").trim() || (isLight ? "#f6f6f7" : "#0a0a0a");
+  const fgBase = styles.getPropertyValue("--fg-base").trim() || (isLight ? "#0f0f0f" : "#f5f5f3");
+  const fgMuted = styles.getPropertyValue("--fg-muted").trim() || (isLight ? "#565a6e" : "#a9b0c3");
+  const fgSubtle = styles.getPropertyValue("--fg-subtle").trim() || (isLight ? "#848cb3" : "#63697d");
+  const border = styles.getPropertyValue("--border").trim() || (isLight ? "#d0d7de" : "#2a2a2a");
+  const accentBlue = styles.getPropertyValue("--accent-blue").trim() || (isLight ? "#34548a" : "#7aa2f7");
+  const accentRed = styles.getPropertyValue("--accent-red").trim() || (isLight ? "#8c4351" : "#f7768e");
+  const accentYellow = styles.getPropertyValue("--accent-yellow").trim() || (isLight ? "#8f5e15" : "#e0af68");
+
+  monaco.editor.defineTheme(getThemeName(), {
+    base: isLight ? "vs" : "vs-dark",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": bgBase,
+      "editor.foreground": fgBase,
+      "editor.lineHighlightBackground": isLight ? "#ececf1" : "#111111",
+      "editorLineNumber.foreground": fgSubtle,
+      "editorLineNumber.activeForeground": fgBase,
+      "editorCursor.foreground": fgBase,
+      "editor.selectionBackground": isLight ? "#c7dbff" : "#264f78",
+      "editor.inactiveSelectionBackground": isLight ? "#dde8ff" : "#1f3852",
+      "editorIndentGuide.background1": border,
+      "editorIndentGuide.activeBackground1": accentBlue,
+      "editorWhitespace.foreground": fgMuted,
+      "editorError.foreground": accentRed,
+      "editorWarning.foreground": accentYellow,
+      "editorGutter.background": bgBase,
+      "editorWidget.background": bgSurface,
+      "scrollbarSlider.background": isLight ? "#c8ccd8" : "#3b3b3b",
+      "scrollbarSlider.hoverBackground": isLight ? "#aeb5c6" : "#505050",
+      "scrollbarSlider.activeBackground": isLight ? "#8f96a8" : "#646464",
+    },
+  });
+
+  monaco.editor.setTheme(getThemeName());
+}
+
+function buildEditorOptions() {
+  const { fontSize, fontFamily, isCompact } = readEditorMetrics();
+
+  return {
+    automaticLayout: true,
+    fontFamily,
+    fontSize,
+    lineHeight: Math.max(16, Math.round(fontSize * 1.35)),
+    minimap: { enabled: !isCompact },
+    wordWrap: isCompact ? "on" : "off",
+    lineNumbers: isCompact ? "off" : "on",
+    glyphMargin: !isCompact,
+    folding: !isCompact,
+    scrollBeyondLastLine: false,
+    scrollbar: {
+      verticalScrollbarSize: 8,
+      horizontalScrollbarSize: 8,
+      useShadows: false,
+      alwaysConsumeMouseWheel: false,
+    },
+    padding: { top: 12, bottom: 12 },
+    renderWhitespace: "selection",
+    smoothScrolling: true,
+    cursorSmoothCaretAnimation: "on",
+    tabSize: 2,
+    insertSpaces: true,
+    fixedOverflowWidgets: true,
+    overviewRulerLanes: 0,
+    contextmenu: true,
+    mouseWheelZoom: false,
+    theme: getThemeName(),
+    language: "plaintext",
+    readOnly: false,
+  } as const;
+}
+
+function normalizeValue(value: string) {
+  return value.replace(/\r\n/g, "\n");
 }
 
 export function FileEditor({ pageId, filePath }: Props) {
   const { markDirty } = useApp();
-  const [content,  setContent]  = React.useState<string | null>(null);
-  const [loading,  setLoading]  = React.useState(true);
-  const [saving,   setSaving]   = React.useState(false);
-  const [error,    setError]    = React.useState<string | null>(null);
-  const [saveMsg,  setSaveMsg]  = React.useState<string | null>(null);
-  
-  // FIX: State to trigger re-render when theme changes
-  const [themeVersion, setThemeVersion] = React.useState(0);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const editorRef = React.useRef<any>(null);
+  const modelRef = React.useRef<any>(null);
+  const monacoRef = React.useRef<any>(null);
+  const dirtyRef = React.useRef(false);
+  const saveRef = React.useRef<() => Promise<void>>(async () => {});
 
-  // FIX: Watch for theme changes on the HTML tag
-  React.useEffect(() => {
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.attributeName === 'data-theme') {
-          // Force a re-render of extensions
-          setThemeVersion(v => v + 1);
-        }
-      }
-    });
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [dirty, setDirty] = React.useState(false);
+  const [revision, setRevision] = React.useState(0);
+  const [saveState, setSaveState] = React.useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
 
-    observer.observe(document.documentElement, { attributes: true });
-    return () => observer.disconnect();
-  }, []);
+  const fileLabel = getBaseName(filePath);
+  const statusText = loading
+    ? "loading file…"
+    : loadError
+      ? loadError
+      : saveError
+        ? saveError
+        : saving
+          ? "saving…"
+          : saveState === "saved"
+            ? "saved"
+            : saveState === "dirty"
+              ? "not saved"
+              : "idle";
 
-  // Load file on mount
-  React.useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fileApi.read(filePath)
-      .then(res => { setContent(res.content); setLoading(false); })
-      .catch(e  => { setError(e.message); setLoading(false); });
-  }, [filePath]);
+  const saveFile = React.useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor || loading || loadError) return;
 
-  const save = React.useCallback(async () => {
-    if (content === null) return;
     setSaving(true);
+    setSaveError(null);
+    setSaveState("saving");
     try {
-      await fileApi.write(filePath, content);
+      const value = normalizeValue(editor.getValue());
+      await fileApi.write(filePath, value);
+      dirtyRef.current = false;
+      setDirty(false);
       markDirty(pageId, false);
-      setSaveMsg("saved");
-      setTimeout(() => setSaveMsg(null), 1500);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "save failed");
+      setSaveState("saved");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "save failed");
+      setSaveState("error");
     } finally {
       setSaving(false);
     }
-  }, [filePath, pageId, content, markDirty]);
+  }, [filePath, loadError, loading, markDirty, pageId]);
 
-  // Ctrl+S to save
+  saveRef.current = saveFile;
+
   React.useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        save();
+    const editorHost = containerRef.current;
+    if (!editorHost) return;
+
+    let cancelled = false;
+    let themeObserver: MutationObserver | null = null;
+    let viewportQuery: MediaQueryList | null = null;
+    let viewportHandler: ((event: MediaQueryListEvent) => void) | null = null;
+    let resizeHandler: (() => void) | null = null;
+    const disposables: Array<{ dispose: () => void }> = [];
+
+    const disposeEditor = () => {
+      while (disposables.length > 0) {
+        disposables.pop()?.dispose();
       }
+      editorRef.current?.dispose?.();
+      editorRef.current = null;
+      modelRef.current?.dispose?.();
+      modelRef.current = null;
+      monacoRef.current = null;
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [save]);
 
-  const handleChange = (value: string) => {
-    setContent(value);
-    markDirty(pageId, true);
-  };
+    async function init() {
+      setLoading(true);
+      setLoadError(null);
+      setSaveError(null);
+      setSaving(false);
+      setDirty(false);
+      setSaveState("idle");
+      dirtyRef.current = false;
+      markDirty(pageId, false);
+      disposeEditor();
 
-  // Get extensions for CodeMirror - MUST be before early returns to satisfy Rules of Hooks
-  const languageExt = React.useMemo(() => getLanguageExtension(filePath), [filePath]);
-  
-  // FIX: Added themeVersion to dependencies so it updates when theme changes
-  const extensions = React.useMemo(() => {
-    const [currentTheme, currentHighlight] = getCurrentCodeMirrorTheme();
-    const exts = [
-      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-      history(),
-      lineNumbers(),
-      highlightActiveLine(),
-      highlightActiveLineGutter(),
-      bracketMatching(),
-      drawSelection(),
-      dropCursor(),
-      rectangularSelection(),
-      crosshairCursor(),
-      currentTheme,
-      currentHighlight,
-    ];
-    // Add language extension
-    if (languageExt) {
-      exts.push(languageExt);
+      try {
+        const [monaco, file] = await Promise.all([
+          import("monaco-editor/esm/vs/editor/editor.api.js"),
+          fileApi.read(filePath),
+        ]);
+
+        if (cancelled) return;
+
+        monacoRef.current = monaco;
+
+        const languageId = getMonacoLanguageId(filePath);
+        const loadLanguage = LANGUAGE_LOADERS[languageId];
+        if (loadLanguage) {
+          await loadLanguage();
+        }
+
+        if (cancelled) return;
+
+        defineMonacoTheme(monaco);
+
+        const model = monaco.editor.createModel(
+          normalizeValue(file.content),
+          languageId === "plaintext" ? "plaintext" : languageId,
+          monaco.Uri.file(filePath),
+        );
+        modelRef.current = model;
+
+        const editorTarget = editorHost as HTMLDivElement;
+        const editor = monaco.editor.create(editorTarget, {
+          model,
+          ...buildEditorOptions(),
+        });
+        editorRef.current = editor;
+
+        const onChange = editor.onDidChangeModelContent(() => {
+          if (!dirtyRef.current) {
+            dirtyRef.current = true;
+            setDirty(true);
+            setSaveState("dirty");
+            markDirty(pageId, true);
+          }
+        });
+        disposables.push(onChange);
+
+        editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+          () => { void saveRef.current(); },
+        );
+
+        const syncLayout = () => {
+          const monacoInstance = monacoRef.current;
+          if (!editorRef.current || !monacoInstance) return;
+          const metrics = readEditorMetrics();
+          editorRef.current.updateOptions({
+            fontFamily: metrics.fontFamily,
+            fontSize: metrics.fontSize,
+            lineHeight: Math.max(16, Math.round(metrics.fontSize * 1.35)),
+            minimap: { enabled: !metrics.isCompact },
+            wordWrap: metrics.isCompact ? "on" : "off",
+            lineNumbers: metrics.isCompact ? "off" : "on",
+            glyphMargin: !metrics.isCompact,
+            folding: !metrics.isCompact,
+          });
+          defineMonacoTheme(monacoInstance);
+        };
+
+        themeObserver = new MutationObserver(syncLayout);
+        themeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["data-theme", "style"],
+        });
+
+        viewportQuery = window.matchMedia("(max-width: 760px)");
+        viewportHandler = () => syncLayout();
+        resizeHandler = syncLayout;
+        viewportQuery.addEventListener("change", viewportHandler);
+
+        window.addEventListener("resize", resizeHandler);
+        syncLayout();
+        editor.focus();
+        setLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : "failed to load editor");
+          setLoading(false);
+        }
+      }
     }
 
-    return exts;
-  }, [languageExt, filePath, themeVersion]);
+    void init();
 
-  if (loading) {
-    return (
-      <div className="fe-state">
-        <Loader2 size={18} className="reterm-spin" />
-        <span>loading {filePath.split(/[/\\]/).pop()}…</span>
-      </div>
-    );
-  }
+    return () => {
+      cancelled = true;
+      themeObserver?.disconnect();
+      if (viewportQuery && viewportHandler) {
+        viewportQuery.removeEventListener("change", viewportHandler);
+      }
+      if (resizeHandler) {
+        window.removeEventListener("resize", resizeHandler);
+      }
+      disposeEditor();
+    };
+  }, [filePath, markDirty, pageId, revision]);
 
-  if (error && content === null) {
-    return (
-      <div className="fe-state fe-state--error">
-        <AlertCircle size={18} />
-        <span>{error}</span>
-      </div>
-    );
-  }
+  React.useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveRef.current();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   return (
-    <div className="fe-root h-full w-full overflow-hidden">
-      {/* Save indicator */}
-      {(saving || saveMsg || error) && (
-        <div className={`fe-save-bar ${error ? "fe-save-bar--error" : ""}`}>
-          {saving && <><Loader2 size={12} className="reterm-spin" />saving…</>}
-          {saveMsg && <><Save size={12} />{saveMsg}</>}
-          {error && <><AlertCircle size={12} />{error}</>}
+    <div className="fe-root">
+      <div className="fe-toolbar">
+        <div className="fe-toolbar__title" title={filePath}>
+          <span>{fileLabel}</span>
         </div>
-      )}
-      {/* FIX: Added key={themeVersion} to force a hard reset on theme change */}
-      <CodeMirror
-        key={themeVersion}
-        value={content ?? ""}
-        height="100%"
-        extensions={extensions}
-        onChange={handleChange}
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLineGutter: true,
-          highlightSpecialChars: true,
-          foldGutter: true,
-          drawSelection: true,
-          dropCursor: true,
-          allowMultipleSelections: true,
-          indentOnInput: true,
-          syntaxHighlighting: true,
-          bracketMatching: true,
-          closeBrackets: true,
-          autocompletion: true,
-          rectangularSelection: true,
-          crosshairCursor: true,
-          highlightActiveLine: true,
-          highlightSelectionMatches: true,
-          closeBracketsKeymap: true,
-          defaultKeymap: true,
-          searchKeymap: true,
-          historyKeymap: true,
-          foldKeymap: true,
-          completionKeymap: true,
-          lintKeymap: false,
-        }}
-        style={{
-          fontSize: `${getFontSize()}px`,
-        }}
-      />
+        <div className={`fe-toolbar__status ${loadError || saveError || saveState === "error" ? "fe-toolbar__status--error" : saveState === "dirty" ? "fe-toolbar__status--dirty" : saveState === "saved" ? "fe-toolbar__status--saved" : "fe-toolbar__status--idle"}`}>
+          {loading ? <Loader2 size={11} className="reterm-spin" /> : loadError || saveError || saveState === "error" ? <AlertCircle size={11} /> : saveState === "dirty" ? <Save size={11} /> : saveState === "saved" ? <span className="reterm-conn-dot reterm-conn-dot--connected" /> : <span className="reterm-conn-dot reterm-conn-dot--idle" />}
+          <span>{statusText}</span>
+        </div>
+        <button
+          type="button"
+          className="fe-toolbar__button"
+          onClick={() => void saveRef.current()}
+          disabled={loading || saving || !!loadError || !dirty}
+          title="save file"
+        >
+          <Save size={11} />
+          <span>save</span>
+        </button>
+        {loadError && (
+          <button
+            type="button"
+            className="fe-toolbar__button"
+            onClick={() => setRevision(r => r + 1)}
+            title="retry"
+          >
+            <RotateCcw size={11} />
+            <span>retry</span>
+          </button>
+        )}
+      </div>
+
+      <div className="fe-editor" ref={containerRef}>
+        {loading && (
+          <div className="fe-state">
+            <Loader2 size={13} className="reterm-spin" />
+            <span>loading editor…</span>
+          </div>
+        )}
+        {loadError && !loading && (
+          <div className="fe-state fe-state--error">
+            <AlertCircle size={13} />
+            <span>{loadError}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

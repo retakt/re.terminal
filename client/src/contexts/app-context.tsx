@@ -5,43 +5,86 @@
  */
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { getBaseName, getViewerKind, type ProgramKind } from "@/lib/file-routing";
 
-export type PageType = "terminal" | "editor" | "files";
+export type PageType =
+  | "terminal"
+  | "files"
+  | "editor"
+  | "image"
+  | "pdf"
+  | "spreadsheet"
+  | "doc"
+  | ProgramKind;
 
 export interface TerminalPage {
-  id:        string;
-  type:      "terminal";
+  id: string;
+  type: "terminal";
   sessionId: string;
-  title:     string;
-}
-
-export interface EditorPage {
-  id:       string;
-  type:     "editor";
-  filePath: string;
-  title:    string;
-  dirty:    boolean;
+  title: string;
 }
 
 export interface FilesPage {
-  id:    string;
-  type:  "files";
+  id: string;
+  type: "files";
   title: string;
-  dir:   string;
+  dir: string;
 }
 
-export type Page = TerminalPage | EditorPage | FilesPage;
+export interface EditorPage {
+  id: string;
+  type: "editor";
+  filePath: string;
+  title: string;
+  dirty: boolean;
+}
+
+export interface ViewerPageBase {
+  id: string;
+  filePath: string;
+  title: string;
+}
+
+export interface ImagePage extends ViewerPageBase {
+  type: "image";
+}
+
+export interface PdfPage extends ViewerPageBase {
+  type: "pdf";
+}
+
+export interface SpreadsheetPage extends ViewerPageBase {
+  type: "spreadsheet";
+}
+
+export interface DocPage extends ViewerPageBase {
+  type: "doc";
+}
+
+export interface ProgramPage {
+  id: string;
+  type: ProgramKind;
+  title: string;
+}
+
+export type Page = TerminalPage | FilesPage | EditorPage | ImagePage | PdfPage | SpreadsheetPage | DocPage | ProgramPage;
 
 export interface AppContextValue {
-  pages:        Page[];
+  pages: Page[];
   activePageId: string | null;
   openTerminal: (sessionId: string, title: string) => void;
-  openEditor:   (filePath: string, title?: string) => void;
-  openFiles:    (dir?: string) => void;
-  closePage:    (id: string) => void;
-  switchPage:   (id: string) => void;
-  markDirty:    (id: string, dirty: boolean) => void;
-  updateDir:    (id: string, dir: string) => void;
+  openFiles: (dir?: string) => void;
+  openEditor: (filePath: string, title?: string) => void;
+  openImage: (filePath: string, title?: string) => void;
+  openPdf: (filePath: string, title?: string) => void;
+  openSpreadsheet: (filePath: string, title?: string) => void;
+  openDoc: (filePath: string, title?: string) => void;
+  openProgram: (kind: ProgramKind, title?: string) => void;
+  openPath: (filePath: string) => void;
+  closePage: (id: string) => void;
+  switchPage: (id: string) => void;
+  markDirty: (id: string, dirty: boolean) => void;
+  updateDir: (id: string, dir: string) => void;
   setTerminalCloser: (fn: (sessionId: string) => void) => void;
 }
 
@@ -59,7 +102,7 @@ function uid() {
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
-const PAGES_KEY  = "reterm_pages";
+const PAGES_KEY = "reterm_pages";
 const ACTIVE_KEY = "reterm_active";
 
 function loadPages(): Page[] {
@@ -71,7 +114,9 @@ function loadPages(): Page[] {
     return pages
       .filter(p => p.type !== "terminal")
       .map(p => p.type === "editor" ? { ...p, dirty: false } : p);
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function savePages(pages: Page[], activeId: string | null) {
@@ -81,17 +126,36 @@ function savePages(pages: Page[], activeId: string | null) {
     localStorage.setItem(PAGES_KEY, JSON.stringify(toSave));
     if (activeId) localStorage.setItem(ACTIVE_KEY, activeId);
     else localStorage.removeItem(ACTIVE_KEY);
-  } catch (_) {}
+  } catch {}
 }
 
 function loadActiveId(): string | null {
-  try { return localStorage.getItem(ACTIVE_KEY); } catch { return null; }
+  try {
+    return localStorage.getItem(ACTIVE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+const PROGRAM_TITLES: Record<ProgramKind, string> = {
+  browser: "inside browser",
+  chat: "ai chat",
+  forum: "forum",
+  community: "community",
+};
+
+function viewerTitle(filePath: string, title?: string) {
+  return title || getBaseName(filePath);
+}
+
+function filePageTitle(filePath: string, title?: string) {
+  return title || getBaseName(filePath);
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [pages,        setPages]        = useState<Page[]>(() => loadPages());
+  const [pages, setPages] = useState<Page[]>(() => loadPages());
   const [activePageId, setActivePageId] = useState<string | null>(() => loadActiveId());
 
   // Callback injected by TerminalPage to kill PTY when terminal tab closes
@@ -104,19 +168,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const openTerminal = useCallback((sessionId: string, title: string) => {
     setPages(prev => {
       const existing = prev.find(p => p.type === "terminal" && p.sessionId === sessionId);
-      if (existing) { setActivePageId(existing.id); return prev; }
+      if (existing) {
+        setActivePageId(existing.id);
+        return prev;
+      }
       const page: TerminalPage = { id: uid(), type: "terminal", sessionId, title };
-      setActivePageId(page.id);
-      return [...prev, page];
-    });
-  }, []);
-
-  const openEditor = useCallback((filePath: string, title?: string) => {
-    setPages(prev => {
-      const existing = prev.find(p => p.type === "editor" && p.filePath === filePath);
-      if (existing) { setActivePageId(existing.id); return prev; }
-      const name = title || filePath.split(/[/\\]/).pop() || filePath;
-      const page: EditorPage = { id: uid(), type: "editor", filePath, title: name, dirty: false };
       setActivePageId(page.id);
       return [...prev, page];
     });
@@ -125,11 +181,146 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const openFiles = useCallback((dir = "/") => {
     setPages(prev => {
       // Allow multiple files pages - always create a new one
-      const page: FilesPage = { id: uid(), type: "files", title: `files ${prev.filter(p => p.type === "files").length + 1}`, dir };
+      const page: FilesPage = {
+        id: uid(),
+        type: "files",
+        title: `files ${prev.filter(p => p.type === "files").length + 1}`,
+        dir,
+      };
       setActivePageId(page.id);
       return [...prev, page];
     });
   }, []);
+
+  const openEditor = useCallback((filePath: string, title?: string) => {
+    setPages(prev => {
+      const existing = prev.find(p => p.type === "editor" && p.filePath === filePath);
+      if (existing) {
+        setActivePageId(existing.id);
+        return prev;
+      }
+      const page: EditorPage = {
+        id: uid(),
+        type: "editor",
+        filePath,
+        title: filePageTitle(filePath, title),
+        dirty: false,
+      };
+      setActivePageId(page.id);
+      return [...prev, page];
+    });
+  }, []);
+
+  const openImage = useCallback((filePath: string, title?: string) => {
+    setPages(prev => {
+      const existing = prev.find(p => p.type === "image" && p.filePath === filePath);
+      if (existing) {
+        setActivePageId(existing.id);
+        return prev;
+      }
+      const page: ImagePage = {
+        id: uid(),
+        type: "image",
+        filePath,
+        title: viewerTitle(filePath, title),
+      };
+      setActivePageId(page.id);
+      return [...prev, page];
+    });
+  }, []);
+
+  const openPdf = useCallback((filePath: string, title?: string) => {
+    setPages(prev => {
+      const existing = prev.find(p => p.type === "pdf" && p.filePath === filePath);
+      if (existing) {
+        setActivePageId(existing.id);
+        return prev;
+      }
+      const page: PdfPage = {
+        id: uid(),
+        type: "pdf",
+        filePath,
+        title: viewerTitle(filePath, title),
+      };
+      setActivePageId(page.id);
+      return [...prev, page];
+    });
+  }, []);
+
+  const openSpreadsheet = useCallback((filePath: string, title?: string) => {
+    setPages(prev => {
+      const existing = prev.find(p => p.type === "spreadsheet" && p.filePath === filePath);
+      if (existing) {
+        setActivePageId(existing.id);
+        return prev;
+      }
+      const page: SpreadsheetPage = {
+        id: uid(),
+        type: "spreadsheet",
+        filePath,
+        title: viewerTitle(filePath, title),
+      };
+      setActivePageId(page.id);
+      return [...prev, page];
+    });
+  }, []);
+
+  const openDoc = useCallback((filePath: string, title?: string) => {
+    setPages(prev => {
+      const existing = prev.find(p => p.type === "doc" && p.filePath === filePath);
+      if (existing) {
+        setActivePageId(existing.id);
+        return prev;
+      }
+      const page: DocPage = {
+        id: uid(),
+        type: "doc",
+        filePath,
+        title: viewerTitle(filePath, title),
+      };
+      setActivePageId(page.id);
+      return [...prev, page];
+    });
+  }, []);
+
+  const openProgram = useCallback((kind: ProgramKind, title?: string) => {
+    setPages(prev => {
+      const existing = prev.find(p => p.type === kind);
+      if (existing) {
+        setActivePageId(existing.id);
+        return prev;
+      }
+      const page: ProgramPage = {
+        id: uid(),
+        type: kind,
+        title: title || PROGRAM_TITLES[kind],
+      };
+      setActivePageId(page.id);
+      return [...prev, page];
+    });
+  }, []);
+
+  const openPath = useCallback((filePath: string) => {
+    const kind = getViewerKind(filePath);
+    const title = getBaseName(filePath);
+    switch (kind) {
+      case "image":
+        openImage(filePath, title);
+        break;
+      case "pdf":
+        openPdf(filePath, title);
+        break;
+      case "spreadsheet":
+        openSpreadsheet(filePath, title);
+        break;
+      case "doc":
+        openDoc(filePath, title);
+        break;
+      default:
+        openEditor(filePath, title);
+        break;
+    }
+  }, [openDoc, openEditor, openImage, openPdf, openSpreadsheet]);
 
   const closePage = useCallback((id: string) => {
     setPages(prev => {
@@ -138,7 +329,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (page?.type === "terminal") {
         onCloseTerminalRef.current?.(page.sessionId);
       }
-      const idx  = prev.findIndex(p => p.id === id);
+      const idx = prev.findIndex(p => p.id === id);
       const next = prev.filter(p => p.id !== id);
       setActivePageId(cur => {
         if (cur !== id) return cur;
@@ -171,9 +362,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      pages, activePageId,
-      openTerminal, openEditor, openFiles,
-      closePage, switchPage, markDirty, updateDir,
+      pages,
+      activePageId,
+      openTerminal,
+      openFiles,
+      openEditor,
+      openImage,
+      openPdf,
+      openSpreadsheet,
+      openDoc,
+      openProgram,
+      openPath,
+      closePage,
+      switchPage,
+      markDirty,
+      updateDir,
       setTerminalCloser,
     }}>
       {children}
