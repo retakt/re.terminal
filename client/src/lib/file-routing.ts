@@ -6,6 +6,62 @@ const IMAGE_EXTS = new Set(["bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"]);
 const PDF_EXTS = new Set(["pdf"]);
 const SPREADSHEET_EXTS = new Set(["csv", "xls", "xlsx"]);
 const DOC_EXTS = new Set(["doc", "docx"]);
+const FILE_TYPE_LABELS: Record<string, string> = {
+  // Code
+  c: "C",
+  cc: "C++",
+  cpp: "C++",
+  cxx: "C++",
+  h: "H",
+  hpp: "H++",
+  go: "GO",
+  java: "JAVA",
+  js: "JS",
+  jsx: "JSX",
+  mjs: "JS",
+  cjs: "JS",
+  php: "PHP",
+  py: "PY",
+  rb: "RB",
+  rs: "RS",
+  sh: "SH",
+  bash: "SH",
+  zsh: "SH",
+  fish: "SH",
+  sql: "SQL",
+  ts: "TS",
+  tsx: "TSX",
+  xml: "XML",
+  yaml: "YAML",
+  yml: "YAML",
+  html: "HTML",
+  htm: "HTML",
+  css: "CSS",
+  json: "JSON",
+  jsonc: "JSON",
+  md: "MD",
+  markdown: "MD",
+  txt: "TXT",
+  ini: "INI",
+  toml: "TOML",
+  env: "ENV",
+  lock: "LOCK",
+  // Data and documents
+  csv: "CSV",
+  xls: "XLS",
+  xlsx: "XLSX",
+  pdf: "PDF",
+  doc: "DOC",
+  docx: "DOCX",
+  // Media
+  bmp: "BMP",
+  gif: "GIF",
+  jpeg: "JPG",
+  jpg: "JPG",
+  png: "PNG",
+  svg: "SVG",
+  webp: "WEBP",
+};
 
 export function getBaseName(filePath: string) {
   return filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
@@ -29,6 +85,22 @@ export function getViewerKind(filePath: string): ViewerKind {
 
 export function getViewerTitle(filePath: string) {
   return getBaseName(filePath);
+}
+
+export function getFileTypeLabel(filePath: string) {
+  const baseName = getBaseName(filePath).toLowerCase();
+  if (baseName === "dockerfile") return "DOCKERFILE";
+  if (baseName === "makefile") return "MAKEFILE";
+  if (baseName.startsWith(".env")) return "ENV";
+  if (baseName === ".gitignore") return "GITIGNORE";
+  if (baseName === ".gitattributes") return "GITATTR";
+  if (baseName === "readme" || baseName.startsWith("readme.")) return "README";
+  if (baseName === "license") return "LICENSE";
+  if (baseName.startsWith("changelog")) return "CHANGELOG";
+
+  const ext = getFileExtension(filePath);
+  if (!ext) return "FILE";
+  return FILE_TYPE_LABELS[ext] ?? ext.toUpperCase();
 }
 
 export function getMonacoLanguageId(filePath: string) {

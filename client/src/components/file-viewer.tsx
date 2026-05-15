@@ -7,17 +7,21 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import {
   Check,
   Copy,
-  ExternalLink,
+  ChevronLeft,
+  Ellipsis,
   FileCode,
   FileIcon,
   FolderIcon,
   FolderOpenIcon,
+  Pencil,
+  RotateCcw,
+  Save,
+  X,
 } from "lucide-react";
 import {
   createContext,
@@ -30,9 +34,11 @@ import {
 } from "react";
 import { toast } from "sonner";
 import * as monaco from "monaco-editor";
-import { getMonacoLanguageId } from "@/lib/file-routing";
+import { getFileTypeLabel, getMonacoLanguageId } from "@/lib/file-routing";
+import { fileApi } from "@/lib/file-api";
 
 export interface ApiComponent {
+  author?: string;
   name: string;
   version: string;
   files: Array<{
@@ -65,19 +71,34 @@ const useTree = () => {
   return context;
 };
 
+const VIEWER_FONT_SIZE = 13;
+const VIEWER_LINE_HEIGHT = 19;
+
 // --- Monaco Editor Viewer ---
 function MonacoViewer({
   code,
   filePath,
   onChange,
+  onSave,
 }: {
   code: string;
   filePath: string;
   onChange?: (value: string) => void;
+  onSave?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof monaco | null>(null);
+  const onChangeRef = useRef(onChange);
+  const onSaveRef = useRef(onSave);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -124,16 +145,23 @@ function MonacoViewer({
 
         // Define custom theme
         const isLight = document.documentElement.getAttribute("data-theme") === "light";
+        const rootStyle = getComputedStyle(document.documentElement);
+        const bgBase = rootStyle.getPropertyValue("--bg-base").trim() || (isLight ? "#ffffff" : "#0d1117");
+        const fgBase = rootStyle.getPropertyValue("--fg-base").trim() || (isLight ? "#0f0f0f" : "#f5f5f3");
+        const bgHighlight = rootStyle.getPropertyValue("--bg-highlight").trim() || (isLight ? "#ececf1" : "#161b22");
+        const fgSubtle = rootStyle.getPropertyValue("--fg-subtle").trim() || (isLight ? "#848cb3" : "#6e7681");
+        const accentCyan = rootStyle.getPropertyValue("--accent-cyan").trim() || (isLight ? "#0f4b6e" : "#7dcfff");
+
         monaco.editor.defineTheme("file-viewer-theme", {
           base: isLight ? "vs" : "vs-dark",
           inherit: true,
           rules: [],
           colors: {
-            "editor.background": isLight ? "#ffffff" : "#1e1e1e",
-            "editor.foreground": isLight ? "#0f0f0f" : "#d4d4d4",
-            "editor.lineHighlightBackground": isLight ? "#ececf1" : "#2a2a2a",
-            "editorLineNumber.foreground": isLight ? "#848cb3" : "#6e7681",
-            "editorCursor.foreground": isLight ? "#0f0f0f" : "#aeafad",
+            "editor.background": bgBase,
+            "editor.foreground": fgBase,
+            "editor.lineHighlightBackground": bgHighlight,
+            "editorLineNumber.foreground": fgSubtle,
+            "editorCursor.foreground": accentCyan,
           },
         });
 
@@ -144,12 +172,15 @@ function MonacoViewer({
           automaticLayout: true,
           readOnly: !onChange,
           minimap: { enabled: false },
-          fontSize: 13,
-          lineHeight: 20,
+          fontSize: VIEWER_FONT_SIZE,
+          lineHeight: VIEWER_LINE_HEIGHT,
+          lineNumbersMinChars: 2,
+          lineDecorationsWidth: 0,
+          glyphMargin: false,
           scrollBeyondLastLine: false,
           scrollbar: {
-            verticalScrollbarSize: 8,
-            horizontalScrollbarSize: 8,
+            verticalScrollbarSize: 0,
+            horizontalScrollbarSize: 0,
             useShadows: false,
           },
           padding: { top: 8, bottom: 8 },
@@ -162,11 +193,14 @@ function MonacoViewer({
 
         editorRef.current = editor;
 
-        if (onChange) {
-          editor.onDidChangeModelContent(() => {
-            onChange(editor.getValue());
-          });
-        }
+        editor.onDidChangeModelContent(() => {
+          onChangeRef.current?.(editor.getValue());
+        });
+
+        editor.addCommand(
+          monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
+          () => onSaveRef.current?.()
+        );
       } catch (error) {
         console.error("Failed to initialize Monaco editor:", error);
       }
@@ -182,6 +216,10 @@ function MonacoViewer({
     };
   }, [filePath]);
 
+  useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly: !onChange });
+  }, [onChange]);
+
   // Update content when code changes
   useEffect(() => {
     if (editorRef.current && code !== editorRef.current.getValue()) {
@@ -196,65 +234,180 @@ function MonacoViewer({
   );
 }
 
+function useIsCompactFileViewer() {
+  const getIsCompact = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 640px)").matches;
+
+  const [isCompact, setIsCompact] = useState(getIsCompact);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const query = window.matchMedia("(max-width: 640px)");
+    const handleChange = () => setIsCompact(query.matches);
+
+    handleChange();
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
+
+  return isCompact;
+}
+
 // --- File Header ---
 function FileHeader({
   file,
   onCopy,
   copied,
+  onToggleTree,
+  isTreeOpen = false,
+  onEdit,
+  onSave,
+  onRevert,
+  isDirty = false,
+  isSaving = false,
 }: {
   file: { path: string; content?: string };
   onCopy: () => void;
   copied: boolean;
+  onToggleTree?: () => void;
+  isTreeOpen?: boolean;
+  onEdit?: () => void;
+  onSave?: () => void;
+  onRevert?: () => void;
+  isDirty?: boolean;
+  isSaving?: boolean;
 }) {
-  const getFileType = (filePath: string) => {
-    if (filePath.endsWith(".tsx")) return "TSX";
-    if (filePath.endsWith(".ts")) return "TS";
-    if (filePath.endsWith(".js")) return "JS";
-    if (filePath.endsWith(".jsx")) return "JSX";
-    if (filePath.endsWith(".md")) return "MD";
-    if (filePath.endsWith(".css")) return "CSS";
-    if (filePath.endsWith(".json")) return "JSON";
-    return "TXT";
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [menuOpen]);
+
+  const runMenuAction = (action?: () => void) => {
+    setMenuOpen(false);
+    action?.();
   };
+
   return (
-    <div className="flex items-center justify-between px-3 py-1.5 border-b">
-      <div className="flex items-center gap-2 min-w-0">
-        <Badge variant="outline" className="text-xs">
-          {getFileType(file.path)}
+    <div className="file-viewer-header flex items-center justify-between px-2.5 py-1 border-b">
+      <div className="flex items-center gap-1.5 min-w-0">
+        {onToggleTree && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleTree}
+            className="file-viewer-tree-toggle file-viewer-action h-7 w-7 p-0"
+            aria-label={isTreeOpen ? "close file tree" : "open file tree"}
+            aria-expanded={isTreeOpen}
+            title={isTreeOpen ? "close files" : "files"}
+          >
+            {isTreeOpen ? (
+              <ChevronLeft className="h-4 w-4" />
+            ) : (
+              <FolderOpenIcon className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        )}
+        <Badge variant="outline" className="file-viewer-type-badge text-xs">
+          {getFileTypeLabel(file.path)}
         </Badge>
-        <span className="text-xs text-oklch(0.556 0 0) truncate dark:text-oklch(0.708 0 0)">
+        <span className="file-viewer-path text-xs truncate">
           {file.path}
         </span>
+        {isDirty && (
+          <span
+            className="file-viewer-dirty-dot"
+            aria-label="unsaved changes"
+            title="unsaved changes"
+          />
+        )}
       </div>
-      <div className="flex gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCopy}
-          className="cursor-pointer h-8 w-8 p-0"
-          title="Copy file content"
-        >
-          {copied ? (
-            <Check className="h-3 w-3" />
-          ) : (
-            <Copy className="h-3 w-3" />
-          )}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className="h-8 w-8 p-0"
-          title="View on GitHub"
-        >
-          <a
-            href="https://21st.dev/bankkroll/file-viewer/default"
-            target="_blank"
-            rel="noopener noreferrer"
+      <div className="file-viewer-actions flex gap-1">
+        {onSave && isDirty && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSave}
+            disabled={isSaving}
+            className="file-viewer-action h-7 w-7 p-0"
+            title="save"
           >
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </Button>
+            <Save className="h-3 w-3" />
+          </Button>
+        )}
+        <div className="file-viewer-menu" ref={menuRef}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMenuOpen((open) => !open)}
+            className="file-viewer-action h-7 w-7 p-0"
+            aria-label="file actions"
+            aria-expanded={menuOpen}
+            title="file actions"
+          >
+            <Ellipsis className="h-3 w-3" />
+          </Button>
+          {menuOpen && (
+            <div className="file-viewer-menu-popover" role="menu">
+              {onEdit && (
+                <button
+                  type="button"
+                  className="file-viewer-menu-item"
+                  role="menuitem"
+                  onClick={() => runMenuAction(onEdit)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  <span>edit</span>
+                </button>
+              )}
+              {onSave && (
+                <button
+                  type="button"
+                  className="file-viewer-menu-item"
+                  role="menuitem"
+                  onClick={() => runMenuAction(onSave)}
+                  disabled={!isDirty || isSaving}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  <span>{isSaving ? "saving" : "save"}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="file-viewer-menu-item"
+                role="menuitem"
+                onClick={() => runMenuAction(onCopy)}
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                <span>{copied ? "copied" : "copy"}</span>
+              </button>
+              {onRevert && (
+                <button
+                  type="button"
+                  className="file-viewer-menu-item"
+                  role="menuitem"
+                  onClick={() => runMenuAction(onRevert)}
+                  disabled={!isDirty || isSaving}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>revert</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -268,7 +421,7 @@ function TreeIndicator({
   return (
     <div
       className={cn(
-        "absolute left-1.5 h-full w-px rounded-md bg-oklch(0.97 0 0) py-3 transition-colors hover:bg-slate-300 rtl:right-1.5 dark:bg-oklch(0.269 0 0)",
+        "file-tree-indicator absolute h-full w-px transition-colors",
         className
       )}
       {...props}
@@ -304,8 +457,8 @@ function Folder({
     >
       <AccordionPrimitive.Trigger
         className={cn(
-          "flex items-center gap-1 rounded-md text-sm px-2 py-1 hover:bg-oklch(0.97 0 0) hover:text-oklch(0.205 0 0) cursor-pointer dark:hover:bg-oklch(0.269 0 0) dark:hover:text-oklch(0.985 0 0)",
-          isSelect && isSelectable && "bg-oklch(0.97 0 0) dark:bg-oklch(0.269 0 0)",
+          "file-tree-row flex items-center gap-1 rounded-md text-[13px] px-2 py-1 cursor-pointer",
+          isSelect && isSelectable && "file-tree-row--selected",
           !isSelectable && "opacity-50 cursor-not-allowed",
           className
         )}
@@ -317,7 +470,7 @@ function Folder({
           : closeIcon ?? <FolderIcon className="h-4 w-4" />}
         <span className="truncate">{element}</span>
       </AccordionPrimitive.Trigger>
-      <AccordionPrimitive.Content className="relative h-full overflow-hidden text-sm">
+      <AccordionPrimitive.Content className="relative h-full overflow-hidden text-[13px]">
         {indicator && <TreeIndicator />}
         <AccordionPrimitive.Root
           type="multiple"
@@ -355,11 +508,11 @@ function File({
     <button
       disabled={!isSelectable}
       className={cn(
-        "flex w-fit items-center gap-1 rounded-md px-2 py-1 text-sm transition-colors cursor-pointer",
-        isSelected && isSelectable && "bg-oklch(0.97 0 0) dark:bg-oklch(0.269 0 0)",
+        "file-tree-row flex w-fit items-center gap-1 rounded-md px-2 py-1 text-[13px] transition-colors cursor-pointer",
+        isSelected && isSelectable && "file-tree-row--selected",
         !isSelectable
           ? "opacity-50 cursor-not-allowed"
-          : "hover:bg-oklch(0.97 0 0) hover:text-oklch(0.205 0 0) dark:hover:bg-oklch(0.269 0 0) dark:hover:text-oklch(0.985 0 0)",
+          : "",
         className
       )}
       onClick={() => {
@@ -373,7 +526,6 @@ function File({
   );
 }
 function Tree({
-  elements,
   initialSelectedId,
   initialExpandedItems,
   children,
@@ -383,7 +535,6 @@ function Tree({
   closeIcon,
   dir = "ltr",
 }: {
-  elements?: TreeViewElement[];
   initialSelectedId?: string;
   initialExpandedItems?: string[];
   children: React.ReactNode;
@@ -399,22 +550,6 @@ function Tree({
   const [expandedItems, setExpandedItems] = useState<string[] | undefined>(
     initialExpandedItems
   );
-  const getAllExpandableItems = useCallback(
-    (elements?: TreeViewElement[]): string[] => {
-      const expandableItems: string[] = [];
-      const traverse = (items: TreeViewElement[]) => {
-        items.forEach((item) => {
-          if (item.children?.length) {
-            expandableItems.push(item.id);
-            traverse(item.children);
-          }
-        });
-      };
-      if (elements) traverse(elements);
-      return expandableItems;
-    },
-    []
-  );
   const selectItem = useCallback((id: string) => setSelectedId(id), []);
   const handleExpand = useCallback((id: string) => {
     setExpandedItems((prev) => {
@@ -422,9 +557,6 @@ function Tree({
       return [...(prev ?? []), id];
     });
   }, []);
-  useEffect(() => {
-    if (elements) setExpandedItems(getAllExpandableItems(elements));
-  }, [elements, getAllExpandableItems]);
   return (
     <TreeContext.Provider
       value={{
@@ -499,36 +631,58 @@ function FileTree({
   selectedFile,
   onFileSelect,
   component,
+  onCloseTree,
 }: {
   tree: TreeViewElement[];
   selectedFile?: string;
   onFileSelect: (file: string) => void;
   component: ApiComponent;
+  onCloseTree?: () => void;
 }) {
-  const allExpandableItems = useMemo(() => {
-    const expandableItems: string[] = [];
-    const traverse = (elements: TreeViewElement[]) => {
-      elements.forEach((element) => {
-        if (element.children?.length) {
-          expandableItems.push(element.id);
-          traverse(element.children);
-        }
-      });
-    };
-    traverse(tree);
-    return expandableItems;
-  }, [tree]);
+  const initialExpandedItems = useMemo(() => {
+    const targetPath = selectedFile ?? component.files[0]?.path;
+    if (!targetPath) return [];
+
+    const normalized = targetPath.replace(/\\/g, "/");
+    const parts = normalized.split("/").filter(Boolean);
+    const expanded: string[] = [];
+
+    for (let i = 1; i < parts.length; i += 1) {
+      expanded.push(parts.slice(0, i).join("/"));
+    }
+
+    return expanded;
+  }, [component.files, selectedFile]);
+  const treeKey = useMemo(
+    () => initialExpandedItems.join("\u0000") || "root",
+    [initialExpandedItems]
+  );
   return (
-    <div className="w-full h-full border-r">
-      <div className="p-3 border-b flex items-center gap-2">
-        <FileCode className="h-4 w-4" />
-        <span className="text-sm font-medium">{component.name} {component.version}</span>
+    <div className="file-viewer-tree w-full h-full min-h-0 border-r flex flex-col">
+      <div className="file-viewer-tree-header px-3 py-2 border-b flex items-center justify-between gap-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <FileCode className="h-3.5 w-3.5" />
+          <span className="text-[13px] font-medium">{component.name} {component.version}</span>
+        </div>
+        {onCloseTree && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCloseTree}
+            className="file-viewer-tree-close file-viewer-action h-7 w-7 p-0"
+            aria-label="close file tree"
+            title="close files"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        )}
       </div>
-      <ScrollArea className="h-96 lg:h-[calc(100vh-300px)]">
+      <div className="file-viewer-tree-scroll flex-1 min-h-0">
         <div className="p-2">
           <Tree
-            elements={tree}
-            initialExpandedItems={allExpandableItems}
+            key={treeKey}
+            initialExpandedItems={initialExpandedItems}
             initialSelectedId={selectedFile}
             indicator
           >
@@ -542,7 +696,7 @@ function FileTree({
             ))}
           </Tree>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
@@ -550,14 +704,26 @@ function FileTree({
 // --- Main Component ---
 export default function ComponentFileViewer({
   component,
+  initialSelectedFile,
 }: {
   component: ApiComponent;
+  initialSelectedFile?: string;
 }) {
   const [selectedFile, setSelectedFile] = useState<string | undefined>(
-    undefined
+    initialSelectedFile
   );
   const [copied, setCopied] = useState(false);
-  const files = component.files.filter((f) => f.content);
+  const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
+  const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
+  const [fileContents, setFileContents] = useState<Record<string, string>>({});
+  const [savedContents, setSavedContents] = useState<Record<string, string>>({});
+  const [dirtyPaths, setDirtyPaths] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const isCompact = useIsCompactFileViewer();
+  const files = useMemo(
+    () => component.files.filter((f) => f.content !== undefined),
+    [component.files]
+  );
   // Build tree structure
   const tree = useMemo(() => {
     const root: Record<string, any> = {};
@@ -586,12 +752,102 @@ export default function ComponentFileViewer({
       );
     return toArray(root);
   }, [files]);
-  const selected = files.find((f) => f.path === selectedFile) || files[0];
+  const selectedBase = files.find((f) => f.path === selectedFile) || files[0];
+  const selected = selectedBase
+    ? {
+        ...selectedBase,
+        content: fileContents[selectedBase.path] ?? selectedBase.content ?? "",
+      }
+    : undefined;
+  const selectedPath = selected?.path;
+  const selectedContent = selected?.content ?? "";
+  const isDirty = selectedPath ? !!dirtyPaths[selectedPath] : false;
+
   useEffect(() => {
-    if (!selectedFile && files.length > 0) {
-      setSelectedFile(files[0].path);
+    const nextContents = Object.fromEntries(
+      files.map((file) => [file.path, file.content ?? ""])
+    );
+    setFileContents(nextContents);
+    setSavedContents(nextContents);
+    setDirtyPaths({});
+  }, [files]);
+
+  useEffect(() => {
+    if (files.length === 0) {
+      if (selectedFile) setSelectedFile(undefined);
+      return;
     }
-  }, [files, selectedFile]);
+
+    const hasSelected = selectedFile
+      ? files.some((file) => file.path === selectedFile)
+      : false;
+
+    if (!hasSelected) {
+      const fallback =
+        initialSelectedFile && files.some((file) => file.path === initialSelectedFile)
+          ? initialSelectedFile
+          : files[0].path;
+      setSelectedFile(fallback);
+    }
+  }, [files, initialSelectedFile, selectedFile]);
+  useEffect(() => {
+    if (!isCompact) setMobileTreeOpen(false);
+  }, [isCompact]);
+  useEffect(() => {
+    if (!isCompact) setMobileEditorOpen(false);
+  }, [isCompact]);
+  useEffect(() => {
+    if (!mobileTreeOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileTreeOpen(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileTreeOpen]);
+  const handleSelectFile = useCallback(
+    (filePath: string) => {
+      setSelectedFile(filePath);
+      if (isCompact) setMobileTreeOpen(false);
+    },
+    [isCompact]
+  );
+  const handleContentChange = useCallback(
+    (value: string) => {
+      if (!selectedPath) return;
+      setFileContents((prev) => ({ ...prev, [selectedPath]: value }));
+      setDirtyPaths((prev) => ({
+        ...prev,
+        [selectedPath]: value !== (savedContents[selectedPath] ?? ""),
+      }));
+    },
+    [savedContents, selectedPath]
+  );
+  const handleSave = useCallback(async () => {
+    if (!selectedPath || isSaving) return;
+
+    const content = fileContents[selectedPath] ?? "";
+    setIsSaving(true);
+
+    try {
+      await fileApi.write(selectedPath, content);
+      setSavedContents((prev) => ({ ...prev, [selectedPath]: content }));
+      setDirtyPaths((prev) => ({ ...prev, [selectedPath]: false }));
+      toast.success("file saved");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "failed to save file");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [fileContents, isSaving, selectedPath]);
+  const handleRevert = useCallback(() => {
+    if (!selectedPath) return;
+
+    const saved = savedContents[selectedPath] ?? "";
+    setFileContents((prev) => ({ ...prev, [selectedPath]: saved }));
+    setDirtyPaths((prev) => ({ ...prev, [selectedPath]: false }));
+  }, [savedContents, selectedPath]);
   const handleCopy = () => {
     if (selected?.content) {
       navigator.clipboard.writeText(selected.content);
@@ -600,32 +856,144 @@ export default function ComponentFileViewer({
       setTimeout(() => setCopied(false), 2000);
     }
   };
+  const handleMobileEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      void handleSave();
+    }
+  };
+
+  if (isCompact) {
+    return (
+      <div
+        className={cn(
+          "component-file-viewer component-file-viewer--mobile h-full w-full border overflow-hidden",
+          mobileTreeOpen && "component-file-viewer--tree-open"
+        )}
+      >
+        <button
+          type="button"
+          className="file-viewer-mobile-backdrop"
+          aria-label="close file tree"
+          onClick={() => setMobileTreeOpen(false)}
+        />
+        <aside className="file-viewer-mobile-drawer" aria-hidden={!mobileTreeOpen}>
+          <FileTree
+            tree={tree}
+            selectedFile={selectedFile}
+            onFileSelect={handleSelectFile}
+            component={component}
+            onCloseTree={() => setMobileTreeOpen(false)}
+          />
+        </aside>
+        {selected && mobileEditorOpen && (
+          <div className="file-viewer-mobile-edit">
+            <div className="file-viewer-mobile-edit-header">
+              <button
+                type="button"
+                className="file-viewer-mobile-edit-icon"
+                onClick={() => setMobileEditorOpen(false)}
+                aria-label="close editor"
+                title="close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <span className="file-viewer-mobile-edit-title">{selected.path}</span>
+              <div className="file-viewer-mobile-edit-actions">
+                <button
+                  type="button"
+                  className="file-viewer-mobile-edit-icon"
+                  onClick={handleRevert}
+                  disabled={!isDirty || isSaving}
+                  aria-label="revert changes"
+                  title="revert"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="file-viewer-mobile-edit-save"
+                  onClick={handleSave}
+                  disabled={!isDirty || isSaving}
+                >
+                  {isSaving ? "saving" : "save"}
+                </button>
+              </div>
+            </div>
+            <textarea
+              className="file-viewer-mobile-textarea"
+              value={selectedContent}
+              onChange={(event) => handleContentChange(event.currentTarget.value)}
+              onKeyDown={handleMobileEditorKeyDown}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+            />
+          </div>
+        )}
+        <section className="file-viewer-mobile-editor">
+          {selected && (
+            <>
+              <FileHeader
+                file={selected}
+                onCopy={handleCopy}
+                copied={copied}
+                onToggleTree={() => setMobileTreeOpen((open) => !open)}
+                isTreeOpen={mobileTreeOpen}
+                onEdit={() => {
+                  setMobileTreeOpen(false);
+                  setMobileEditorOpen(true);
+                }}
+                onSave={handleSave}
+                onRevert={handleRevert}
+                isDirty={isDirty}
+                isSaving={isSaving}
+              />
+              <div className="flex-1 overflow-hidden">
+                <MonacoViewer
+                  code={selectedContent}
+                  filePath={selected.path}
+                />
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    );
+  }
+
   return (
     <ResizablePanelGroup
-      direction="horizontal"
-      className="min-h-[600px] rounded-lg border border-oklch(0.922 0 0) overflow-hidden dark:border-oklch(1 0 0 / 10%)"
+      orientation="horizontal"
+      className="component-file-viewer h-full w-full border overflow-hidden"
     >
-      <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+      <ResizablePanel defaultSize="220px" minSize="150px" maxSize="300px">
         <FileTree
           tree={tree}
           selectedFile={selectedFile}
-          onFileSelect={setSelectedFile}
+          onFileSelect={handleSelectFile}
           component={component}
         />
       </ResizablePanel>
-      <ResizableHandle withHandle />
-      <ResizablePanel defaultSize={75} minSize={40}>
+      <ResizableHandle className="file-viewer-separator" />
+      <ResizablePanel minSize="40%">
         {selected && (
           <div className="h-full flex flex-col">
             <FileHeader
               file={selected}
               onCopy={handleCopy}
               copied={copied}
+              onSave={handleSave}
+              onRevert={handleRevert}
+              isDirty={isDirty}
+              isSaving={isSaving}
             />
             <div className="flex-1 overflow-hidden">
               <MonacoViewer
-                code={selected.content || ""}
+                code={selectedContent}
                 filePath={selected.path}
+                onChange={handleContentChange}
+                onSave={handleSave}
               />
             </div>
           </div>

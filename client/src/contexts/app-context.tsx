@@ -36,7 +36,6 @@ export interface EditorPage {
   type: "editor";
   filePath: string;
   title: string;
-  dirty: boolean;
 }
 
 export interface ViewerPageBase {
@@ -83,7 +82,6 @@ export interface AppContextValue {
   openPath: (filePath: string) => void;
   closePage: (id: string) => void;
   switchPage: (id: string) => void;
-  markDirty: (id: string, dirty: boolean) => void;
   updateDir: (id: string, dir: string) => void;
   setTerminalCloser: (fn: (sessionId: string) => void) => void;
 }
@@ -110,10 +108,7 @@ function loadPages(): Page[] {
     const raw = localStorage.getItem(PAGES_KEY);
     if (!raw) return [];
     const pages = JSON.parse(raw) as Page[];
-    // Strip dirty flag and terminal pages (terminals restored from server)
-    return pages
-      .filter(p => p.type !== "terminal")
-      .map(p => p.type === "editor" ? { ...p, dirty: false } : p);
+    return pages.filter(p => p.type !== "terminal");
   } catch {
     return [];
   }
@@ -204,7 +199,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         type: "editor",
         filePath,
         title: filePageTitle(filePath, title),
-        dirty: false,
       };
       setActivePageId(page.id);
       return [...prev, page];
@@ -344,12 +338,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setActivePageId(id);
   }, []);
 
-  const markDirty = useCallback((id: string, dirty: boolean) => {
-    setPages(prev => prev.map(p =>
-      p.id === id && p.type === "editor" ? { ...p, dirty } : p
-    ));
-  }, []);
-
   const updateDir = useCallback((id: string, dir: string) => {
     setPages(prev => prev.map(p =>
       p.id === id && p.type === "files" ? { ...p, dir } : p
@@ -375,7 +363,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       openPath,
       closePage,
       switchPage,
-      markDirty,
       updateDir,
       setTerminalCloser,
     }}>
