@@ -1,5 +1,4 @@
   import {
-    X,
     AppWindow,
     Blocks,
     Puzzle,
@@ -54,49 +53,20 @@
           <>
             <motion.div
               className="settings-backdrop"
-              initial={{ opacity: 0 }}
+              initial={false}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0 }}
               onClick={onClose}
             />
 
             <motion.div
               className="settings-panel"
-              initial={{
-                opacity: 0,
-                y: 8,
-                scale: 0.98,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-                scale: 1,
-              }}
-              exit={{
-                opacity: 0,
-                y: 8,
-                scale: 0.98,
-              }}
-              transition={{
-                duration: 0.12,
-              }}
+              initial={false}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0 }}
             >
-              {/* Header */}
-              <div className="settings-header">
-                <span className="settings-title">
-                  Manage
-                </span>
-
-                <button
-                  type="button"
-                  className="settings-close"
-                  onClick={onClose}
-                  aria-label="close settings"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
               {/* Menu */}
               <div className="settings-menu">
                 {ITEMS.map(item => {
