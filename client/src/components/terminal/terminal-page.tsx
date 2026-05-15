@@ -22,13 +22,29 @@ import { TerminalInstance } from "./terminal-instance";
 import { KeyBar } from "./key-bar";
 import { FileBrowser } from "@/components/files/file-browser";
 import { FileEditor } from "@/components/editor/file-editor";
+import { ScrollableBreadcrumb } from "@/components/common/scrollable-breadcrumb";
+import { ImageViewer } from "@/components/viewers/image/image-viewer";
+import { PdfViewer } from "@/components/viewers/pdf/pdf-viewer";
+import { SpreadsheetViewer } from "@/components/viewers/spreadsheet/spreadsheet-viewer";
+import { DocViewer } from "@/components/viewers/doc/doc-viewer";
+import { BrowserShell } from "@/components/programs/browser/browser-shell";
+import { ChatShell } from "@/components/programs/chat/chat-shell";
+import { ForumShell } from "@/components/programs/forum/forum-shell";
+import { CommunityShell } from "@/components/programs/community/community-shell";
 import { SettingsPanel } from "./settings-panel";
 import {
-  Plus, X, Terminal, FileText, FolderOpen,
+  Plus, X, Terminal, FileText, FolderOpen, FileSpreadsheet,
   WifiOff, Loader2, ChevronRight, Settings, Circle,
-  GitBranch, Bell, Moon, Sun, Monitor,
+  GitBranch, Bell, Moon, Sun, AppWindow, Globe, MessageSquare, Users, Image as ImageIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+const FILE_VIEW_TYPES = new Set<Page["type"]>(["editor", "pdf", "spreadsheet", "doc"]);
+const PRIMARY_TAB_TYPES = new Set<Page["type"]>(["terminal", "files", "image", "browser", "chat", "forum", "community"]);
+
+function isFileViewType(type: Page["type"] | undefined): boolean {
+  return !!type && FILE_VIEW_TYPES.has(type);
+}
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 
@@ -86,19 +102,38 @@ function LoginScreen() {
 // Shows: terminal tabs + files tab. No editor tabs here.
 
 function PrimaryTabBar() {
-  const { pages, activePageId, closePage, switchPage, openFiles } = useApp();
+  const { pages, activePageId, closePage, switchPage, openFiles, openProgram } = useApp();
   const { createSession } = useTerminal();
+  const [launcherOpen, setLauncherOpen] = React.useState(false);
+  const launcherRef = React.useRef<HTMLDivElement>(null);
 
-  // Only show terminal and files pages in row 1
-  const primaryPages = pages.filter(p => p.type === "terminal" || p.type === "files");
+  React.useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!launcherRef.current?.contains(event.target as Node)) {
+        setLauncherOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLauncherOpen(false);
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  const primaryPages = pages.filter(page => PRIMARY_TAB_TYPES.has(page.type));
 
   return (
     <div className="reterm-tabbar">
       <div className="reterm-tabs">
         {primaryPages.map(page => {
+          const activePage = pages.find(p => p.id === activePageId);
           const isActive = page.id === activePageId ||
-            // files tab is "active" when an editor under it is active
-            (page.type === "files" && pages.find(p => p.id === activePageId)?.type === "editor");
+            (page.type === "files" && isFileViewType(activePage?.type));
 
           return (
             <button
@@ -107,10 +142,13 @@ function PrimaryTabBar() {
               onClick={() => switchPage(page.id)}
               title={page.title}
             >
-              {page.type === "terminal"
-                ? <Terminal size={11} strokeWidth={1.5} className="reterm-tab-icon" />
-                : <FolderOpen size={11} strokeWidth={1.5} className="reterm-tab-icon" />
-              }
+              {page.type === "terminal" && <Terminal size={11} strokeWidth={1.5} className="reterm-tab-icon" />}
+              {page.type === "files" && <FolderOpen size={11} strokeWidth={1.5} className="reterm-tab-icon" />}
+              {page.type === "image" && <ImageIcon size={11} strokeWidth={1.5} className="reterm-tab-icon" />}
+              {page.type === "browser" && <Globe size={11} strokeWidth={1.5} className="reterm-tab-icon" />}
+              {page.type === "chat" && <MessageSquare size={11} strokeWidth={1.5} className="reterm-tab-icon" />}
+              {page.type === "forum" && <MessageSquare size={11} strokeWidth={1.5} className="reterm-tab-icon" />}
+              {page.type === "community" && <Users size={11} strokeWidth={1.5} className="reterm-tab-icon" />}
               <span className="reterm-tab-title">{page.title}</span>
               <span
                 className="reterm-tab-close"
@@ -142,10 +180,47 @@ function PrimaryTabBar() {
           openFiles("/");
         }}
         title="open file explorer"
-        style={{ borderLeft: "1px solid var(--border-subtle)" }}
       >
         <FolderOpen size={13} strokeWidth={1.8} />
       </button>
+
+      <div className="reterm-launcher" ref={launcherRef}>
+        <button
+          className="reterm-tab-new reterm-tab-new--launcher"
+          onClick={() => setLauncherOpen(open => !open)}
+          title="open program tabs"
+          type="button"
+        >
+          <AppWindow size={13} strokeWidth={1.8} />
+        </button>
+
+        {launcherOpen && (
+          <div className="reterm-launcher-menu" role="menu" aria-label="program launchers">
+            {[
+              { kind: "browser" as const, label: "inside browser", icon: Globe },
+              { kind: "chat" as const, label: "ai chat", icon: MessageSquare },
+              { kind: "forum" as const, label: "forum", icon: MessageSquare },
+              { kind: "community" as const, label: "community", icon: Users },
+            ].map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.kind}
+                  type="button"
+                  className="reterm-launcher-item"
+                  onClick={() => {
+                    openProgram(item.kind);
+                    setLauncherOpen(false);
+                  }}
+                >
+                  <Icon size={13} strokeWidth={1.8} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -158,25 +233,28 @@ function FileTabBar() {
   const { pages, activePageId, closePage, switchPage, openEditor } = useApp();
 
   // Find the active files page (the one currently selected in row 1)
-  const activeFilesPage = pages.find(p => p.type === "files" && p.id === activePageId);
-  
-  // If no files page is active, find any files page or return null
-  const filesPage = activeFilesPage || pages.find(p => p.type === "files");
-  if (!filesPage || filesPage.type !== "files") return null;
+  const activeFilesPage = pages.find((p): p is Extract<Page, { type: "files" }> => p.type === "files" && p.id === activePageId);
 
-  // Get all editor pages that belong to this files page
-  // For now, we show all editors but they're associated with the active files page context
+  // If no files page is active, find any files page or return null
+  const filesPage = activeFilesPage || pages.find((p): p is Extract<Page, { type: "files" }> => p.type === "files");
+  if (!filesPage) return null;
+
   const editorPages = pages.filter((p): p is EditorPage => p.type === "editor");
+  const pdfPages = pages.filter((p): p is Extract<Page, { type: "pdf" }> => p.type === "pdf");
+  const spreadsheetPages = pages.filter((p): p is Extract<Page, { type: "spreadsheet" }> => p.type === "spreadsheet");
+  const docPages = pages.filter((p): p is Extract<Page, { type: "doc" }> => p.type === "doc");
+  const filePages = [...editorPages, ...pdfPages, ...spreadsheetPages, ...docPages];
 
   // Extract current directory name from the files page dir path
   const dirPath = filesPage.dir || "/";
   const dirName = dirPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "/";
+  const activePage = pages.find(p => p.id === activePageId);
+  const filesActive = activePage?.type === "files" || isFileViewType(activePage?.type);
 
   return (
     <div className="reterm-filetabbar">
-      {/* Files label — clicking goes back to the tree */}
       <button
-        className={`reterm-filetab reterm-filetab--files ${activePageId === filesPage.id ? "reterm-filetab--active" : ""}`}
+        className={`reterm-filetab reterm-filetab--files ${filesActive ? "reterm-filetab--active" : ""}`}
         onClick={() => switchPage(filesPage.id)}
         title={dirPath}
       >
@@ -184,36 +262,35 @@ function FileTabBar() {
         <span>{dirName}</span>
       </button>
 
-      {/* Divider */}
-      {editorPages.length > 0 && (
-        <div className="reterm-filetab-sep" />
-      )}
-
-      {/* Open file tabs */}
-      {editorPages.map(page => {
-        const isActive = page.id === activePageId;
-        const title    = page.dirty ? `${page.title} ●` : page.title;
-        return (
-          <button
-            key={page.id}
-            className={`reterm-filetab ${isActive ? "reterm-filetab--active" : ""}`}
-            onClick={() => switchPage(page.id)}
-            title={page.filePath}
-          >
-            <FileText size={10} strokeWidth={1.5} className="reterm-filetab-icon" />
-            <span>{title}</span>
-            <span
-              className="reterm-filetab-close"
-              role="button"
-              tabIndex={0}
-              onClick={e => { e.stopPropagation(); closePage(page.id); }}
-              onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); closePage(page.id); } }}
+      <div className="reterm-filetabbar-scroll" aria-label="open file tabs">
+        {filePages.map(page => {
+          const isActive = page.id === activePageId;
+          const title = page.type === "editor" && page.dirty ? `${page.title} ●` : page.title;
+          return (
+            <button
+              key={page.id}
+              className={`reterm-filetab ${isActive ? "reterm-filetab--active" : ""}`}
+              onClick={() => switchPage(page.id)}
+              title={page.title}
             >
-              <X size={9} strokeWidth={2} />
-            </span>
-          </button>
-        );
-      })}
+              {page.type === "editor" && <FileText size={10} strokeWidth={1.5} className="reterm-filetab-icon" />}
+              {page.type === "pdf" && <FileText size={10} strokeWidth={1.5} className="reterm-filetab-icon" />}
+              {page.type === "spreadsheet" && <FileSpreadsheet size={10} strokeWidth={1.5} className="reterm-filetab-icon" />}
+              {page.type === "doc" && <FileText size={10} strokeWidth={1.5} className="reterm-filetab-icon" />}
+              <span>{title}</span>
+              <span
+                className="reterm-filetab-close"
+                role="button"
+                tabIndex={0}
+                onClick={e => { e.stopPropagation(); closePage(page.id); }}
+                onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); closePage(page.id); } }}
+              >
+                <X size={9} strokeWidth={2} />
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* New file button */}
       <button
@@ -267,21 +344,16 @@ function StatusBar() {
     ? sessions.find(s => s.id === activePage.sessionId)
     : null;
 
-  const editorPath = activePage?.type === "editor" ? activePage.filePath : null;
+  const activeFilePath = activePage && "filePath" in activePage ? activePage.filePath : null;
 
   // Save settings to localStorage and apply theme
   React.useEffect(() => {
     try {
       localStorage.setItem("reterm_settings", JSON.stringify(settings));
     } catch {}
-    // Apply theme to document root
-    if (settings.theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', systemTheme);
-    } else {
-      document.documentElement.setAttribute('data-theme', settings.theme);
-    }
-  }, [settings.theme, settings]);
+  
+    document.documentElement.setAttribute("data-theme", settings.theme);
+  }, [settings.theme]);
 
   // Apply font settings
   React.useEffect(() => {
@@ -290,16 +362,6 @@ function StatusBar() {
   }, [settings.fontSize, settings.fontFamily]);
 
   // Listen for system theme changes
-  React.useEffect(() => {
-    if (settings.theme !== 'system') return;
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
-    const handler = () => {
-      const systemTheme = mediaQuery.matches ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', systemTheme);
-    };
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, [settings.theme]);
 
   const handleSettingsUpdate = (updates: Partial<typeof settings>) => {
     setSettings((prev: typeof settings) => ({ ...prev, ...updates }));
@@ -309,25 +371,41 @@ function StatusBar() {
     <>
       <div className="reterm-statusbar">
         <div className="reterm-statusbar-left">
-          <span className={`reterm-conn-badge ${isConnected ? "reterm-conn-badge--connected" : ""}`}>
-            {isConnected ? (
-              <><span className="reterm-conn-dot reterm-conn-dot--connected" />connected</>
-            ) : isBusy ? (
-              <><Loader2 size={10} className="reterm-spin" />{status === "connecting" ? "connecting…" : "reconnecting…"}</>
-            ) : (
-              <><Circle size={8} strokeWidth={2} style={{ opacity: 0.4 }} />{status === "idle" ? "idle" : "disconnected"}</>
-            )}
-          </span>
-          {termSession && termSession.cols !== 80 && (
-            <span className="reterm-statusbar-item reterm-dims">{termSession.cols}×{termSession.rows}</span>
-          )}
-          {editorPath && (
-            <span className="reterm-statusbar-item reterm-dims" style={{ opacity: 0.6 }}>{editorPath.split('/').pop()}</span>
-          )}
-          {sessions.length > 0 && (
-            <span className="reterm-statusbar-item" style={{ opacity: 0.5, fontSize: 10 }}>
-              {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+          <div className="reterm-statusbar-topline">
+            <span className={`reterm-conn-badge ${isConnected ? "reterm-conn-badge--connected" : ""}`}>
+              {isConnected ? (
+                <>
+                  <span className="reterm-conn-dot reterm-conn-dot--connected" />
+                  <span className="reterm-conn-badge__text">connected</span>
+                </>
+              ) : isBusy ? (
+                <>
+                  <Loader2 size={10} className="reterm-spin" />
+                  <span className="reterm-conn-badge__text">{status === "connecting" ? "connecting…" : "reconnecting…"}</span>
+                </>
+              ) : (
+                <>
+                  <Circle size={8} strokeWidth={2} style={{ opacity: 0.4 }} />
+                  <span className="reterm-conn-badge__text">{status === "idle" ? "idle" : "disconnected"}</span>
+                </>
+              )}
             </span>
+            {termSession && termSession.cols !== 80 && (
+              <span className="reterm-statusbar-item reterm-dims">{termSession.cols}×{termSession.rows}</span>
+            )}
+            {sessions.length > 0 && (
+              <span className="reterm-statusbar-item reterm-statusbar-sessioncount">
+                {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          {activeFilePath && (
+            <div className="reterm-statusbar-pathline">
+              <ScrollableBreadcrumb
+                className="reterm-statusbar-breadcrumb"
+                path={activeFilePath}
+              />
+            </div>
           )}
         </div>
         <div className="reterm-statusbar-right">
@@ -340,13 +418,12 @@ function StatusBar() {
             className="reterm-statusbar-btn" 
             title="toggle theme"
             onClick={() => {
-              const nextTheme = settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark';
-              handleSettingsUpdate({ theme: nextTheme as 'dark' | 'light' | 'system' });
+              const nextTheme = settings.theme === "dark" ? "light" : "dark";
+              handleSettingsUpdate({ theme: nextTheme  });
             }}
           >
             {settings.theme === 'dark' && <Moon size={11} strokeWidth={1.8} />}
             {settings.theme === 'light' && <Sun size={11} strokeWidth={1.8} />}
-            {settings.theme === 'system' && <Monitor size={11} strokeWidth={1.8} />}
           </button>
           
           {isConnected && (
@@ -378,6 +455,14 @@ function PageContent({ page }: { page: Page }) {
   if (page.type === "terminal") return <TerminalInstance sessionId={page.sessionId} isActive={true} />;
   if (page.type === "editor")   return <FileEditor pageId={page.id} filePath={page.filePath} />;
   if (page.type === "files")    return <FileBrowser pageId={page.id} dir={page.dir} />;
+  if (page.type === "image")     return <ImageViewer filePath={page.filePath} />;
+  if (page.type === "pdf")       return <PdfViewer filePath={page.filePath} />;
+  if (page.type === "spreadsheet") return <SpreadsheetViewer filePath={page.filePath} />;
+  if (page.type === "doc")       return <DocViewer filePath={page.filePath} />;
+  if (page.type === "browser")   return <BrowserShell />;
+  if (page.type === "chat")      return <ChatShell />;
+  if (page.type === "forum")     return <ForumShell />;
+  if (page.type === "community") return <CommunityShell />;
   return null;
 }
 
@@ -444,7 +529,7 @@ export function TerminalPage() {
   // - If active page is files, show the file browser
   // - If active page is terminal, show the terminal
   // All terminals stay mounted (hidden) to preserve PTY output
-  const hasFilesPage = pages.some(p => p.type === "files");
+  const hasFilesPage = pages.some(p => p.type === "files" || isFileViewType(p.type));
 
   return (
     <div className="reterm-root">
