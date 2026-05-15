@@ -425,3 +425,5 @@
 {"ts":"2026-05-14T11:40:58.812Z","level":"EVENT","category":"client","message":"client connected","clients":1,"sessions":2,"ip":"127.0.0.1","totalConnections":12}
 {"ts":"2026-05-14T11:40:58.819Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
 {"ts":"2026-05-14T11:40:58.820Z","level":"EVENT","category":"file","message":"file read","path":"/#telegram_bots/numberJT/jeeta.py","size":53029}
+{"ts":"2026-05-15T04:21:44.851Z","level":"INFO","category":"startup","message":"re.Term server starting","port":3003,"shell":"powershell.exe","maxSessions":10,"logFile":"re-term.log"}
+{"ts":"2026-05-15T04:21:44.860Z","level":"INFO","category":"startup","message":"server listening","local":"http://localhost:3003","tailscale":"http://unknown:3003","network":"http://10.10.24.206:3003","logFile":"re-term.log"}
