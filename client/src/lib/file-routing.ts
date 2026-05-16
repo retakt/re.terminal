@@ -100,20 +100,42 @@ export function getFileTypeLabel(filePath: string) {
   const baseName = getBaseName(filePath).toLowerCase();
   if (baseName === "dockerfile") return "DOCKERFILE";
   if (baseName === "makefile") return "MAKEFILE";
+  if (baseName === "caddyfile") return "CADDYFILE";
+  if (baseName === "justfile") return "JUSTFILE";
+  if (baseName === "vagrantfile") return "VAGRANTFILE";
   if (baseName.startsWith(".env")) return "ENV";
+  if (baseName === ".bashrc") return "BASHRC";
+  if (baseName === ".zshrc") return "ZSHRC";
   if (baseName === ".gitignore") return "GITIGNORE";
   if (baseName === ".gitattributes") return "GITATTR";
+  if (baseName === ".gitconfig") return "GITCONFIG";
+  if (baseName === ".editorconfig") return "EDITORCONFIG";
   if (baseName === "readme" || baseName.startsWith("readme.")) return "README";
   if (baseName === "license") return "LICENSE";
   if (baseName.startsWith("changelog")) return "CHANGELOG";
 
   const ext = getFileExtension(filePath);
-  if (!ext) return "FILE";
+  if (!ext) {
+    // Handle dotfiles like .npmrc, .prettierrc, etc.
+    if (baseName.startsWith(".")) return baseName.toUpperCase().slice(1);
+    return "FILE";
+  }
   return FILE_TYPE_LABELS[ext] ?? ext.toUpperCase();
 }
 
 export function getMonacoLanguageId(filePath: string) {
   const ext = getFileExtension(filePath);
+  const baseName = getBaseName(filePath).toLowerCase();
+
+  // Handle files without extensions
+  if (ext === "") {
+    if (baseName === "caddyfile") return "caddyfile";
+    if (baseName === "dockerfile") return "dockerfile";
+    if (baseName === "makefile") return "makefile";
+    if (baseName === ".gitignore" || baseName === ".gitattributes") return "gitignore";
+    if (baseName === ".bashrc" || baseName === ".zshrc") return "shell";
+    if (baseName === ".editorconfig" || baseName === ".gitconfig") return "ini";
+  }
 
   switch (ext) {
     case "c":
