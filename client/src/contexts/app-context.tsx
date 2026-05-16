@@ -142,6 +142,7 @@ const PROGRAM_TITLES: Record<ProgramKind, string> = {
   plugins: "plugins",
   scripts: "scripts",
   playground: "playground",
+  "memory-graph": "memory graph",
 };
 
 function viewerTitle(filePath: string, title?: string) {

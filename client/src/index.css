@@ -27,7 +27,7 @@
 
   /* Accent colors */
   --accent-orange:  #f97316;
-  --accent-blue:    #58a6ff;
+  --accent-blue:    #2dd4bf;
   --accent-red:     #ff7b72;
   --accent-green:   #3fb950;
   --accent-yellow:  #d29922;
@@ -64,8 +64,8 @@
   --bar-text-muted: #8b949e;
   --bar-active-bg: #161b22;
   --bar-hover-bg: rgba(139, 148, 158, 0.12);
-  --tab-active-bg: rgba(31, 111, 235, 0.12);
-  --tab-active-border: rgba(88, 166, 255, 0.56);
+  --tab-active-bg: rgba(45, 212, 191, 0.12);
+  --tab-active-border: rgba(45, 212, 191, 0.56);
   
   /* Status bar */
   --statusbar-bg: #0d1117;
@@ -109,7 +109,7 @@
 
   /* Accent colors */
   --accent-orange:  #ea580c;
-  --accent-blue:    #0969da;
+  --accent-blue:    #0f766e;
   --accent-red:     #cf222e;
   --accent-green:   #1a7f37;
   --accent-yellow:  #9a6700;
@@ -145,8 +145,8 @@
   --bar-text-muted: #57606a;
   --bar-active-bg: #ffffff;
   --bar-hover-bg: rgba(208, 215, 222, 0.48);
-  --tab-active-bg: rgba(9, 105, 218, 0.08);
-  --tab-active-border: rgba(9, 105, 218, 0.42);
+  --tab-active-bg: rgba(15, 118, 110, 0.08);
+  --tab-active-border: rgba(15, 118, 110, 0.42);
   
   /* Status bar */
   --statusbar-bg: #f6f8fa;
@@ -270,7 +270,13 @@ body {
       transparent 1px,
       transparent 4px
     ),
-    linear-gradient(90deg, rgba(88,166,255,0.025), transparent 18%, transparent 82%, rgba(88,166,255,0.018));
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent-blue) 18%, transparent),
+      transparent 18%,
+      transparent 82%,
+      color-mix(in srgb, var(--accent-blue) 14%, transparent)
+    );
   opacity: 0.42;
   mix-blend-mode: screen;
 }
@@ -283,7 +289,7 @@ body {
   pointer-events: none;
   background:
     radial-gradient(ellipse at center, transparent 56%, rgba(0,0,0,0.24) 100%),
-    linear-gradient(180deg, rgba(88,166,255,0.055), transparent 80px);
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 20%, transparent), transparent 80px);
 }
 
 [data-theme="light"] .reterm-root::before {
@@ -302,7 +308,7 @@ body {
 [data-theme="light"] .reterm-root::after {
   background:
     radial-gradient(ellipse at center, transparent 62%, rgba(31,35,40,0.07) 100%),
-    linear-gradient(180deg, rgba(9,105,218,0.04), transparent 84px);
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 12%, transparent), transparent 84px);
 }
 
 /* ─── Tab bar ────────────────────────────────────────────────────────────── */
@@ -552,8 +558,8 @@ body {
   flex: 1;
   position: relative;
   background:
-    linear-gradient(90deg, rgba(88,166,255,0.035), transparent 1px) 0 0 / 13px 13px,
-    linear-gradient(180deg, rgba(88,166,255,0.025), transparent 1px) 0 0 / 13px 13px,
+    linear-gradient(90deg, color-mix(in srgb, var(--accent-blue) 14%, transparent), transparent 1px) 0 0 / 13px 13px,
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 10%, transparent), transparent 1px) 0 0 / 13px 13px,
     var(--bg-base);
   min-height: 0;
   overflow: hidden;
@@ -568,15 +574,15 @@ body {
   z-index: 2;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(88,166,255,0.06), transparent 72px),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 18%, transparent), transparent 72px),
     radial-gradient(ellipse at 50% 110%, rgba(63,185,80,0.045), transparent 42%);
   opacity: 0.72;
 }
 
 [data-theme="light"] .reterm-area {
   background:
-    linear-gradient(90deg, rgba(9,105,218,0.026), transparent 1px) 0 0 / 13px 13px,
-    linear-gradient(180deg, rgba(9,105,218,0.018), transparent 1px) 0 0 / 13px 13px,
+    linear-gradient(90deg, color-mix(in srgb, var(--accent-blue) 10%, transparent), transparent 1px) 0 0 / 13px 13px,
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 8%, transparent), transparent 1px) 0 0 / 13px 13px,
     var(--bg-base);
 }
 
@@ -1164,7 +1170,7 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--fg-base); }
-::selection { background: rgba(125, 207, 255, 0.3); color: var(--fg-base); }
+::selection { background: color-mix(in srgb, var(--accent-blue) 28%, transparent); color: var(--fg-base); }
 
 /* ─── Utility classes ────────────────────────────────────────────────────── */
 
@@ -2214,8 +2220,8 @@ body {
   padding: 12px;
   overflow: hidden;
   background:
-    radial-gradient(circle at top right, rgba(88, 166, 255, 0.08), transparent 30%),
-    radial-gradient(circle at left bottom, rgba(0, 200, 150, 0.08), transparent 25%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 12%, transparent), transparent 30%),
+    radial-gradient(circle at left bottom, color-mix(in srgb, var(--accent-green) 8%, transparent), transparent 25%),
     var(--bg-base);
 }
 
@@ -2270,7 +2276,7 @@ body {
   padding: 0 12px;
 
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 6px;
   background: var(--bg-surface);
 
   color: var(--fg-base);
@@ -2280,6 +2286,14 @@ body {
 
 .program-input::placeholder {
   color: var(--fg-muted);
+}
+
+.program-input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent-blue) 48%, var(--border));
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--accent-blue) 46%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent-blue) 12%, transparent);
 }
 
 .program-input--textarea {
@@ -2299,7 +2313,7 @@ body {
   padding: 0 14px;
 
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 6px;
   background: var(--bg-active);
 
   color: var(--fg-base);
@@ -2308,6 +2322,12 @@ body {
   font-weight: 600;
 
   cursor: pointer;
+}
+
+.program-button:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent-blue) 42%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-blue) 22%, transparent);
 }
 
 .program-card-list,
@@ -2480,6 +2500,299 @@ body {
 .chat-send:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* assistant-ui chat surface */
+.chat-shell-root {
+  --chat-border: color-mix(in srgb, var(--border-subtle) 76%, transparent);
+  --chat-border-strong: color-mix(in srgb, var(--border) 62%, transparent);
+  --chat-surface: color-mix(in srgb, var(--bg-surface) 86%, transparent);
+  --chat-surface-muted: color-mix(in srgb, var(--bg-overlay) 58%, transparent);
+  --chat-focus: color-mix(in srgb, var(--accent-blue) 46%, var(--border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 6%, transparent), transparent 96px),
+    color-mix(in srgb, var(--bg-base) 94%, var(--accent-blue) 2%);
+}
+
+[data-theme="dark"] .chat-shell-root {
+  --chat-border: rgba(255,255,255,0.075);
+  --chat-border-strong: rgba(255,255,255,0.115);
+  --chat-surface: rgba(13,17,23,0.82);
+  --chat-surface-muted: rgba(22,27,34,0.58);
+  --chat-focus: color-mix(in srgb, var(--accent-blue) 38%, rgba(255,255,255,0.12));
+}
+
+[data-theme="light"] .chat-shell-root {
+  --chat-border: rgba(31,35,40,0.12);
+  --chat-border-strong: rgba(31,35,40,0.18);
+  --chat-surface: rgba(255,255,255,0.72);
+  --chat-surface-muted: rgba(246,248,250,0.68);
+}
+
+.chat-toolbar-row,
+.chat-activity-header {
+  border-bottom: 1px solid var(--chat-border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 88%, transparent), color-mix(in srgb, var(--bg-base) 78%, transparent));
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.18);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+
+[data-theme="light"] .chat-toolbar-row,
+[data-theme="light"] .chat-activity-header {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 76%, var(--accent-blue) 3%), color-mix(in srgb, #fff 66%, transparent));
+  box-shadow: inset 0 -1px 0 rgba(31,35,40,0.04);
+}
+
+.chat-workspace,
+.chat-split-group,
+.chat-thread-root {
+  min-height: 0;
+  background: transparent;
+}
+
+.chat-thread-footer {
+  background:
+    linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--bg-base) 88%, transparent) 28%, color-mix(in srgb, var(--bg-base) 96%, transparent));
+}
+
+.chat-activity-pane {
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-activity-panel {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--chat-surface) 88%, var(--accent-blue) 3%), var(--chat-surface));
+  color: var(--fg-base);
+  backdrop-filter: blur(10px) saturate(116%);
+  -webkit-backdrop-filter: blur(10px) saturate(116%);
+}
+
+[data-theme="light"] .chat-activity-panel {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 68%, var(--accent-blue) 6%), color-mix(in srgb, #fff 72%, var(--bg-surface) 28%));
+}
+
+.chat-resize-handle {
+  width: 10px !important;
+  min-width: 10px !important;
+  margin: 0 !important;
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+.chat-resize-handle > span {
+  display: block !important;
+  width: 1px !important;
+  background: var(--chat-border-strong) !important;
+}
+
+.chat-resize-handle > div {
+  display: none !important;
+}
+
+.chat-resize-handle:hover > span,
+.chat-resize-handle:focus-visible > span {
+  background: color-mix(in srgb, var(--accent-blue) 52%, var(--chat-border-strong)) !important;
+}
+
+.chat-tool-button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+
+.chat-tool-button:hover,
+.chat-tool-button.is-active {
+  border-color: var(--chat-border);
+  background: color-mix(in srgb, var(--accent-blue) 9%, transparent);
+  color: var(--fg-base);
+}
+
+.chat-tool-button:focus-visible,
+.chat-motion-option:focus-visible,
+.chat-solid-button:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent-blue) 26%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent-blue) 12%, transparent);
+}
+
+.chat-motion-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  padding: 1px;
+  border: 1px solid var(--chat-border);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--bg-base) 72%, transparent);
+}
+
+.chat-motion-option {
+  height: 18px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 18px;
+}
+
+.chat-motion-option.is-active {
+  background: color-mix(in srgb, var(--accent-blue) 13%, transparent);
+  color: var(--fg-base);
+}
+
+.chat-motion-square {
+  animation: chat-panel-square 150ms steps(4, end) both;
+}
+
+.chat-motion-soft {
+  animation: chat-panel-soft 180ms var(--motion-ease) both;
+}
+
+.chat-motion-off {
+  animation: none;
+}
+
+@keyframes chat-panel-square {
+  from { opacity: 0.55; clip-path: inset(0 0 0 14px); }
+  to { opacity: 1; clip-path: inset(0); }
+}
+
+@keyframes chat-panel-soft {
+  from { opacity: 0.2; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.chat-composer-shell,
+.chat-edit-field,
+.chat-edit-composer,
+.chat-empty-note,
+.chat-log-card,
+.chat-code-block,
+.chat-suggestion {
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+}
+
+.chat-composer-shell {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.035),
+    0 6px 18px rgba(0,0,0,0.08);
+}
+
+.chat-composer-shell:focus-within {
+  border-color: var(--chat-focus);
+  background: color-mix(in srgb, var(--chat-surface) 88%, var(--accent-blue) 3%);
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--accent-blue) 54%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent-blue) 12%, transparent);
+}
+
+.chat-composer-shell[data-dragging="true"] {
+  border-color: var(--chat-focus);
+  background: color-mix(in srgb, var(--accent-blue) 7%, var(--chat-surface));
+}
+
+.chat-send-button,
+.chat-solid-button {
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 46%, var(--chat-border));
+  background: color-mix(in srgb, var(--accent-blue) 68%, var(--bg-overlay));
+  color: #001411;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.16);
+}
+
+.chat-send-button:hover,
+.chat-solid-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-blue) 78%, var(--bg-overlay));
+}
+
+[data-theme="dark"] .chat-send-button,
+[data-theme="dark"] .chat-solid-button {
+  color: #02120f;
+}
+
+.chat-user-message {
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 20%, var(--chat-border));
+  background: color-mix(in srgb, var(--accent-blue) 6%, var(--chat-surface));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-blue) 36%, transparent);
+}
+
+.chat-suggestion {
+  color: var(--fg-base);
+}
+
+.chat-suggestion:hover {
+  border-color: var(--chat-border-strong);
+  background: color-mix(in srgb, var(--accent-blue) 7%, var(--chat-surface-muted));
+}
+
+.chat-log-card {
+  color: var(--fg-base);
+}
+
+.chat-log-card:hover {
+  background: color-mix(in srgb, var(--accent-blue) 5%, var(--chat-surface-muted));
+}
+
+.chat-log-card--memory {
+  border-color: color-mix(in srgb, var(--accent-blue) 26%, var(--chat-border));
+  background: color-mix(in srgb, var(--accent-blue) 6%, var(--chat-surface));
+}
+
+.chat-log-detail,
+.chat-section-separator {
+  border-top: 1px solid var(--chat-border);
+}
+
+.chat-edit-field {
+  background: color-mix(in srgb, var(--bg-base) 72%, transparent);
+}
+
+.chat-edit-field:focus {
+  border-color: var(--chat-focus);
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--accent-blue) 44%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent-blue) 12%, transparent);
+}
+
+.chat-code-block {
+  background: color-mix(in srgb, var(--bg-base) 72%, transparent);
+}
+
+@media (max-width: 520px) {
+  .chat-toolbar-row,
+  .chat-activity-header {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .chat-motion-option {
+    padding: 0 4px;
+    font-size: 9px;
+  }
+
+  .chat-resize-handle {
+    width: 8px !important;
+    min-width: 8px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-motion-square,
+  .chat-motion-soft {
+    animation: none;
+  }
 }
 
 .tool-compact-page {
@@ -2798,8 +3111,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
   background: var(--bg-surface);
 }
 

@@ -26,7 +26,7 @@ const TOKYO_NIGHT_DARK = {
   foreground:          "#f5f5f3",
   cursor:              "#f5f5f3",
   cursorAccent:        "#040404",
-  selectionBackground: "rgba(125, 207, 255, 0.3)",
+  selectionBackground: "rgba(45, 212, 191, 0.28)",
   // ANSI 0-7
   black:   "#3b4261", red:     "#f7768e", green:   "#9ece6a",
   yellow:  "#e0af68", blue:    "#7aa2f7", magenta: "#bb9af7",
@@ -44,7 +44,7 @@ const TOKYO_NIGHT_LIGHT = {
   foreground:          "#0f0f0f",
   cursor:              "#0f0f0f",
   cursorAccent:        "#ffffff",
-  selectionBackground: "rgba(44, 125, 150, 0.25)",
+  selectionBackground: "rgba(15, 118, 110, 0.2)",
   // ANSI 0-7
   black:   "#0f0f0f", red:     "#8c4351", green:   "#33635c",
   yellow:  "#8f5e15", blue:    "#34548a", magenta: "#5a4a78",

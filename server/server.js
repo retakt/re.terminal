@@ -21,7 +21,17 @@ import { URL } from "url";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import { saveCommand, saveError, saveFix, savePreference, searchMemory } from "./lib/memory-client.js";
+import {
+  checkMemoryHealth,
+  getMemoryStatus,
+  saveCommand,
+  saveError,
+  saveFix,
+  savePreference,
+  searchMemory,
+  updateMemory,
+  getGraphSnapshot,
+} from "./lib/memory-client.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -210,6 +220,7 @@ app.get("/health", (_req, res) => {
     uptime:   process.uptime(),
     sessions: globalSessions.size,
     stats,
+    memory:   getMemoryStatus(),
   });
 });
 
@@ -252,6 +263,18 @@ function resolveSafe(clientPath) {
 
 app.use(express.json({ limit: "10mb" }));
 
+// Memory Graph API
+app.get("/api/memory/graph", async (req, res) => {
+  try {
+    const projectId = String(req.query.projectId || req.query.userId || "default-user");
+    const snapshot = await getGraphSnapshot(projectId);
+    res.json(snapshot);
+  } catch (err) {
+    log("WARN", "memory", "graph snapshot failed", { error: err.message });
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Ollama proxy for the local AI chat page.
 app.get("/api/ollama/tags", async (_req, res) => {
   try {
@@ -267,7 +290,52 @@ app.get("/api/ollama/tags", async (_req, res) => {
 app.post("/api/ollama/chat", async (req, res) => {
   try {
     const model = String(req.body?.model || OLLAMA_MODEL);
-    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const messages = Array.isArray(req.body?.messages) ? [...req.body.messages] : [];
+    const userId = String(req.body?.userId || req.body?.projectId || process.env.MEMORY_PROJECT_ID || "default-user");
+    const lastUserMessage = [...messages].reverse().find(m => m?.role === "user")?.content;
+
+    let memories = [];
+    if (lastUserMessage) {
+      const [saveResult, searchResult] = await Promise.all([
+        saveCommand(userId, String(lastUserMessage), ""),
+        searchMemory(userId, String(lastUserMessage)),
+      ]);
+
+      if (saveResult?.ok === false) {
+        log("WARN", "memory", "memory write skipped", { userId, reason: saveResult.reason });
+      }
+      
+      // Broadcast memory update to all clients
+      const payload = JSON.stringify({ type: "memory-update", projectId: userId, timestamp: Date.now() });
+      for (const client of wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          try { client.send(payload); } catch (_) {}
+        }
+      }
+      
+      memories = Array.isArray(searchResult) ? searchResult : [];
+    }
+
+    const memoryPrompt = memories.length > 0
+      ? `Relevant long-term memory for this terminal user/project:\n${JSON.stringify(memories)}`
+      : "";
+    const existingSystemIndex = messages.findIndex(m => m?.role === "system");
+
+    if (existingSystemIndex === -1) {
+      messages.unshift({
+        role: "system",
+        content: ["You are an AI assistant for a terminal.", memoryPrompt].filter(Boolean).join("\n\n"),
+      });
+    } else if (memoryPrompt) {
+      messages[existingSystemIndex] = {
+        ...messages[existingSystemIndex],
+        content: `${String(messages[existingSystemIndex]?.content || "")}\n\n${memoryPrompt}`.trim(),
+      };
+    }
+
+    if (memories.length > 0) {
+      log("INFO", "chat", "memory injected for user", { userId, count: memories.length });
+    }
 
     const upstream = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: "POST",
@@ -275,8 +343,8 @@ app.post("/api/ollama/chat", async (req, res) => {
       body: JSON.stringify({
         model,
         messages: messages.map(message => ({
-          role: message.role === "assistant" ? "assistant" : "user",
-          content: String(message.content || ""),
+          role: ["system", "assistant", "user"].includes(message?.role) ? message.role : "user",
+          content: String(message?.content || ""),
         })),
         stream: false,
       }),
@@ -689,12 +757,29 @@ wss.on("connection", (ws, req) => {
 
 // ─── Memory API Routes ────────────────────────────────────────────────────────
 
+function sendMemoryWriteResult(res, result) {
+  if (result?.ok) {
+    res.json({ success: true, ...result });
+    return;
+  }
+
+  res.status(503).json({
+    success: false,
+    skipped: true,
+    reason: result?.reason || "memory is not available",
+    status: getMemoryStatus(),
+  });
+}
+
+app.get("/api/memory/status", async (_req, res) => {
+  res.json(await checkMemoryHealth());
+});
+
 app.post("/api/memory/command", async (req, res) => {
   try {
     const { projectId, command, output } = req.body;
     if (!projectId || !command) return res.status(400).json({ error: "projectId and command required" });
-    await saveCommand(projectId, command, output);
-    res.json({ success: true });
+    sendMemoryWriteResult(res, await saveCommand(projectId, command, output));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -704,8 +789,7 @@ app.post("/api/memory/error", async (req, res) => {
   try {
     const { projectId, error, context } = req.body;
     if (!projectId || !error) return res.status(400).json({ error: "projectId and error required" });
-    await saveError(projectId, error, context);
-    res.json({ success: true });
+    sendMemoryWriteResult(res, await saveError(projectId, error, context));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -715,8 +799,7 @@ app.post("/api/memory/fix", async (req, res) => {
   try {
     const { projectId, error, fix } = req.body;
     if (!projectId || !error || !fix) return res.status(400).json({ error: "projectId, error, and fix required" });
-    await saveFix(projectId, error, fix);
-    res.json({ success: true });
+    sendMemoryWriteResult(res, await saveFix(projectId, error, fix));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -725,9 +808,8 @@ app.post("/api/memory/fix", async (req, res) => {
 app.post("/api/memory/preference", async (req, res) => {
   try {
     const { projectId, key, value } = req.body;
-    if (!projectId || !key || !value) return res.status(400).json({ error: "projectId, key, and value required" });
-    await savePreference(projectId, key, value);
-    res.json({ success: true });
+    if (!projectId || !key || value == null) return res.status(400).json({ error: "projectId, key, and value required" });
+    sendMemoryWriteResult(res, await savePreference(projectId, key, value));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -739,6 +821,17 @@ app.get("/api/memory/search", async (req, res) => {
     if (!projectId || !query) return res.status(400).json({ error: "projectId and q query params required" });
     const results = await searchMemory(projectId, query);
     res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/memory/:id", async (req, res) => {
+  try {
+    const { projectId, memory } = req.body;
+    if (!projectId) return res.status(400).json({ error: "projectId required" });
+    const id = String(req.params.id || "");
+    sendMemoryWriteResult(res, await updateMemory(projectId, { ...(memory || {}), id }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

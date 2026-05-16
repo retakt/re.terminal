@@ -1,12 +1,13 @@
 #!/bin/bash
 
-# Restore script for FalkorDB
+# Restore script for re.Term FalkorDB memory volume.
 if [ -z "$1" ]; then
   echo "Usage: ./restore.sh <backup_file.tar.gz>"
   exit 1
 fi
 
 BACKUP_FILE="$1"
+VOLUME="${FALKORDB_VOLUME:-memory_falkordb_data}"
 
 if [ ! -f "${BACKUP_FILE}" ]; then
   echo "Error: Backup file not found: ${BACKUP_FILE}"
@@ -15,11 +16,9 @@ fi
 
 echo "Restoring from: ${BACKUP_FILE}"
 
-# Get the volume name
-VOLUME=$(docker volume ls --format '{{.Name}}' | grep falkordb_data)
-
-if [ -z "$VOLUME" ]; then
+if ! docker volume inspect "${VOLUME}" >/dev/null 2>&1; then
   echo "Error: FalkorDB volume not found."
+  echo "Start it first with: docker compose up -d falkordb"
   exit 1
 fi
 

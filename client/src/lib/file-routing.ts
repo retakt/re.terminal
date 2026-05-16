@@ -9,7 +9,8 @@ export type ProgramKind =
   | "extensions"
   | "plugins"
   | "scripts"
-  | "playground";
+  | "playground"
+  | "memory-graph";
 
 const IMAGE_EXTS = new Set(["bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"]);
 const PDF_EXTS = new Set(["pdf"]);

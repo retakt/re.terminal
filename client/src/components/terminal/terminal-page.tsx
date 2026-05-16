@@ -34,14 +34,15 @@ import { ExtensionsShell } from "@/components/programs/tools/extensions-shell";
 import { PluginsShell } from "@/components/programs/tools/plugins-shell";
 import { ScriptsShell } from "@/components/programs/tools/scripts-shell";
 import { PlaygroundShell } from "@/components/programs/tools/playground-shell";
+import { MemoryGraph } from "@/components/programs/memory-graph/MemoryGraph";
 import { SettingsPanel } from "./settings-panel";
 import {
   Plus, X, Terminal, FolderOpen,
   WifiOff, Loader2, ChevronRight, Settings,
   GitBranch, Bell, Moon, Sun, Globe, MessageSquare, Users, Image as ImageIcon,
-  Blocks, Puzzle, Package, SquareTerminal, FlaskConical
+  Blocks, Puzzle, Package, SquareTerminal, FlaskConical, Network
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 const FILE_VIEW_TYPES = new Set<Page["type"]>(["editor", "pdf", "spreadsheet", "doc"]);
 const PRIMARY_TAB_TYPES = new Set<Page["type"]>([
@@ -57,6 +58,7 @@ const PRIMARY_TAB_TYPES = new Set<Page["type"]>([
   "plugins",
   "scripts",
   "playground",
+  "memory-graph",
 ]);
 
 function isFileViewType(type: Page["type"] | undefined): boolean {
@@ -138,7 +140,7 @@ function LoginScreen() {
 // Shows: terminal tabs + files tab. No editor tabs here.
 
 function PrimaryTabBar() {
-  const { pages, activePageId, closePage, switchPage, openFiles } = useApp();
+  const { pages, activePageId, closePage, switchPage, openFiles, openProgram } = useApp();
   const { createSession } = useTerminal();
   const primaryPages = pages.filter(page => PRIMARY_TAB_TYPES.has(page.type));
   const tabRefs = React.useRef(new Map<string, HTMLButtonElement>());
@@ -187,6 +189,7 @@ function PrimaryTabBar() {
               {page.type === "plugins" && <Package size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               {page.type === "scripts" && <SquareTerminal size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               {page.type === "playground" && <FlaskConical size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "memory-graph" && <Network size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               <span className="reterm-tab-title">{page.title}</span>
               <span
                 className="reterm-tab-close"
@@ -220,6 +223,14 @@ function PrimaryTabBar() {
         title="open file explorer"
       >
         <FolderOpen size={14} strokeWidth={1.9} />
+      </button>
+
+      <button
+        className="reterm-tab-new"
+        onClick={() => openProgram("memory-graph")}
+        title="open memory graph"
+      >
+        <Network size={14} strokeWidth={1.9} />
       </button>
     </div>
   );
@@ -390,6 +401,7 @@ function PageContent({ page, isActive }: { page: Page; isActive: boolean }) {
   if (page.type === "plugins")   return <PluginsShell />;
   if (page.type === "scripts")   return <ScriptsShell />;
   if (page.type === "playground") return <PlaygroundShell />;
+  if (page.type === "memory-graph") return <MemoryGraph />;
   return null;
 }
 
@@ -470,23 +482,27 @@ export function TerminalPage() {
             </button>
           </div>
         ) : (
-          <AnimatePresence mode="wait">
-            {activePage && (
+          pages.map((page) => {
+            const isActive = page.id === activePageId;
+            return (
               <motion.div
-                key={activePage.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                key={page.id}
+                aria-hidden={!isActive}
+                initial={false}
+                animate={{ opacity: isActive ? 1 : 0 }}
                 transition={{ duration: 0.1 }}
                 style={{
                   position: "absolute",
                   inset: 0,
+                  zIndex: isActive ? 1 : 0,
+                  visibility: isActive ? "visible" : "hidden",
+                  pointerEvents: isActive ? "auto" : "none",
                 }}
               >
-                <PageContent page={activePage} isActive />
+                <PageContent page={page} isActive={isActive} />
               </motion.div>
-            )}
-          </AnimatePresence>
+            );
+          })
         )}
       </div>
 

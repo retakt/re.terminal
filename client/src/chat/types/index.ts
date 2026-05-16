@@ -1,4 +1,5 @@
 // ── Chat types ────────────────────────────────────────────────────────────────
+import type { MemoryRecord } from "../api/memory";
 
 export type AttachedFile =
   | { type: "text"; name: string; content: string }
@@ -11,6 +12,7 @@ export type ToolLog = {
   result: string;
   status: "running" | "complete" | "error";
   timestamp?: number;
+  memory?: MemoryRecord | null;
 };
 
 export interface SessionOptions {
@@ -25,4 +27,5 @@ export interface ChatContextValue {
   attachedFile: AttachedFile | null;
   setAttachedFile: (f: AttachedFile | null) => void;
   toolLogsRef: React.MutableRefObject<ToolLog[]>;
+  persistToolLogs: () => void;
 }
