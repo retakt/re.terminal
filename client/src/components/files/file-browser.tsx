@@ -22,7 +22,7 @@ interface Props {
 }
 
 export function FileBrowser({ pageId, dir }: Props) {
-  const { openEditor, updateDir } = useApp();
+  const { openEditor, openPath, updateDir } = useApp();
 
   const [rootDir,  setRootDir]  = React.useState(dir);
   const [nodes,    setNodes]    = React.useState<TreeNode[]>([]);
@@ -101,7 +101,7 @@ export function FileBrowser({ pageId, dir }: Props) {
     if (node.entry.type === "dir") {
       toggleDir(node);
     } else {
-      openEditor(node.entry.path, node.entry.name);
+      openPath(node.entry.path);
     }
   };
 
