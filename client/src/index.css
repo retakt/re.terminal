@@ -26,6 +26,7 @@
   --fg-subtle:      #6e7681;
 
   /* Accent colors */
+  --accent-orange:  #f97316;
   --accent-blue:    #58a6ff;
   --accent-red:     #ff7b72;
   --accent-green:   #3fb950;
@@ -107,6 +108,7 @@
   --fg-subtle:      #6e7781;
 
   /* Accent colors */
+  --accent-orange:  #ea580c;
   --accent-blue:    #0969da;
   --accent-red:     #cf222e;
   --accent-green:   #1a7f37;

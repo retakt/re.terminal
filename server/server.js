@@ -21,6 +21,7 @@ import { URL } from "url";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { saveCommand, saveError, saveFix, savePreference, searchMemory } from "./lib/memory-client.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -684,6 +685,63 @@ wss.on("connection", (ws, req) => {
     log("ERROR", "client", "ws error", { error: err.message });
     unsubscribeAll(ws);
   });
+});
+
+// ─── Memory API Routes ────────────────────────────────────────────────────────
+
+app.post("/api/memory/command", async (req, res) => {
+  try {
+    const { projectId, command, output } = req.body;
+    if (!projectId || !command) return res.status(400).json({ error: "projectId and command required" });
+    await saveCommand(projectId, command, output);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/memory/error", async (req, res) => {
+  try {
+    const { projectId, error, context } = req.body;
+    if (!projectId || !error) return res.status(400).json({ error: "projectId and error required" });
+    await saveError(projectId, error, context);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/memory/fix", async (req, res) => {
+  try {
+    const { projectId, error, fix } = req.body;
+    if (!projectId || !error || !fix) return res.status(400).json({ error: "projectId, error, and fix required" });
+    await saveFix(projectId, error, fix);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/memory/preference", async (req, res) => {
+  try {
+    const { projectId, key, value } = req.body;
+    if (!projectId || !key || !value) return res.status(400).json({ error: "projectId, key, and value required" });
+    await savePreference(projectId, key, value);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/memory/search", async (req, res) => {
+  try {
+    const { projectId, q: query } = req.query;
+    if (!projectId || !query) return res.status(400).json({ error: "projectId and q query params required" });
+    const results = await searchMemory(projectId, query);
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
