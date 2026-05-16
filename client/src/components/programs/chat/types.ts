@@ -1,12 +1,3 @@
-export type AttachedFile =
-  | { type: "text"; name: string; content: string }
-  | { type: "image"; name: string; base64: string; mimeType: string }
-  | { type: "audio"; name: string; base64: string; mimeType: string };
+// ── Backwards compatibility re-exports ───────────────────────────────────────
 
-export type ToolLog = {
-  tool: string;
-  args: Record<string, string>;
-  result: string;
-  status: "running" | "complete" | "error";
-  timestamp?: number;
-};
+export type { AttachedFile, ToolLog } from "@/chat/types";
