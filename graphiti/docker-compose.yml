@@ -1,0 +1,47 @@
+name: memory
+
+services:
+  falkordb:
+    image: ${FALKORDB_IMAGE:-falkordb/falkordb:latest}
+    container_name: reterm-falkordb
+    restart: unless-stopped
+    ports:
+      - "${FALKORDB_BIND:-127.0.0.1}:${FALKORDB_EXTERNAL_PORT:-6380}:6379"
+      - "${FALKORDB_UI_BIND:-127.0.0.1}:${FALKORDB_UI_PORT:-3001}:3000"
+    volumes:
+      - falkordb_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  graphiti-mcp:
+    image: ${GRAPHITI_MCP_IMAGE:-zepai/knowledge-graph-mcp:standalone}
+    container_name: reterm-graphiti-mcp
+    restart: unless-stopped
+    profiles:
+      - mcp
+    ports:
+      - "${GRAPHITI_BIND:-127.0.0.1}:${GRAPHITI_PORT:-8001}:8000"
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_TYPE: falkordb
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: 6379
+      FALKORDB_URI: redis://falkordb:6379
+      FALKORDB_USERNAME: ${FALKORDB_USERNAME:-}
+      FALKORDB_PASSWORD: ${FALKORDB_PASSWORD:-}
+      FALKORDB_DATABASE: ${FALKORDB_DATABASE:-graphiti_memory}
+      GRAPHITI_GROUP_ID: ${GRAPHITI_GROUP_ID:-reterm}
+      SEMAPHORE_LIMIT: ${SEMAPHORE_LIMIT:-2}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  falkordb_data:
+    name: ${FALKORDB_VOLUME:-memory_falkordb_data}

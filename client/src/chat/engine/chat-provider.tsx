@@ -1,8 +1,14 @@
 // ── Chat Provider (Engine) ───────────────────────────────────────────────────
 // Core chat logic — connects @assistant-ui/react runtime to Ollama API
 
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
-import { AssistantRuntimeProvider, useLocalRuntime, type ChatModelAdapter, type ChatModelRunOptions } from "@assistant-ui/react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  AssistantRuntimeProvider,
+  useLocalRuntime,
+  type ChatModelAdapter,
+  type ChatModelRunOptions,
+  type ThreadHistoryAdapter,
+} from "@assistant-ui/react";
 import { PauseDictationAdapter } from "./pause-dictation-adapter";
 import { parseSlashCommand } from "./slash-commands";
 import {
@@ -19,11 +25,16 @@ import {
 import { TOOLS } from "../tools/definitions";
 import { executeTool } from "../tools/executor";
 import { ollamaChatNonStream, ollamaChatStream, type OllamaMessage } from "../api/ollama";
+import { saveCommand, searchMemory } from "../api/memory";
 import type { AttachedFile, SessionOptions, ToolLog, ChatContextValue } from "../types";
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const ChatContext = createContext<ChatContextValue | null>(null);
+const CHAT_SESSION_ID_KEY = "reterm.chat.sessionId";
+const CHAT_HISTORY_PREFIX = "reterm.chat.history.";
+const CHAT_TOOL_LOGS_PREFIX = "reterm.chat.toolLogs.";
+const MAX_TOOL_LOGS = 80;
 
 export function useChatContext() {
   const ctx = useContext(ChatContext);
@@ -31,22 +42,170 @@ export function useChatContext() {
   return ctx;
 }
 
+type ChatHistoryRepository = Awaited<ReturnType<ThreadHistoryAdapter["load"]>>;
+type ChatHistoryItem = Parameters<ThreadHistoryAdapter["append"]>[0];
+
+function safeLocalStorage() {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function loadOrCreateSessionId(initialSessionId?: string) {
+  const storage = safeLocalStorage();
+  if (initialSessionId) {
+    try { storage?.setItem(CHAT_SESSION_ID_KEY, initialSessionId); } catch {}
+    return initialSessionId;
+  }
+
+  try {
+    const stored = storage?.getItem(CHAT_SESSION_ID_KEY);
+    if (stored) return stored;
+  } catch {}
+
+  const next = generateUUID();
+  try { storage?.setItem(CHAT_SESSION_ID_KEY, next); } catch {}
+  return next;
+}
+
+function historyKey(sessionId: string) {
+  return `${CHAT_HISTORY_PREFIX}${sessionId}`;
+}
+
+function toolLogsKey(sessionId: string) {
+  return `${CHAT_TOOL_LOGS_PREFIX}${sessionId}`;
+}
+
+function reviveMessage(message: any) {
+  if (!message || typeof message !== "object") return null;
+  const createdAt = message.createdAt ? new Date(message.createdAt) : new Date();
+  return {
+    ...message,
+    createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
+  };
+}
+
+function normalizeHistoryItem(item: any): ChatHistoryItem | null {
+  const message = reviveMessage(item?.message);
+  if (!message?.id || !message.role) return null;
+  return {
+    parentId: typeof item.parentId === "string" ? item.parentId : null,
+    message,
+    ...(item.runConfig !== undefined ? { runConfig: item.runConfig } : {}),
+  } as ChatHistoryItem;
+}
+
+function loadHistory(key: string): ChatHistoryRepository {
+  const storage = safeLocalStorage();
+  if (!storage) return { messages: [] };
+
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return { messages: [] };
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.messages)) return { messages: [] };
+    const messages = parsed.messages
+      .map(normalizeHistoryItem)
+      .filter(Boolean) as ChatHistoryRepository["messages"];
+    return {
+      ...(parsed.headId !== undefined ? { headId: parsed.headId } : {}),
+      messages,
+      ...(parsed.unstable_resume ? { unstable_resume: true } : {}),
+    };
+  } catch {
+    return { messages: [] };
+  }
+}
+
+function saveHistory(key: string, repo: ChatHistoryRepository) {
+  const storage = safeLocalStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(key, JSON.stringify(repo));
+  } catch {
+    // Local history is a convenience cache; memory/database remains separate.
+  }
+}
+
+function createLocalHistoryAdapter(key: string): ThreadHistoryAdapter {
+  return {
+    async load() {
+      return loadHistory(key);
+    },
+    async append(item) {
+      const repo = loadHistory(key);
+      const normalized = normalizeHistoryItem(item);
+      if (!normalized) return;
+
+      const messageId = normalized.message.id;
+      const existingIndex = repo.messages.findIndex((entry) => entry.message.id === messageId);
+      const messages = [...repo.messages];
+      if (existingIndex >= 0) {
+        messages[existingIndex] = normalized;
+      } else {
+        messages.push(normalized);
+      }
+
+      saveHistory(key, {
+        headId: messageId,
+        messages,
+      });
+    },
+  };
+}
+
+function loadToolLogs(sessionId: string): ToolLog[] {
+  const storage = safeLocalStorage();
+  if (!storage) return [];
+  try {
+    const raw = storage.getItem(toolLogsKey(sessionId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(-MAX_TOOL_LOGS);
+  } catch {
+    return [];
+  }
+}
+
+function saveToolLogs(sessionId: string, logs: ToolLog[]) {
+  const storage = safeLocalStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(toolLogsKey(sessionId), JSON.stringify(logs.slice(-MAX_TOOL_LOGS)));
+  } catch {
+    // Ignore full localStorage; tool logs can rebuild over time.
+  }
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function ChatProvider({ children, initialSessionId }: { children: ReactNode; initialSessionId?: string }) {
-  const sessionId = initialSessionId ?? generateUUID();
+  const [sessionId] = useState(() => loadOrCreateSessionId(initialSessionId));
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const attachedFileRef = useRef<AttachedFile | null>(null);
   attachedFileRef.current = attachedFile;
 
   // Tool logs — exposed to side panel
-  const toolLogsRef = useRef<ToolLog[]>([]);
+  const toolLogsRef = useRef<ToolLog[]>(loadToolLogs(sessionId));
 
   // Mutable session options
   const sessionOptionsRef = useRef<SessionOptions>({ ...DEFAULT_OPTIONS });
   const thinkOverrideRef = useRef<boolean | null>(null);
   const assistantTurnCountRef = useRef(0);
   const webSearchEnabledRef = useRef<boolean>(true);
+
+  const persistToolLogs = useCallback(() => {
+    saveToolLogs(sessionId, toolLogsRef.current);
+  }, [sessionId]);
+
+  const appendToolLogs = useCallback((logs: ToolLog[]) => {
+    toolLogsRef.current = [...toolLogsRef.current, ...logs].slice(-MAX_TOOL_LOGS);
+    saveToolLogs(sessionId, toolLogsRef.current);
+  }, [sessionId]);
 
   const adapter = useMemo((): ChatModelAdapter => ({
     async *run({ messages, abortSignal }: ChatModelRunOptions) {
@@ -72,6 +231,60 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
         }
         yield { content: [{ type: "text" as const, text: slash.response }] };
         return;
+      }
+
+      if (lastText.trim()) {
+        const memoryLog: ToolLog = {
+          tool: "memory.save",
+          args: {
+            type: "command",
+            projectId: sessionId,
+            text: lastText.trim().slice(0, 240),
+          },
+          result: "",
+          status: "running",
+          timestamp: Date.now(),
+          memory: {
+            type: "command",
+            text: lastText.trim(),
+            output: "",
+          },
+        };
+        appendToolLogs([memoryLog]);
+
+        void saveCommand(sessionId, lastText.trim(), "")
+          .then((result) => {
+            if (result.success && result.memory) {
+              memoryLog.status = "complete";
+              memoryLog.memory = result.memory;
+              memoryLog.result = result.memory.text || result.memory.message || "saved to memory";
+            } else {
+              memoryLog.status = "error";
+              memoryLog.result = result.reason || "memory save skipped";
+            }
+            persistToolLogs();
+          })
+          .catch((err) => {
+            memoryLog.status = "error";
+            memoryLog.result = err instanceof Error ? err.message : "memory save failed";
+            persistToolLogs();
+          });
+      }
+
+      let memoryContext = "";
+      if (lastText.trim()) {
+        try {
+          const memories = await searchMemory(sessionId, lastText.trim());
+          const relevant = memories
+            .filter((memory) => memory.text !== lastText.trim())
+            .slice(0, 6);
+
+          if (relevant.length > 0) {
+            memoryContext = `\n\nRelevant long-term memory for this chat:\n${JSON.stringify(relevant)}`;
+          }
+        } catch (err) {
+          console.warn("Memory lookup failed:", err);
+        }
       }
 
       // ── Build Ollama messages ───────────────────────────────────────────────
@@ -125,6 +338,7 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
 
       // ── System prompt ───────────────────────────────────────────────────────
       const systemPromptContent = SYSTEM_PROMPT.replace("{MALAYSIA_TIME}", getMalaysiaTime())
+        + memoryContext
         + (webSearchEnabled ? "" : "\n\nWeb search is currently DISABLED by the user. Do NOT attempt to use search_web or any search tool. Answer only from your training data.");
 
       const systemMessage: OllamaMessage = { role: "system", content: systemPromptContent };
@@ -186,7 +400,7 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
           status: "running",
           timestamp: Date.now(),
         }));
-        toolLogsRef.current = [...toolLogsRef.current, ...toolLogEntries];
+        appendToolLogs(toolLogEntries);
 
         const toolResults = await Promise.all(
           toolCalls.map(async (tc) => {
@@ -196,9 +410,11 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
             try {
               const result = await executeTool(tc.function.name, tc.function.arguments);
               if (logEntry) { logEntry.result = result; logEntry.status = "complete"; }
+              persistToolLogs();
               return { name: tc.function.name, result };
             } catch (err: any) {
               if (logEntry) { logEntry.result = String(err); logEntry.status = "error"; }
+              persistToolLogs();
               return { name: tc.function.name, result: `Error: ${err}` };
             }
           })
@@ -265,13 +481,14 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
         };
       }
     },
-  }), []);
+  }), [appendToolLogs, persistToolLogs, sessionId]);
 
   const dictationAdapter = useMemo(() => new PauseDictationAdapter({ lang: "en-US" }), []);
-  const runtime = useLocalRuntime(adapter, { adapters: { dictation: dictationAdapter } });
+  const historyAdapter = useMemo(() => createLocalHistoryAdapter(historyKey(sessionId)), [sessionId]);
+  const runtime = useLocalRuntime(adapter, { adapters: { dictation: dictationAdapter, history: historyAdapter } });
 
   return (
-    <ChatContext.Provider value={{ sessionId, attachedFile, setAttachedFile, toolLogsRef }}>
+    <ChatContext.Provider value={{ sessionId, attachedFile, setAttachedFile, toolLogsRef, persistToolLogs }}>
       <AssistantRuntimeProvider runtime={runtime}>
         {children}
       </AssistantRuntimeProvider>

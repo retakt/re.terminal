@@ -42,29 +42,29 @@ import type { FC } from "react";
 export const Thread: FC = () => {
   return (
     <ThreadPrimitive.Root
-      className="aui-root @container flex h-full flex-col bg-background"
+      className="chat-thread-root aui-root @container flex h-full flex-col"
       style={{
         ["--thread-max-width" as string]: "44rem",
-        ["--composer-radius" as string]: "16px",
-        ["--composer-padding" as string]: "12px",
+        ["--composer-radius" as string]: "6px",
+        ["--composer-padding" as string]: "8px",
       }}
     >
       <ThreadPrimitive.Viewport
         turnAnchor="top"
         className="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
       >
-        <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4">
+        <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-3 pt-3">
           <AuiIf condition={(s) => s.thread.isEmpty}>
             <ThreadWelcome />
           </AuiIf>
 
-          <div className="mb-10 flex flex-col gap-y-8 empty:hidden">
+          <div className="mb-10 flex flex-col gap-y-5 empty:hidden">
             <ThreadPrimitive.Messages>
               {() => <ThreadMessage />}
             </ThreadPrimitive.Messages>
           </div>
 
-          <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
+          <ThreadPrimitive.ViewportFooter className="chat-thread-footer sticky bottom-0 mt-auto flex flex-col gap-3 overflow-visible rounded-t-(--composer-radius) pb-3 md:pb-4">
             <ThreadScrollToBottom />
             <Composer />
           </ThreadPrimitive.ViewportFooter>
@@ -93,7 +93,7 @@ const ThreadScrollToBottom: FC = () => {
       <TooltipIconButton
         tooltip="Scroll to bottom"
         variant="outline"
-        className="absolute -top-12 z-10 self-center rounded-full p-4 shadow-md disabled:invisible transition-all duration-200 hover:shadow-lg"
+        className="chat-tool-button absolute -top-10 z-10 self-center rounded-sm p-3 disabled:invisible transition-all duration-150"
       >
         <ArrowDownIcon />
       </TooltipIconButton>
@@ -108,14 +108,14 @@ const ThreadWelcome: FC = () => {
     <div className="my-auto flex grow flex-col">
       <div className="flex w-full grow flex-col items-center justify-center">
         <div className="flex size-full flex-col justify-center px-4">
-          <div className="flex items-center gap-2 mb-2">
-            <SparklesIcon className="size-5 text-primary animate-pulse" />
-            <h1 className="fade-in slide-in-from-bottom-2 animate-in fill-mode-both font-semibold text-2xl duration-300 text-foreground">
-              Hello there!
+          <div className="flex items-center gap-2 mb-1">
+            <SparklesIcon className="size-4 text-primary" />
+            <h1 className="fade-in slide-in-from-bottom-2 animate-in fill-mode-both font-mono text-[18px] font-semibold lowercase duration-300 text-foreground">
+              ready
             </h1>
           </div>
-          <p className="fade-in slide-in-from-bottom-2 animate-in fill-mode-both text-base text-muted-foreground delay-100 duration-300">
-            How can I help you today?
+          <p className="fade-in slide-in-from-bottom-2 animate-in fill-mode-both text-[13px] text-muted-foreground delay-100 duration-300">
+            memory-aware local assistant
           </p>
         </div>
       </div>
@@ -140,7 +140,7 @@ const ThreadSuggestionItem: FC = () => {
       <SuggestionPrimitive.Trigger send asChild>
         <Button
           variant="ghost"
-          className="h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1.5 rounded-xl border bg-background px-4 py-3 text-start text-sm transition-all duration-200 hover:bg-muted hover:shadow-sm hover:border-border"
+          className="chat-suggestion h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1.5 rounded-sm px-3 py-2.5 text-start text-[13px] transition-all duration-150"
         >
           <SuggestionPrimitive.Title className="font-medium" />
           <SuggestionPrimitive.Description className="text-muted-foreground empty:hidden text-xs" />
@@ -158,16 +158,15 @@ const Composer: FC = () => {
       <ComposerPrimitive.AttachmentDropzone asChild>
         <div
           className={cn(
-            "flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding)",
-            "shadow-sm transition-all duration-200",
-            "focus-within:border-ring/50 focus-within:shadow-md focus-within:ring-2 focus-within:ring-ring/10",
-            "data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50",
+            "chat-composer-shell flex w-full flex-col gap-2 rounded-(--composer-radius) p-(--composer-padding)",
+            "transition-all duration-150",
+            "data-[dragging=true]:border-dashed",
           )}
         >
           <ComposerAttachments />
           <ComposerPrimitive.Input
             placeholder="Send a message..."
-            className="max-h-32 min-h-10 w-full resize-none bg-transparent px-1.5 py-1 text-sm outline-none placeholder:text-muted-foreground/60"
+            className="max-h-32 min-h-9 w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-5 outline-none placeholder:text-muted-foreground/60"
             rows={1}
             autoFocus
             aria-label="Message input"
@@ -191,7 +190,7 @@ const ComposerAction: FC = () => {
             type="button"
             variant="default"
             size="icon"
-            className="size-8 rounded-full bg-primary text-primary-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:scale-105 hover:bg-primary/90"
+            className="chat-send-button size-8 rounded-sm text-primary-foreground transition-all duration-150"
             aria-label="Send message"
           >
             <ArrowUpIcon className="size-4" />
@@ -204,7 +203,7 @@ const ComposerAction: FC = () => {
             type="button"
             variant="default"
             size="icon"
-            className="size-8 rounded-full bg-destructive text-destructive-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:bg-destructive/90"
+            className="size-8 rounded-sm bg-destructive text-destructive-foreground transition-all duration-150 hover:bg-destructive/90"
             aria-label="Stop generating"
           >
             <SquareIcon className="size-3 fill-current" />
@@ -314,7 +313,7 @@ const UserMessage: FC = () => {
       <UserMessageAttachments />
 
       <div className="relative col-start-2 min-w-0">
-        <div className="wrap-break-word peer rounded-2xl bg-primary/5 border border-primary/10 px-4 py-2.5 text-foreground empty:hidden shadow-sm">
+        <div className="chat-user-message wrap-break-word peer rounded-sm px-3 py-2 text-foreground empty:hidden">
           <MessagePrimitive.Parts />
         </div>
         <div className="absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 peer-empty:hidden">
@@ -350,9 +349,9 @@ const UserActionBar: FC = () => {
 const EditComposer: FC = () => {
   return (
     <MessagePrimitive.Root className="flex flex-col px-2">
-      <ComposerPrimitive.Root className="ms-auto flex w-full max-w-[85%] flex-col rounded-2xl bg-muted shadow-sm">
+      <ComposerPrimitive.Root className="chat-edit-composer ms-auto flex w-full max-w-[85%] flex-col rounded-sm">
         <ComposerPrimitive.Input
-          className="min-h-14 w-full resize-none bg-transparent p-4 text-foreground text-sm outline-none"
+          className="min-h-14 w-full resize-none bg-transparent p-3 text-foreground text-[13px] outline-none"
           autoFocus
         />
         <div className="mx-3 mb-3 flex items-center gap-2 self-end">

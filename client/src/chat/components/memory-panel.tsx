@@ -1,99 +1,158 @@
 import { useState } from "react";
 import { Brain, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { scrollAreaClasses } from "@/components/ui/scroll-area"; // Assuming ScrollArea is used
-import {
-  searchMemory,
-  clearProjectMemory
-} from "../api/memory";
+import { cn } from "@/lib/utils";
+import { clearProjectMemory, searchMemory } from "../api/memory";
 
 interface MemoryPanelProps {
   projectId: string;
   onClose?: () => void;
 }
 
+type MemoryItem = {
+  type?: string;
+  text?: string;
+  output?: string;
+  message?: string;
+  context?: string;
+  error?: string;
+  description?: string;
+  key?: string;
+  value?: string;
+  createdAt?: string;
+  timestamp?: number | string;
+};
+
+function memoryTitle(item: MemoryItem) {
+  return item.type || item.key || "memory";
+}
+
+function memorySummary(item: MemoryItem) {
+  return item.text || item.message || item.description || item.value || item.error || item.context || "";
+}
+
+function memoryTime(item: MemoryItem) {
+  if (item.createdAt) return item.createdAt;
+  if (!item.timestamp) return "";
+  const time = typeof item.timestamp === "number" ? item.timestamp : Number(item.timestamp);
+  return Number.isFinite(time) ? new Date(time).toLocaleString() : String(item.timestamp);
+}
+
 export function MemoryPanel({ projectId, onClose }: MemoryPanelProps) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
     setLoading(true);
+    setError("");
     try {
-      const data = await searchMemory(projectId, query);
-      // Adjust based on actual Graphiti response structure
-      setResults(data?.result?.nodes || []);
+      const data = await searchMemory(projectId, trimmed);
+      setResults(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Memory search failed", err);
+      setError(err instanceof Error ? err.message : "memory search failed");
+      setResults([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleClear = async () => {
-    if (confirm("Are you sure you want to clear all memory for this project?")) {
-      await clearProjectMemory(projectId);
-      setResults([]);
-    }
+    if (!confirm("Clear visible memory results for this project?")) return;
+    await clearProjectMemory(projectId);
+    setResults([]);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <Card className="w-full max-w-2xl max-h-[80vh] flex flex-col">"
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-lg font-medium flex items-center gap-2">
-            <Brain className="h-5 w-5 text-purple-500" />
-            Project Memory
-          </CardTitle>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-3 backdrop-blur-sm">
+      <section
+        className={cn(
+          "chat-activity-panel flex max-h-[82vh] w-full max-w-2xl flex-col overflow-hidden rounded-sm shadow-xl",
+          "animate-in fade-in zoom-in-95 duration-150",
+        )}
+      >
+        <header className="chat-activity-header flex items-center justify-between px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Brain className="size-4 text-primary" />
+            <div className="min-w-0">
+              <h2 className="truncate text-[13px] font-semibold text-foreground">memory</h2>
+              <p className="truncate font-mono text-[10px] text-muted-foreground">{projectId}</p>
+            </div>
+          </div>
           {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-4 w-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="chat-tool-button size-7 rounded-sm"
+              onClick={onClose}
+              title="Close memory"
+            >
+              <X className="size-3.5" />
             </Button>
           )}
-        </CardHeader>
-        <CardContent className="flex-1 overflow-hidden flex flex-col space-y-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Search memory..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="flex-1"
-            />
-            <Button onClick={handleSearch} disabled={loading}>
-              {loading ? "Searching..." : <Search className="h-4 w-4" />}
-            </Button>
-            <Button variant="destructive" onClick={handleClear}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+        </header>
 
-          <div className="flex-1 overflow-y-auto pr-2">
-            {results.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                {loading ? "Searching..." : "No memories found. Start searching or running commands."}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {results.map((item, idx) => (
-                  <div key={idx} className="rounded-lg border p-3 bg-muted/30">
-                    <div className="flex justify-between items-start">
-                      <span className="font-medium text-sm text-purple-600">{item.label || item.name || "Memory"}</span>
-                      <span className="text-xs text-muted-foreground">{item.properties?.timestamp}</span>
-                    </div>
-                    <pre className="mt-2 text-xs bg-background p-2 rounded overflow-auto">
-                      {JSON.stringify(item.properties, null, 2)}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            )}
+        <div className="flex items-center gap-1.5 border-b border-[color:var(--chat-border)] px-3 py-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              className="chat-edit-field h-8 w-full rounded-sm pl-7 pr-2 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground/60"
+              placeholder="search memory"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void handleSearch();
+              }}
+            />
           </div>
-        </CardContent>
-      </Card>
+          <Button className="chat-solid-button h-8 rounded-sm px-3 text-xs" onClick={handleSearch} disabled={loading}>
+            {loading ? "searching" : "search"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="chat-tool-button size-8 rounded-sm text-muted-foreground hover:text-destructive"
+            onClick={handleClear}
+            title="Clear visible results"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {error && (
+            <div className="mb-3 rounded-sm border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {error}
+            </div>
+          )}
+
+          {results.length === 0 ? (
+            <div className="chat-empty-note flex min-h-36 items-center justify-center rounded-sm border-dashed px-3 text-center text-xs text-muted-foreground">
+              {loading ? "searching memory..." : "no memories found"}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {results.map((item, index) => (
+                <article key={`${memoryTitle(item)}-${index}`} className="chat-log-card rounded-sm p-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="rounded-sm bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-normal text-primary">
+                      {memoryTitle(item)}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{memoryTime(item)}</span>
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-foreground">
+                    {memorySummary(item) || JSON.stringify(item)}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

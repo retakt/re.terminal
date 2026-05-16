@@ -2,26 +2,41 @@ import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PanelRightOpenIcon, PanelRightCloseIcon, Brain } from "lucide-react";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { Thread } from "./thread";
-import { RightPanel } from "./right-panel";
+import { RightPanel, type PanelMotionMode } from "./right-panel";
 import { MemoryPanel } from "./memory-panel";
 import { ChatProvider, useChatContext } from "../engine/chat-provider";
+
+const PANEL_MOTION_KEY = "reterm.chat.panelMotion";
+
+function loadPanelMotion(): PanelMotionMode {
+  if (typeof window === "undefined") return "square";
+  const value = window.localStorage.getItem(PANEL_MOTION_KEY);
+  return value === "soft" || value === "off" || value === "square" ? value : "square";
+}
 
 // ── Chat toolbar ──────────────────────────────────────────────────────────────
 
 function ChatToolbar({
   onTogglePanel,
+  onOpenMemory,
   panelOpen,
 }: {
   onTogglePanel: () => void;
+  onOpenMemory: () => void;
   panelOpen: boolean;
 }) {
   const { sessionId } = useChatContext();
 
   return (
-    <div className="relative z-30 flex items-center justify-between border-b border-border/50 bg-background/95 backdrop-blur-sm px-4 py-2.5">
+    <div className="chat-toolbar-row relative z-30 flex items-center justify-between px-3 py-2">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-foreground">AI Chat</span>
+        <span className="text-[13px] font-semibold lowercase text-foreground">ai chat</span>
         <span className="font-mono text-[10px] text-muted-foreground/50">
           {sessionId.slice(0, 8)}
         </span>
@@ -30,28 +45,28 @@ function ChatToolbar({
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={() => setShowMemory(true)}
+          className="chat-tool-button size-7 rounded-sm text-muted-foreground"
+          onClick={onOpenMemory}
           title="Open memory panel"
         >
-          <Brain className="size-4" />
+          <Brain className="size-3.5" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           className={cn(
-            "size-8 rounded-lg transition-all duration-200",
+            "chat-tool-button size-7 rounded-sm transition-all duration-150",
             panelOpen
-              ? "bg-primary/10 text-primary hover:bg-primary/20"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              ? "is-active text-primary"
+              : "text-muted-foreground"
           )}
           onClick={onTogglePanel}
           title={panelOpen ? "Close activity log" : "Open activity log"}
         >
           {panelOpen ? (
-            <PanelRightCloseIcon className="size-4" />
+            <PanelRightCloseIcon className="size-3.5" />
           ) : (
-            <PanelRightOpenIcon className="size-4" />
+            <PanelRightOpenIcon className="size-3.5" />
           )}
         </Button>
       </div>
@@ -64,35 +79,52 @@ function ChatToolbar({
 function ChatLayout() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
+  const [panelMotion, setPanelMotion] = useState<PanelMotionMode>(() => loadPanelMotion());
   const togglePanel = useCallback(() => setPanelOpen((p) => !p), []);
   const closePanel = useCallback(() => setPanelOpen(false), []);
+  const openMemory = useCallback(() => setShowMemory(true), []);
   const { sessionId } = useChatContext();
 
+  const handlePanelMotionChange = useCallback((next: PanelMotionMode) => {
+    setPanelMotion(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(PANEL_MOTION_KEY, next);
+    }
+  }, []);
+
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-background">
-      <ChatToolbar onTogglePanel={togglePanel} panelOpen={panelOpen} />
+    <div className="chat-shell-root flex h-full flex-col overflow-hidden">
+      <ChatToolbar onTogglePanel={togglePanel} onOpenMemory={openMemory} panelOpen={panelOpen} />
 
       {/* Main content area */}
-      <div className="relative flex flex-1 overflow-hidden">
-        {/* Chat thread */}
-        <div
-          className={cn(
-            "flex-1 transition-all duration-300 ease-out",
-            panelOpen ? "mr-[320px]" : "mr-0"
-          )}
-        >
+      <div className="chat-workspace relative flex flex-1 overflow-hidden">
+        {panelOpen ? (
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="chat-split-group"
+          >
+            <ResizablePanel minSize="34%">
+              <Thread />
+            </ResizablePanel>
+            <ResizableHandle className="chat-resize-handle" />
+            <ResizablePanel
+              defaultSize="320px"
+              minSize="238px"
+              maxSize="520px"
+              groupResizeBehavior="preserve-pixel-size"
+            >
+              <div className={cn("chat-activity-pane", `chat-motion-${panelMotion}`)}>
+                <RightPanel
+                  onClose={closePanel}
+                  motionMode={panelMotion}
+                  onMotionModeChange={handlePanelMotionChange}
+                />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
           <Thread />
-        </div>
-
-        {/* Right panel - slides in from right */}
-        <div
-          className={cn(
-            "absolute right-0 top-0 z-20 h-full w-[320px] border-l border-border/50 bg-background shadow-xl transition-transform duration-300 ease-out",
-            panelOpen ? "translate-x-0" : "translate-x-full"
-          )}
-        >
-          <RightPanel onClose={closePanel} />
-        </div>
+        )}
       </div>
 
       {/* Memory Panel Modal */}

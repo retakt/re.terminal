@@ -1,19 +1,19 @@
 #!/bin/bash
 
-# Backup script for FalkorDB
-BACKUP_DIR="$(dirname "$0")/../backups"
+# Backup script for re.Term FalkorDB memory volume.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BACKUP_DIR="${SCRIPT_DIR}/../backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/falkordb_backup_${DATE}.tar.gz"
+VOLUME="${FALKORDB_VOLUME:-memory_falkordb_data}"
 
 mkdir -p "${BACKUP_DIR}"
 
 echo "Creating backup: ${BACKUP_FILE}"
 
-# Get the volume name
-VOLUME=$(docker volume ls --format '{{.Name}}' | grep falkordb_data)
-
-if [ -z "$VOLUME" ]; then
+if ! docker volume inspect "${VOLUME}" >/dev/null 2>&1; then
   echo "Error: FalkorDB volume not found."
+  echo "Start it first with: docker compose up -d falkordb"
   exit 1
 fi
 
