@@ -34,7 +34,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import * as monaco from "monaco-editor";
-import { getFileTypeLabel, getMonacoLanguageId } from "@/lib/file-routing";
+import { getBaseName, getFileExtension, getFileTypeLabel, getMonacoLanguageId } from "@/lib/file-routing";
 import { fileApi } from "@/lib/file-api";
 
 export interface ApiComponent {
@@ -43,6 +43,7 @@ export interface ApiComponent {
   version: string;
   files: Array<{
     path: string;
+    type?: "file" | "dir";
     content?: string;
   }>;
 }
@@ -50,9 +51,12 @@ export interface ApiComponent {
 interface TreeViewElement {
   id: string;
   name: string;
+  type?: "file" | "dir";
   isSelectable?: boolean;
   children?: TreeViewElement[];
 }
+
+type ApiFileEntry = ApiComponent["files"][number];
 interface TreeContextProps {
   selectedId: string | undefined;
   expandedItems: string[] | undefined;
@@ -73,6 +77,131 @@ const useTree = () => {
 
 const VIEWER_FONT_SIZE = 13;
 const VIEWER_LINE_HEIGHT = 19;
+const LAZY_PREVIEWABLE_EXTS = new Set([
+  "c", "cc", "cpp", "cxx", "h", "hpp",
+  "css", "csv", "gitignore", "gitattributes",
+  "go", "htm", "html", "ini", "java", "js", "jsx",
+  "json", "jsonc", "less", "md", "markdown",
+  "mjs", "cjs", "php", "py", "rb", "rs", "scss",
+  "sh", "bash", "zsh", "fish", "sql", "toml",
+  "ts", "tsx", "txt", "xml", "yaml", "yml",
+  "dockerfile", "makefile", "env", "lock",
+]);
+
+function normalizeViewerPath(filePath: string) {
+  return filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function isLazyPreviewableTextFile(filePath: string) {
+  const base = getBaseName(filePath).toLowerCase();
+  const ext = getFileExtension(filePath).toLowerCase();
+
+  if (LAZY_PREVIEWABLE_EXTS.has(ext)) return true;
+  return ["readme", "license", "changelog", "makefile", "dockerfile", ".env"].includes(base);
+}
+
+function mergeEntries(entries: ApiFileEntry[]) {
+  const byPath = new Map<string, ApiFileEntry>();
+
+  for (const rawEntry of entries) {
+    const entry = {
+      ...rawEntry,
+      path: normalizeViewerPath(rawEntry.path),
+    };
+    const previous = byPath.get(entry.path);
+
+    if (previous?.content !== undefined && entry.content === undefined) {
+      byPath.set(entry.path, { ...entry, content: previous.content });
+    } else {
+      byPath.set(entry.path, previous ? { ...previous, ...entry } : entry);
+    }
+  }
+
+  return [...byPath.values()];
+}
+
+function sortTreeItems(items: TreeViewElement[]) {
+  return [...items].sort((a, b) => {
+    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function collapseSingleFolderChains(item: TreeViewElement): TreeViewElement {
+  let current: TreeViewElement = {
+    ...item,
+    children: item.children
+      ? sortTreeItems(item.children.map(collapseSingleFolderChains))
+      : undefined,
+  };
+  const names = [current.name];
+
+  while (current.type === "dir" && current.children?.length === 1) {
+    const child = current.children[0];
+    if (child.type !== "dir") break;
+
+    names.push(child.name);
+    current = {
+      ...child,
+      name: names.join(" / "),
+      children: child.children,
+    };
+  }
+
+  return current;
+}
+
+function ScrollableMarquee({ children }: { children: React.ReactNode }) {
+  const scrollRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    const textEl = textRef.current;
+    if (!scrollEl || !textEl) return;
+
+    const update = () => {
+      const distance = Math.max(0, textEl.scrollWidth - scrollEl.clientWidth);
+      scrollEl.style.setProperty("--marquee-distance", `${distance}px`);
+      setOverflowing(distance > 2);
+    };
+
+    update();
+
+    const observer = new ResizeObserver(update);
+    observer.observe(scrollEl);
+    observer.observe(textEl);
+
+    return () => observer.disconnect();
+  }, [children]);
+
+  const pause = () => {
+    scrollRef.current?.setAttribute("data-marquee-paused", "true");
+  };
+
+  const resume = () => {
+    window.setTimeout(() => {
+      scrollRef.current?.removeAttribute("data-marquee-paused");
+    }, 1200);
+  };
+
+  return (
+    <span
+      ref={scrollRef}
+      className="file-tree-marquee"
+      data-overflow={overflowing ? "true" : "false"}
+      onPointerDown={pause}
+      onPointerUp={resume}
+      onPointerCancel={resume}
+      onWheel={pause}
+    >
+      <span ref={textRef} className="file-tree-marquee__text">
+        {children}
+      </span>
+    </span>
+  );
+}
 
 // --- Monaco Editor Viewer ---
 function MonacoViewer({
@@ -435,6 +564,7 @@ function Folder({
   isSelect,
   children,
   className,
+  onOpen,
 }: {
   element: string;
   value: string;
@@ -442,6 +572,7 @@ function Folder({
   isSelect?: boolean;
   children: React.ReactNode;
   className?: string;
+  onOpen?: (value: string) => void;
 }) {
   const {
     handleExpand,
@@ -463,19 +594,22 @@ function Folder({
           className
         )}
         disabled={!isSelectable}
-        onClick={() => handleExpand(value)}
+        onClick={() => {
+          handleExpand(value);
+          onOpen?.(value);
+        }}
       >
         {expandedItems?.includes(value)
           ? openIcon ?? <FolderOpenIcon className="h-4 w-4" />
           : closeIcon ?? <FolderIcon className="h-4 w-4" />}
-        <span className="truncate">{element}</span>
+        <ScrollableMarquee>{element}</ScrollableMarquee>
       </AccordionPrimitive.Trigger>
       <AccordionPrimitive.Content className="relative h-full overflow-hidden text-[13px]">
         {indicator && <TreeIndicator />}
         <AccordionPrimitive.Root
           type="multiple"
           className={cn(
-            "ml-5 flex flex-col gap-1 py-1"
+            "ml-3 flex flex-col gap-0.5 py-0.5"
           )}
           value={expandedItems}
         >
@@ -521,7 +655,7 @@ function File({
       }}
     >
       {fileIcon ?? <FileIcon className="h-4 w-4" />}
-      <span className="truncate">{children}</span>
+      <ScrollableMarquee>{children}</ScrollableMarquee>
     </button>
   );
 }
@@ -589,25 +723,29 @@ function TreeItem({
   item,
   selectedFile,
   onFileSelect,
+  onFolderOpen,
 }: {
   item: TreeViewElement;
   selectedFile?: string;
   onFileSelect: (file: string) => void;
+  onFolderOpen: (folder: string) => void;
 }) {
-  if (item.children?.length) {
+  if (item.type === "dir" || item.children?.length) {
     return (
       <Folder
         key={item.id}
         element={item.name}
         value={item.id}
         className="truncate"
+        onOpen={onFolderOpen}
       >
-        {item.children.map((child) => (
+        {(item.children ?? []).map((child) => (
           <TreeItem
             key={child.id}
             item={child}
             selectedFile={selectedFile}
             onFileSelect={onFileSelect}
+            onFolderOpen={onFolderOpen}
           />
         ))}
       </Folder>
@@ -630,12 +768,14 @@ function FileTree({
   tree,
   selectedFile,
   onFileSelect,
+  onFolderOpen,
   component,
   onCloseTree,
 }: {
   tree: TreeViewElement[];
   selectedFile?: string;
   onFileSelect: (file: string) => void;
+  onFolderOpen: (folder: string) => void;
   component: ApiComponent;
   onCloseTree?: () => void;
 }) {
@@ -692,6 +832,7 @@ function FileTree({
                 item={item}
                 selectedFile={selectedFile}
                 onFileSelect={onFileSelect}
+                onFolderOpen={onFolderOpen}
               />
             ))}
           </Tree>
@@ -719,26 +860,69 @@ export default function ComponentFileViewer({
   const [savedContents, setSavedContents] = useState<Record<string, string>>({});
   const [dirtyPaths, setDirtyPaths] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [extraEntries, setExtraEntries] = useState<ApiFileEntry[]>([]);
+  const [loadedDirs, setLoadedDirs] = useState<Record<string, boolean>>({});
+  const [loadingDirs, setLoadingDirs] = useState<Record<string, boolean>>({});
   const isCompact = useIsCompactFileViewer();
-  const files = useMemo(
-    () => component.files.filter((f) => f.content !== undefined),
-    [component.files]
+  const entries = useMemo(
+    () => mergeEntries([...component.files, ...extraEntries]),
+    [component.files, extraEntries]
   );
+  const files = useMemo(
+    () => entries.filter((f) => f.content !== undefined),
+    [entries]
+  );
+
+  useEffect(() => {
+    setExtraEntries([]);
+    setLoadedDirs({});
+    setLoadingDirs({});
+  }, [component.files]);
+
+  const loadFolderEntries = useCallback(async (folderPath: string) => {
+    const normalizedFolderPath = normalizeViewerPath(folderPath);
+    if (!normalizedFolderPath || loadedDirs[normalizedFolderPath] || loadingDirs[normalizedFolderPath]) return;
+
+    setLoadingDirs((prev) => ({ ...prev, [normalizedFolderPath]: true }));
+
+    try {
+      const listing = await fileApi.list(`/${normalizedFolderPath}`);
+      const nextEntries = listing.items.map((item) => ({
+        path: normalizeViewerPath(item.path),
+        type: item.type,
+      }));
+
+      setExtraEntries((prev) => mergeEntries([...prev, ...nextEntries]));
+      setLoadedDirs((prev) => ({ ...prev, [normalizedFolderPath]: true }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "failed to load folder");
+    } finally {
+      setLoadingDirs((prev) => {
+        const next = { ...prev };
+        delete next[normalizedFolderPath];
+        return next;
+      });
+    }
+  }, [loadedDirs, loadingDirs]);
+
   // Build tree structure
   const tree = useMemo(() => {
     const root: Record<string, any> = {};
-    for (const file of files) {
-      const parts = file.path.split("/");
+    for (const file of entries) {
+      const parts = file.path.split("/").filter(Boolean);
       let current = root;
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
+        const id = parts.slice(0, i + 1).join("/");
+        const isLeaf = i === parts.length - 1;
         if (!current[part]) {
           current[part] =
-            i === parts.length - 1
-              ? { ...file, id: file.path, name: part, isSelectable: true }
+            isLeaf && file.type !== "dir"
+              ? { ...file, id: file.path, name: part, type: "file", isSelectable: true }
               : {
-                  id: parts.slice(0, i + 1).join("/"),
+                  id,
                   name: part,
+                  type: "dir",
                   children: {},
                   isSelectable: false,
                 };
@@ -747,21 +931,59 @@ export default function ComponentFileViewer({
       }
     }
     const toArray = (obj: Record<string, any>): TreeViewElement[] =>
-      Object.values(obj).map((item: any) =>
-        item.children ? { ...item, children: toArray(item.children) } : item
+      sortTreeItems(
+        Object.values(obj).map((item: any) =>
+          item.children ? { ...item, children: toArray(item.children) } : item
+        )
       );
-    return toArray(root);
-  }, [files]);
-  const selectedBase = files.find((f) => f.path === selectedFile) || files[0];
+
+    return toArray(root).map(collapseSingleFolderChains);
+  }, [entries]);
+  const firstFileEntry = entries.find((f) => f.type !== "dir");
+  const selectedBase = entries.find((f) => f.path === selectedFile && f.type !== "dir")
+    || files[0]
+    || firstFileEntry;
   const selected = selectedBase
-    ? {
-        ...selectedBase,
-        content: fileContents[selectedBase.path] ?? selectedBase.content ?? "",
-      }
+    ? selectedBase.content !== undefined
+      ? {
+          ...selectedBase,
+          content: fileContents[selectedBase.path] ?? selectedBase.content,
+        }
+      : selectedBase
     : undefined;
   const selectedPath = selected?.path;
   const selectedContent = selected?.content ?? "";
+  const selectedIsEditable = selected?.content !== undefined;
   const isDirty = selectedPath ? !!dirtyPaths[selectedPath] : false;
+
+  useEffect(() => {
+    if (!selectedPath || selectedIsEditable || !isLazyPreviewableTextFile(selectedPath)) return;
+
+    let cancelled = false;
+
+    async function loadSelectedContent() {
+      try {
+        const file = await fileApi.read(`/${selectedPath}`);
+        if (cancelled) return;
+        setExtraEntries((prev) => mergeEntries([
+          ...prev,
+          {
+            path: normalizeViewerPath(file.path),
+            type: "file",
+            content: file.content.replace(/\r\n/g, "\n"),
+          },
+        ]));
+      } catch {
+        // Leave binary, large, or unreadable files visible but not editable.
+      }
+    }
+
+    void loadSelectedContent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIsEditable, selectedPath]);
 
   useEffect(() => {
     const nextContents = Object.fromEntries(
@@ -773,26 +995,31 @@ export default function ComponentFileViewer({
   }, [files]);
 
   useEffect(() => {
-    if (files.length === 0) {
+    const selectableEntries = entries.filter((entry) => entry.type !== "dir");
+
+    if (selectableEntries.length === 0) {
       if (selectedFile) setSelectedFile(undefined);
       return;
     }
 
     const hasSelected = selectedFile
-      ? files.some((file) => file.path === selectedFile)
+      ? selectableEntries.some((entry) => entry.path === selectedFile)
       : false;
 
     if (!hasSelected) {
       const fallback =
-        initialSelectedFile && files.some((file) => file.path === initialSelectedFile)
+        initialSelectedFile && selectableEntries.some((entry) => entry.path === initialSelectedFile)
           ? initialSelectedFile
-          : files[0].path;
+          : selectableEntries[0].path;
       setSelectedFile(fallback);
     }
-  }, [files, initialSelectedFile, selectedFile]);
+  }, [entries, initialSelectedFile, selectedFile]);
   useEffect(() => {
     if (!isCompact) setMobileTreeOpen(false);
   }, [isCompact]);
+  useEffect(() => {
+    if (isCompact && !selected) setMobileTreeOpen(true);
+  }, [isCompact, selected]);
   useEffect(() => {
     if (!isCompact) setMobileEditorOpen(false);
   }, [isCompact]);
@@ -816,16 +1043,17 @@ export default function ComponentFileViewer({
   const handleContentChange = useCallback(
     (value: string) => {
       if (!selectedPath) return;
+      if (!selectedIsEditable) return;
       setFileContents((prev) => ({ ...prev, [selectedPath]: value }));
       setDirtyPaths((prev) => ({
         ...prev,
         [selectedPath]: value !== (savedContents[selectedPath] ?? ""),
       }));
     },
-    [savedContents, selectedPath]
+    [savedContents, selectedIsEditable, selectedPath]
   );
   const handleSave = useCallback(async () => {
-    if (!selectedPath || isSaving) return;
+    if (!selectedPath || !selectedIsEditable || isSaving) return;
 
     const content = fileContents[selectedPath] ?? "";
     setIsSaving(true);
@@ -840,14 +1068,14 @@ export default function ComponentFileViewer({
     } finally {
       setIsSaving(false);
     }
-  }, [fileContents, isSaving, selectedPath]);
+  }, [fileContents, isSaving, selectedIsEditable, selectedPath]);
   const handleRevert = useCallback(() => {
-    if (!selectedPath) return;
+    if (!selectedPath || !selectedIsEditable) return;
 
     const saved = savedContents[selectedPath] ?? "";
     setFileContents((prev) => ({ ...prev, [selectedPath]: saved }));
     setDirtyPaths((prev) => ({ ...prev, [selectedPath]: false }));
-  }, [savedContents, selectedPath]);
+  }, [savedContents, selectedIsEditable, selectedPath]);
   const handleCopy = () => {
     if (selected?.content) {
       navigator.clipboard.writeText(selected.content);
@@ -882,6 +1110,7 @@ export default function ComponentFileViewer({
             tree={tree}
             selectedFile={selectedFile}
             onFileSelect={handleSelectFile}
+            onFolderOpen={loadFolderEntries}
             component={component}
             onCloseTree={() => setMobileTreeOpen(false)}
           />
@@ -932,7 +1161,7 @@ export default function ComponentFileViewer({
           </div>
         )}
         <section className="file-viewer-mobile-editor">
-          {selected && (
+          {selected ? (
             <>
               <FileHeader
                 file={selected}
@@ -940,22 +1169,40 @@ export default function ComponentFileViewer({
                 copied={copied}
                 onToggleTree={() => setMobileTreeOpen((open) => !open)}
                 isTreeOpen={mobileTreeOpen}
-                onEdit={() => {
+                onEdit={selectedIsEditable ? () => {
                   setMobileTreeOpen(false);
                   setMobileEditorOpen(true);
-                }}
-                onSave={handleSave}
-                onRevert={handleRevert}
+                } : undefined}
+                onSave={selectedIsEditable ? handleSave : undefined}
+                onRevert={selectedIsEditable ? handleRevert : undefined}
                 isDirty={isDirty}
                 isSaving={isSaving}
               />
               <div className="flex-1 overflow-hidden">
-                <MonacoViewer
-                  code={selectedContent}
-                  filePath={selected.path}
-                />
+                {selectedIsEditable ? (
+                  <MonacoViewer
+                    code={selectedContent}
+                    filePath={selected.path}
+                  />
+                ) : (
+                  <div className="viewer-state">
+                    <span>preview unavailable for this file</span>
+                  </div>
+                )}
               </div>
             </>
+          ) : (
+            <div className="viewer-state">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setMobileTreeOpen(true)}
+                className="file-viewer-tree-toggle file-viewer-action"
+              >
+                files
+              </Button>
+            </div>
           )}
         </section>
       </div>
@@ -967,35 +1214,51 @@ export default function ComponentFileViewer({
       orientation="horizontal"
       className="component-file-viewer h-full w-full border overflow-hidden"
     >
-      <ResizablePanel defaultSize="220px" minSize="150px" maxSize="300px">
+      <ResizablePanel
+        defaultSize="280px"
+        minSize="210px"
+        maxSize="460px"
+        groupResizeBehavior="preserve-pixel-size"
+      >
         <FileTree
           tree={tree}
           selectedFile={selectedFile}
           onFileSelect={handleSelectFile}
+          onFolderOpen={loadFolderEntries}
           component={component}
         />
       </ResizablePanel>
       <ResizableHandle className="file-viewer-separator" />
       <ResizablePanel minSize="40%">
-        {selected && (
+        {selected ? (
           <div className="h-full flex flex-col">
             <FileHeader
               file={selected}
               onCopy={handleCopy}
               copied={copied}
-              onSave={handleSave}
-              onRevert={handleRevert}
+              onSave={selectedIsEditable ? handleSave : undefined}
+              onRevert={selectedIsEditable ? handleRevert : undefined}
               isDirty={isDirty}
               isSaving={isSaving}
             />
             <div className="flex-1 overflow-hidden">
-              <MonacoViewer
-                code={selectedContent}
-                filePath={selected.path}
-                onChange={handleContentChange}
-                onSave={handleSave}
-              />
+              {selectedIsEditable ? (
+                <MonacoViewer
+                  code={selectedContent}
+                  filePath={selected.path}
+                  onChange={handleContentChange}
+                  onSave={handleSave}
+                />
+              ) : (
+                <div className="viewer-state">
+                  <span>preview unavailable for this file</span>
+                </div>
+              )}
             </div>
+          </div>
+        ) : (
+          <div className="viewer-state">
+            <span>select a file from the tree</span>
           </div>
         )}
       </ResizablePanel>

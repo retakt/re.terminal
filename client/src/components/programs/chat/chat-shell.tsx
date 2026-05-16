@@ -1,69 +1,140 @@
 import * as React from "react";
-import { MessageSquareText, Send } from "lucide-react";
+import { Loader2, Send, Trash2 } from "lucide-react";
 
-const starterNotes = [
-  "Ask the assistant to summarize a file.",
-  "Turn a terminal output into a checklist.",
-  "Keep quick project notes while you work.",
-];
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 export function ChatShell() {
   const [prompt, setPrompt] = React.useState("");
-  const [messages, setMessages] = React.useState<string[]>([
-    "This space is ready for your AI chat integration.",
-  ]);
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const [models, setModels] = React.useState<string[]>([]);
+  const [model, setModel] = React.useState(() => localStorage.getItem("reterm_ollama_model") || "");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
 
-  const send = (text: string) => {
+  React.useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/ollama/tags")
+      .then(res => res.ok ? res.json() : Promise.reject(new Error("ollama offline")))
+      .then(data => {
+        if (cancelled) return;
+        const names = Array.isArray(data.models)
+          ? data.models.map((item: { name?: string }) => item.name).filter(Boolean)
+          : [];
+        setModels(names);
+        setModel(current => current || names[0] || "llama3.1");
+      })
+      .catch(() => {
+        if (!cancelled) setModel(current => current || "llama3.1");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (model) localStorage.setItem("reterm_ollama_model", model);
+  }, [model]);
+
+  const send = async (text: string) => {
     const value = text.trim();
-    if (!value) return;
-    setMessages(prev => [...prev, value]);
+    if (!value || busy) return;
+
+    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: value }];
+    setMessages(nextMessages);
     setPrompt("");
+    setBusy(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/ollama/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages: nextMessages }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "ollama request failed");
+
+      const content = data.message?.content || data.response || "";
+      setMessages(prev => [...prev, { role: "assistant", content: content.trim() || "(empty response)" }]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ollama request failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="program-shell program-shell--chat">
-      <div className="program-hero">
-        <div className="program-kicker">
-          <MessageSquareText size={14} />
-          <span>ai chat</span>
-        </div>
-        <h2>conversation workspace</h2>
-        <p>A lightweight chat surface for prompts, notes, and future model connections.</p>
+    <div className="program-shell chat-shell">
+      <div className="chat-toolbar">
+        <select
+          className="chat-model-select"
+          value={model}
+          onChange={event => setModel(event.target.value)}
+          aria-label="ollama model"
+        >
+          {models.length > 0 ? (
+            models.map(name => <option key={name} value={name}>{name}</option>)
+          ) : (
+            <option value={model}>{model || "ollama"}</option>
+          )}
+        </select>
+
+        <button
+          type="button"
+          className="chat-icon-button"
+          onClick={() => {
+            setMessages([]);
+            setError("");
+          }}
+          title="clear chat"
+          aria-label="clear chat"
+        >
+          <Trash2 size={13} />
+        </button>
       </div>
 
-      <div className="program-card-list">
+      <div className="chat-thread">
+        {messages.length === 0 && (
+          <div className="chat-empty">Ask Ollama something.</div>
+        )}
         {messages.map((message, index) => (
-          <div key={`${index}-${message}`} className="program-card program-card--chat">
-            {message}
+          <div
+            key={`${message.role}-${index}`}
+            className={`chat-message chat-message--${message.role}`}
+          >
+            {message.content}
           </div>
         ))}
-      </div>
-
-      <div className="program-chip-row">
-        {starterNotes.map(note => (
-          <button key={note} className="program-chip" type="button" onClick={() => send(note)}>
-            {note}
-          </button>
-        ))}
+        {busy && (
+          <div className="chat-message chat-message--assistant chat-message--busy">
+            <Loader2 size={13} className="reterm-spin" />
+            <span>thinking</span>
+          </div>
+        )}
       </div>
 
       <form
-        className="program-launcher program-launcher--stacked"
+        className="chat-composer"
         onSubmit={e => {
           e.preventDefault();
           send(prompt);
         }}
       >
         <textarea
-          className="program-input program-input--textarea"
+          className="chat-input"
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
-          placeholder="type a prompt or note"
-          rows={3}
+          placeholder={error || "message ollama"}
+          rows={2}
         />
-        <button className="program-button" type="submit">
+        <button className="chat-send" type="submit" disabled={busy || !prompt.trim()}>
           <Send size={14} />
-          <span>send</span>
         </button>
       </form>
     </div>

@@ -1,6 +1,15 @@
 export type ViewerKind = "editor" | "image" | "pdf" | "spreadsheet" | "doc";
 
-export type ProgramKind = "browser" | "chat" | "forum" | "community";
+export type ProgramKind =
+  | "browser"
+  | "chat"
+  | "forum"
+  | "community"
+  | "mcp"
+  | "extensions"
+  | "plugins"
+  | "scripts"
+  | "playground";
 
 const IMAGE_EXTS = new Set(["bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"]);
 const PDF_EXTS = new Set(["pdf"]);

@@ -4,18 +4,35 @@
  */
 
 const SESSION_KEY = "reterm_session";
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
 function getWsUrl(): string {
-  if (import.meta.env.VITE_TERMINAL_WS_URL) {
-    return import.meta.env.VITE_TERMINAL_WS_URL;
-  }
-  if (import.meta.env.VITE_WS_URL) {
-    return import.meta.env.VITE_WS_URL;
-  }
+  const defaultUrl =
+    window.location.protocol === "https:"
+      ? `wss://${window.location.host}`
+      : `ws://${window.location.hostname}:3003`;
 
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.hostname}:3003`;
+  const rawUrl =
+    import.meta.env.VITE_TERMINAL_WS_URL ||
+    import.meta.env.VITE_WS_URL ||
+    defaultUrl;
+
+  try {
+    const url = new URL(rawUrl, window.location.href);
+
+    if (url.protocol === "http:") url.protocol = "ws:";
+    if (url.protocol === "https:") url.protocol = "wss:";
+
+    if (url.pathname === "/api" || url.pathname === "/api/") {
+      url.pathname = "/";
+    } else if (url.pathname.endsWith("/api")) {
+      url.pathname = url.pathname.slice(0, -4) || "/";
+    }
+
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
 }
 
 function withPassword(url: string, password: string): string {

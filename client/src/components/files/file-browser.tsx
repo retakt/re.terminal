@@ -21,6 +21,58 @@ interface Props {
   dir:    string;
 }
 
+function ScrollableMarquee({ children }: { children: React.ReactNode }) {
+  const scrollRef = React.useRef<HTMLSpanElement>(null);
+  const textRef = React.useRef<HTMLSpanElement>(null);
+  const [overflowing, setOverflowing] = React.useState(false);
+
+  React.useEffect(() => {
+    const scrollEl = scrollRef.current;
+    const textEl = textRef.current;
+    if (!scrollEl || !textEl) return;
+
+    const update = () => {
+      const distance = Math.max(0, textEl.scrollWidth - scrollEl.clientWidth);
+      scrollEl.style.setProperty("--marquee-distance", `${distance}px`);
+      setOverflowing(distance > 2);
+    };
+
+    update();
+
+    const observer = new ResizeObserver(update);
+    observer.observe(scrollEl);
+    observer.observe(textEl);
+
+    return () => observer.disconnect();
+  }, [children]);
+
+  const pause = () => {
+    scrollRef.current?.setAttribute("data-marquee-paused", "true");
+  };
+
+  const resume = () => {
+    window.setTimeout(() => {
+      scrollRef.current?.removeAttribute("data-marquee-paused");
+    }, 1200);
+  };
+
+  return (
+    <span
+      ref={scrollRef}
+      className="file-tree-marquee fb-node-name"
+      data-overflow={overflowing ? "true" : "false"}
+      onPointerDown={pause}
+      onPointerUp={resume}
+      onPointerCancel={resume}
+      onWheel={pause}
+    >
+      <span ref={textRef} className="file-tree-marquee__text">
+        {children}
+      </span>
+    </span>
+  );
+}
+
 export function FileBrowser({ pageId, dir }: Props) {
   const { openEditor, openPath, updateDir } = useApp();
 
@@ -203,7 +255,7 @@ export function FileBrowser({ pageId, dir }: Props) {
               </span>
 
               {/* Name — yellow for dirs, muted for files */}
-              <span className="fb-node-name">{node.entry.name}</span>
+              <ScrollableMarquee>{node.entry.name}</ScrollableMarquee>
 
               {/* Hover actions */}
               <span className="fb-node-actions" onClick={e => e.stopPropagation()}>
