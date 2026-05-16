@@ -6,6 +6,7 @@
 import { useTerminal } from "@/contexts/terminal-context";
 
 type Color = "red" | "orange" | "yellow" | "blue" | "green" | "purple" | "cyan" | "dim";
+type KeyGroup = "clipboard" | "nav" | "core" | "signal" | "nano" | "vim" | "shell";
 
 interface KeyDef {
   id:      number;
@@ -13,88 +14,96 @@ interface KeyDef {
   send?:   string;
   action?: "copy" | "paste";
   color?:  Color;
-  sep?:    true;
+  group?:  KeyGroup;
 }
 
-const KEYS: KeyDef[] = [
-  // ── clipboard ──────────────────────────────────────────────────────────────
-  { id: 1,  label: "copy",     action: "copy",  color: "cyan"   },
-  { id: 2,  label: "paste",    action: "paste", color: "purple" },
-  { id: 3,  sep: true, label: "" },
+type KeyGroupDef = {
+  id: KeyGroup;
+  label: string;
+  keys: KeyDef[];
+};
 
-  // ── arrows + page ──────────────────────────────────────────────────────────
-  { id: 4,  label: "↑",        send: "\x1b[A",  color: "dim"    },
-  { id: 5,  label: "↓",        send: "\x1b[B",  color: "dim"    },
-  { id: 6,  label: "←",        send: "\x1b[D",  color: "dim"    },
-  { id: 7,  label: "→",        send: "\x1b[C",  color: "dim"    },
-  { id: 8,  label: "pgup",     send: "\x1b[5~", color: "dim"    },
-  { id: 9,  label: "pgdn",     send: "\x1b[6~", color: "dim"    },
-  { id: 10, label: "home",     send: "\x1b[H",  color: "dim"    },
-  { id: 11, label: "end",      send: "\x1b[F",  color: "dim"    },
-  { id: 12, sep: true, label: "" },
-
-  // ── essential keys ─────────────────────────────────────────────────────────
-  { id: 13, label: "tab",      send: "\t",      color: "blue"   },
-  { id: 14, label: "esc",      send: "\x1b",    color: "orange" },
-  { id: 15, label: "enter",    send: "\r",      color: "blue"   },
-  { id: 16, label: "del",      send: "\x1b[3~", color: "dim"    },
-  { id: 17, label: "bksp",     send: "\x7f",    color: "dim"    },
-  { id: 18, sep: true, label: "" },
-
-  // ── signals / session ──────────────────────────────────────────────────────
-  { id: 19, label: "ctrl+c",   send: "\x03",    color: "red"    },  // interrupt
-  { id: 20, label: "ctrl+d",   send: "\x04",    color: "red"    },  // EOF / logout
-  { id: 21, label: "ctrl+z",   send: "\x1a",    color: "orange" },  // suspend
-  { id: 22, label: "ctrl+l",   send: "\x0c",    color: "yellow" },  // clear screen
-  { id: 23, sep: true, label: "" },
-
-  // ── nano keys ──────────────────────────────────────────────────────────────
-  { id: 24, label: "^o",       send: "\x0f",    color: "green"  },  // nano save
-  { id: 25, label: "^x",       send: "\x18",    color: "green"  },  // nano exit
-  { id: 26, label: "^w",       send: "\x17",    color: "green"  },  // nano search
-  { id: 27, label: "^k",       send: "\x0b",    color: "yellow" },  // nano cut line
-  { id: 28, label: "^u",       send: "\x15",    color: "yellow" },  // nano paste/uncut
-  { id: 29, label: "^g",       send: "\x07",    color: "blue"   },  // nano help
-  { id: 30, sep: true, label: "" },
-
-  // ── vim keys ───────────────────────────────────────────────────────────────
-  { id: 31, label: ":w",       send: ":w\r",    color: "green"  },  // vim save
-  { id: 32, label: ":q",       send: ":q\r",    color: "orange" },  // vim quit
-  { id: 33, label: ":wq",      send: ":wq\r",   color: "green"  },  // vim save+quit
-  { id: 34, label: ":q!",      send: ":q!\r",   color: "red"    },  // vim force quit
-  { id: 35, label: "i",        send: "i",       color: "blue"   },  // vim insert
-  { id: 36, label: "dd",       send: "dd",      color: "yellow" },  // vim delete line
-  { id: 37, label: "u",        send: "u",       color: "yellow" },  // vim undo
-  { id: 38, sep: true, label: "" },
-
-  // ── ssh / shell utils ──────────────────────────────────────────────────────
-  { id: 39, label: "ctrl+r",   send: "\x12",    color: "cyan"   },  // history search
-  { id: 40, label: "ctrl+a",   send: "\x01",    color: "blue"   },  // line start
-  { id: 41, label: "ctrl+e",   send: "\x05",    color: "blue"   },  // line end
-  { id: 42, label: "!!",       send: "!!\r",    color: "purple" },  // repeat last cmd
-  { id: 43, label: "sudo !!",  send: "sudo !!\r",color: "red"   },  // sudo last cmd
+const KEY_GROUPS: KeyGroupDef[] = [
+  {
+    id: "clipboard",
+    label: "clipboard",
+    keys: [
+      { id: 1, label: "copy", action: "copy", color: "cyan", group: "clipboard" },
+      { id: 2, label: "paste", action: "paste", color: "purple", group: "clipboard" },
+    ],
+  },
+  {
+    id: "nav",
+    label: "navigation",
+    keys: [
+      { id: 4, label: "↑", send: "\x1b[A", color: "dim", group: "nav" },
+      { id: 5, label: "↓", send: "\x1b[B", color: "dim", group: "nav" },
+      { id: 6, label: "←", send: "\x1b[D", color: "dim", group: "nav" },
+      { id: 7, label: "→", send: "\x1b[C", color: "dim", group: "nav" },
+      { id: 8, label: "pgup", send: "\x1b[5~", color: "dim", group: "nav" },
+      { id: 9, label: "pgdn", send: "\x1b[6~", color: "dim", group: "nav" },
+      { id: 10, label: "home", send: "\x1b[H", color: "dim", group: "nav" },
+      { id: 11, label: "end", send: "\x1b[F", color: "dim", group: "nav" },
+    ],
+  },
+  {
+    id: "core",
+    label: "core",
+    keys: [
+      { id: 13, label: "tab", send: "\t", color: "blue", group: "core" },
+      { id: 14, label: "esc", send: "\x1b", color: "orange", group: "core" },
+      { id: 15, label: "enter", send: "\r", color: "blue", group: "core" },
+      { id: 16, label: "del", send: "\x1b[3~", color: "dim", group: "core" },
+      { id: 17, label: "bksp", send: "\x7f", color: "dim", group: "core" },
+    ],
+  },
+  {
+    id: "signal",
+    label: "signals",
+    keys: [
+      { id: 19, label: "ctrl+c", send: "\x03", color: "red", group: "signal" },
+      { id: 20, label: "ctrl+d", send: "\x04", color: "red", group: "signal" },
+      { id: 21, label: "ctrl+z", send: "\x1a", color: "orange", group: "signal" },
+      { id: 22, label: "ctrl+l", send: "\x0c", color: "yellow", group: "signal" },
+    ],
+  },
+  {
+    id: "nano",
+    label: "nano",
+    keys: [
+      { id: 24, label: "^o", send: "\x0f", color: "green", group: "nano" },
+      { id: 25, label: "^x", send: "\x18", color: "green", group: "nano" },
+      { id: 26, label: "^w", send: "\x17", color: "green", group: "nano" },
+      { id: 27, label: "^k", send: "\x0b", color: "yellow", group: "nano" },
+      { id: 28, label: "^u", send: "\x15", color: "yellow", group: "nano" },
+      { id: 29, label: "^g", send: "\x07", color: "blue", group: "nano" },
+    ],
+  },
+  {
+    id: "vim",
+    label: "vim",
+    keys: [
+      { id: 31, label: ":w", send: ":w\r", color: "green", group: "vim" },
+      { id: 32, label: ":q", send: ":q\r", color: "orange", group: "vim" },
+      { id: 33, label: ":wq", send: ":wq\r", color: "green", group: "vim" },
+      { id: 34, label: ":q!", send: ":q!\r", color: "red", group: "vim" },
+      { id: 35, label: "i", send: "i", color: "blue", group: "vim" },
+      { id: 36, label: "dd", send: "dd", color: "yellow", group: "vim" },
+      { id: 37, label: "u", send: "u", color: "yellow", group: "vim" },
+    ],
+  },
+  {
+    id: "shell",
+    label: "shell",
+    keys: [
+      { id: 39, label: "ctrl+r", send: "\x12", color: "cyan", group: "shell" },
+      { id: 40, label: "ctrl+a", send: "\x01", color: "blue", group: "shell" },
+      { id: 41, label: "ctrl+e", send: "\x05", color: "blue", group: "shell" },
+      { id: 42, label: "!!", send: "!!\r", color: "purple", group: "shell" },
+      { id: 43, label: "sudo !!", send: "sudo !!\r", color: "red", group: "shell" },
+    ],
+  },
 ];
-
-const BG: Record<Color, string> = {
-  red:    "rgba(247,118,142,0.14)",
-  orange: "rgba(255,158,100,0.14)",
-  yellow: "rgba(224,175,104,0.14)",
-  blue:   "rgba(122,162,247,0.14)",
-  green:  "rgba(158,206,106,0.14)",
-  purple: "rgba(187,154,247,0.14)",
-  cyan:   "rgba(125,207,255,0.14)",
-  dim:    "rgba(65,72,104,0.28)",
-};
-const FG: Record<Color, string> = {
-  red:    "#f7768e",
-  orange: "#ff9e64",
-  yellow: "#e0af68",
-  blue:   "#7aa2f7",
-  green:  "#9ece6a",
-  purple: "#bb9af7",
-  cyan:   "#7dcfff",
-  dim:    "#a9b1d6",
-};
 
 interface Props { sessionId: string | null; }
 
@@ -124,26 +133,25 @@ export function KeyBar({ sessionId }: Props) {
 
   return (
     <div className="keybar" role="toolbar" aria-label="terminal keys">
-      {KEYS.map(k =>
-        k.sep ? (
-          <div key={k.id} className="keybar-sep" aria-hidden />
-        ) : (
-          <button
-            key={k.id}
-            className="keybar-key"
-            style={k.color ? {
-              background:  BG[k.color],
-              color:       FG[k.color],
-              borderColor: `${FG[k.color]}22`,
-            } : undefined}
-            onPointerDown={e => e.preventDefault()}
-            onPointerUp={e => { e.preventDefault(); handleKey(k); }}
-            aria-label={k.label}
-          >
-            {k.label}
-          </button>
-        )
-      )}
+      {KEY_GROUPS.map(group => (
+        <div
+          key={group.id}
+          className={`keybar-group keybar-group--${group.id}`}
+          aria-label={group.label}
+        >
+          {group.keys.map(k => (
+            <button
+              key={k.id}
+              className={`keybar-key keybar-key--${k.color || "base"} ${k.group ? `keybar-key--group-${k.group}` : ""}`}
+              onPointerDown={e => e.preventDefault()}
+              onPointerUp={e => { e.preventDefault(); handleKey(k); }}
+              aria-label={k.label}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

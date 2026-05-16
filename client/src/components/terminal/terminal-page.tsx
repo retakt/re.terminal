@@ -35,9 +35,8 @@ import { PluginsShell } from "@/components/programs/tools/plugins-shell";
 import { ScriptsShell } from "@/components/programs/tools/scripts-shell";
 import { PlaygroundShell } from "@/components/programs/tools/playground-shell";
 import { SettingsPanel } from "./settings-panel";
-import { ProgramMenu } from "./program-menu";
 import {
-  Plus, X, Terminal, FolderOpen, AppWindow,
+  Plus, X, Terminal, FolderOpen,
   WifiOff, Loader2, ChevronRight, Settings,
   GitBranch, Bell, Moon, Sun, Globe, MessageSquare, Users, Image as ImageIcon,
   Blocks, Puzzle, Package, SquareTerminal, FlaskConical
@@ -87,36 +86,48 @@ function LoginScreen() {
   return (
     <div className="reterm-login">
       <div className="reterm-login-card">
+        <div className="reterm-login-titlebar" aria-hidden="true">
+          <span className="reterm-login-dot" />
+          <span className="reterm-login-dot" />
+          <span className="reterm-login-dot" />
+          <span className="reterm-login-title">auth</span>
+        </div>
         <div className="reterm-login-logo">
           <Terminal size={28} strokeWidth={1.5} />
           <span>re.Term</span>
         </div>
         <p className="reterm-login-subtitle">connect to your terminal server</p>
         <form onSubmit={handleSubmit} className="reterm-login-form" autoComplete="off">
-          <label className="reterm-login-label">password</label>
-          <input
-            ref={inputRef}
-            type="text"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="enter password"
-            className="reterm-login-input"
-            disabled={connecting}
-            autoComplete="off"
-            inputMode="text"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            data-1p-ignore="true"
-            data-lpignore="true"
-            data-form-type="other"
-          />
+          <div className="reterm-login-field">
+            <span className="reterm-login-label">password</span>
+            <div className="reterm-login-command">
+              <span className="reterm-login-prompt" aria-hidden="true">&gt;</span>
+              <input
+                ref={inputRef}
+                type="text"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="password"
+                className="reterm-login-input"
+                disabled={connecting}
+                autoComplete="off"
+                inputMode="text"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-form-type="other"
+                aria-label="password"
+              />
+              <button type="submit" disabled={connecting || !password.trim()} className="reterm-login-btn">
+                {connecting
+                  ? <><Loader2 size={14} className="reterm-spin" />connecting</>
+                  : <><ChevronRight size={14} />connect</>}
+              </button>
+            </div>
+          </div>
           {error && <div className="reterm-login-error">{error}</div>}
-          <button type="submit" disabled={connecting || !password.trim()} className="reterm-login-btn">
-            {connecting
-              ? <><Loader2 size={15} className="reterm-spin" />connecting…</>
-              : <><ChevronRight size={15} />connect</>}
-          </button>
         </form>
       </div>
     </div>
@@ -129,7 +140,6 @@ function LoginScreen() {
 function PrimaryTabBar() {
   const { pages, activePageId, closePage, switchPage, openFiles } = useApp();
   const { createSession } = useTerminal();
-  const [programMenuOpen, setProgramMenuOpen] = React.useState(false);
   const primaryPages = pages.filter(page => PRIMARY_TAB_TYPES.has(page.type));
   const tabRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const activePage = pages.find(p => p.id === activePageId);
@@ -165,18 +175,18 @@ function PrimaryTabBar() {
               onClick={() => switchPage(page.id)}
               title={page.title}
             >
-              {page.type === "terminal" && <Terminal size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "files" && <FolderOpen size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "image" && <ImageIcon size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "browser" && <Globe size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "chat" && <MessageSquare size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "forum" && <MessageSquare size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "community" && <Users size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "mcp" && <Blocks size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "extensions" && <Puzzle size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "plugins" && <Package size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "scripts" && <SquareTerminal size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
-              {page.type === "playground" && <FlaskConical size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
+              {page.type === "terminal" && <Terminal size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "files" && <FolderOpen size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "image" && <ImageIcon size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "browser" && <Globe size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "chat" && <MessageSquare size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "forum" && <MessageSquare size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "community" && <Users size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "mcp" && <Blocks size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "extensions" && <Puzzle size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "plugins" && <Package size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "scripts" && <SquareTerminal size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "playground" && <FlaskConical size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               <span className="reterm-tab-title">{page.title}</span>
               <span
                 className="reterm-tab-close"
@@ -186,7 +196,7 @@ function PrimaryTabBar() {
                 onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); closePage(page.id); } }}
                 aria-label="close"
               >
-                <X size={10} strokeWidth={2} />
+                <X size={11} strokeWidth={1.9} />
               </span>
             </button>
           );
@@ -198,7 +208,7 @@ function PrimaryTabBar() {
         onClick={() => createSession(`terminal ${Date.now()}`)}
         title="new terminal"
       >
-        <Plus size={13} strokeWidth={2.2} />
+        <Plus size={14} strokeWidth={1.9} />
       </button>
 
       <button
@@ -209,23 +219,8 @@ function PrimaryTabBar() {
         }}
         title="open file explorer"
       >
-        <FolderOpen size={12} strokeWidth={2} />
+        <FolderOpen size={14} strokeWidth={1.9} />
       </button>
-
-      <button
-        className="reterm-tab-new reterm-tab-new--programs"
-        onClick={() => setProgramMenuOpen(open => !open)}
-        title="programs"
-        aria-label="programs"
-        aria-expanded={programMenuOpen}
-      >
-        <AppWindow size={12} strokeWidth={2} />
-      </button>
-
-      <ProgramMenu
-        isOpen={programMenuOpen}
-        onClose={() => setProgramMenuOpen(false)}
-      />
     </div>
   );
 }
@@ -307,7 +302,7 @@ function StatusBar() {
       <div className="reterm-statusbar">
         <div className="reterm-statusbar-left">
           <div className="reterm-statusbar-topline">
-            <span className={`reterm-conn-badge ${isConnected ? "reterm-conn-badge--connected" : ""}`}>
+            <span className={`reterm-conn-badge ${isConnected ? "reterm-conn-badge--connected" : isBusy ? "reterm-conn-badge--busy" : ""}`}>
               {isConnected ? (
                 <>
                   <span className="reterm-conn-dot reterm-conn-dot--connected" />

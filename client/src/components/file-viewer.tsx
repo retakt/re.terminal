@@ -34,7 +34,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import * as monaco from "monaco-editor";
-import { getBaseName, getFileExtension, getFileTypeLabel, getMonacoLanguageId } from "@/lib/file-routing";
+import { getFileTypeLabel, getMonacoLanguageId } from "@/lib/file-routing";
 import { fileApi } from "@/lib/file-api";
 
 export interface ApiComponent {
@@ -77,27 +77,14 @@ const useTree = () => {
 
 const VIEWER_FONT_SIZE = 13;
 const VIEWER_LINE_HEIGHT = 19;
-const LAZY_PREVIEWABLE_EXTS = new Set([
-  "c", "cc", "cpp", "cxx", "h", "hpp",
-  "css", "csv", "gitignore", "gitattributes",
-  "go", "htm", "html", "ini", "java", "js", "jsx",
-  "json", "jsonc", "less", "md", "markdown",
-  "mjs", "cjs", "php", "py", "rb", "rs", "scss",
-  "sh", "bash", "zsh", "fish", "sql", "toml",
-  "ts", "tsx", "txt", "xml", "yaml", "yml",
-  "dockerfile", "makefile", "env", "lock",
-]);
 
 function normalizeViewerPath(filePath: string) {
   return filePath.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
-function isLazyPreviewableTextFile(filePath: string) {
-  const base = getBaseName(filePath).toLowerCase();
-  const ext = getFileExtension(filePath).toLowerCase();
-
-  if (LAZY_PREVIEWABLE_EXTS.has(ext)) return true;
-  return ["readme", "license", "changelog", "makefile", "dockerfile", ".env"].includes(base);
+function isLazyPreviewableTextFile(_filePath: string) {
+  // Accept all file types for preview
+  return true;
 }
 
 function mergeEntries(entries: ApiFileEntry[]) {
