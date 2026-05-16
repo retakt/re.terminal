@@ -3,11 +3,12 @@
 set -euo pipefail
 
 # deploy.sh - Build locally, package the full app, and deploy to a VPS.
-# Usage: ./deploy.sh [user] [host] [target_path]
+# Usage: ./deploy.sh [user] [host] [target_path] [public_url]
 
 VPS_USER="${1:-root}"
 VPS_HOST="${2:-157.173.127.84}"
 VPS_PATH="${3:-/opt/re-term}"
+PUBLIC_URL="${4:-https://tmux.retakt.cc}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STAGING_DIR="$(mktemp -d)"
@@ -36,6 +37,7 @@ fi
 
 echo "=== re.Term VPS Deployment Script ==="
 echo "Target: ${VPS_USER}@${VPS_HOST}:${VPS_PATH}"
+echo "Public URL: ${PUBLIC_URL}"
 echo ""
 
 echo "Building client locally..."
@@ -65,7 +67,7 @@ scp "$ARCHIVE_PATH" "${VPS_USER}@${VPS_HOST}:${REMOTE_ARCHIVE}"
 
 echo "Deploying on VPS..."
 ssh "${VPS_USER}@${VPS_HOST}" \
-  "VPS_PATH='$VPS_PATH' VPS_HOST='$VPS_HOST' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' bash -s" <<'EOF'
+  "VPS_PATH='$VPS_PATH' VPS_HOST='$VPS_HOST' PUBLIC_URL='$PUBLIC_URL' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' bash -s" <<'EOF'
 set -euo pipefail
 
 mkdir -p "$VPS_PATH"
@@ -126,12 +128,44 @@ else
   pm2 start server/server.js --name re-term --update-env
 fi
 
+echo "Checking local server endpoints on VPS..."
+wait_for_endpoint() {
+  local url="$1"
+  local attempts="${2:-30}"
+
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    echo "Warning: curl/wget not found; skipping endpoint smoke checks"
+    return 0
+  fi
+
+  for attempt in $(seq 1 "$attempts"); do
+    if command -v curl >/dev/null 2>&1; then
+      if curl -fsS --max-time 2 "$url" >/dev/null; then
+        return 0
+      fi
+    elif wget -qO- --timeout=2 "$url" >/dev/null; then
+      return 0
+    fi
+
+    echo "Waiting for $url ($attempt/$attempts)..."
+    sleep 1
+  done
+
+  echo "Error: endpoint did not become ready: $url"
+  pm2 logs re-term --lines 80 --nostream || true
+  return 1
+}
+
+wait_for_endpoint "http://127.0.0.1:3003/health" 30
+wait_for_endpoint "http://127.0.0.1:3003/api/files?path=/" 30
+
 pm2 save
 
 echo "Deployment complete."
-echo "Access: http://${VPS_HOST}:3003"
+echo "Access: ${PUBLIC_URL}"
 EOF
 
 echo ""
 echo "=== Deployment Complete ==="
 echo "Built locally and deployed to ${VPS_USER}@${VPS_HOST}:${VPS_PATH}"
+echo "Access: ${PUBLIC_URL}"

@@ -29,16 +29,36 @@ import { BrowserShell } from "@/components/programs/browser/browser-shell";
 import { ChatShell } from "@/components/programs/chat/chat-shell";
 import { ForumShell } from "@/components/programs/forum/forum-shell";
 import { CommunityShell } from "@/components/programs/community/community-shell";
+import { McpShell } from "@/components/programs/tools/mcp-shell";
+import { ExtensionsShell } from "@/components/programs/tools/extensions-shell";
+import { PluginsShell } from "@/components/programs/tools/plugins-shell";
+import { ScriptsShell } from "@/components/programs/tools/scripts-shell";
+import { PlaygroundShell } from "@/components/programs/tools/playground-shell";
 import { SettingsPanel } from "./settings-panel";
+import { ProgramMenu } from "./program-menu";
 import {
-  Plus, X, Terminal, FolderOpen,
+  Plus, X, Terminal, FolderOpen, AppWindow,
   WifiOff, Loader2, ChevronRight, Settings,
-  GitBranch, Bell, Moon, Sun, AppWindow, Globe, MessageSquare, Users, Image as ImageIcon
+  GitBranch, Bell, Moon, Sun, Globe, MessageSquare, Users, Image as ImageIcon,
+  Blocks, Puzzle, Package, SquareTerminal, FlaskConical
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const FILE_VIEW_TYPES = new Set<Page["type"]>(["editor", "pdf", "spreadsheet", "doc"]);
-const PRIMARY_TAB_TYPES = new Set<Page["type"]>(["terminal", "files", "image", "browser", "chat", "forum", "community"]);
+const PRIMARY_TAB_TYPES = new Set<Page["type"]>([
+  "terminal",
+  "files",
+  "image",
+  "browser",
+  "chat",
+  "forum",
+  "community",
+  "mcp",
+  "extensions",
+  "plugins",
+  "scripts",
+  "playground",
+]);
 
 function isFileViewType(type: Page["type"] | undefined): boolean {
   return !!type && FILE_VIEW_TYPES.has(type);
@@ -107,42 +127,40 @@ function LoginScreen() {
 // Shows: terminal tabs + files tab. No editor tabs here.
 
 function PrimaryTabBar() {
-  const { pages, activePageId, closePage, switchPage, openFiles, openProgram } = useApp();
+  const { pages, activePageId, closePage, switchPage, openFiles } = useApp();
   const { createSession } = useTerminal();
-  const [launcherOpen, setLauncherOpen] = React.useState(false);
-  const launcherRef = React.useRef<HTMLDivElement>(null);
+  const [programMenuOpen, setProgramMenuOpen] = React.useState(false);
+  const primaryPages = pages.filter(page => PRIMARY_TAB_TYPES.has(page.type));
+  const tabRefs = React.useRef(new Map<string, HTMLButtonElement>());
+  const activePage = pages.find(p => p.id === activePageId);
+  const activePrimaryPage = primaryPages.find(page =>
+    page.id === activePageId ||
+    (page.type === "files" && isFileViewType(activePage?.type))
+  );
 
   React.useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!launcherRef.current?.contains(event.target as Node)) {
-        setLauncherOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setLauncherOpen(false);
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
-
-  const primaryPages = pages.filter(page => PRIMARY_TAB_TYPES.has(page.type));
+    if (!activePrimaryPage) return;
+    tabRefs.current.get(activePrimaryPage.id)?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [activePrimaryPage?.id]);
 
   return (
     <div className="reterm-tabbar">
       <div className="reterm-tabs">
         {primaryPages.map(page => {
-          const activePage = pages.find(p => p.id === activePageId);
           const isActive = page.id === activePageId ||
             (page.type === "files" && isFileViewType(activePage?.type));
 
           return (
             <button
               key={page.id}
+              ref={node => {
+                if (node) tabRefs.current.set(page.id, node);
+                else tabRefs.current.delete(page.id);
+              }}
               className={`reterm-tab ${isActive ? "reterm-tab--active" : ""} reterm-tab--${page.type}`}
               onClick={() => switchPage(page.id)}
               title={page.title}
@@ -154,6 +172,11 @@ function PrimaryTabBar() {
               {page.type === "chat" && <MessageSquare size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
               {page.type === "forum" && <MessageSquare size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
               {page.type === "community" && <Users size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
+              {page.type === "mcp" && <Blocks size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
+              {page.type === "extensions" && <Puzzle size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
+              {page.type === "plugins" && <Package size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
+              {page.type === "scripts" && <SquareTerminal size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
+              {page.type === "playground" && <FlaskConical size={11} strokeWidth={1.8} className="reterm-tab-icon" />}
               <span className="reterm-tab-title">{page.title}</span>
               <span
                 className="reterm-tab-close"
@@ -189,43 +212,20 @@ function PrimaryTabBar() {
         <FolderOpen size={12} strokeWidth={2} />
       </button>
 
-      <div className="reterm-launcher" ref={launcherRef}>
-        <button
-          className="reterm-tab-new reterm-tab-new--launcher"
-        onClick={() => setLauncherOpen(open => !open)}
-        title="open program tabs"
-        type="button"
+      <button
+        className="reterm-tab-new reterm-tab-new--programs"
+        onClick={() => setProgramMenuOpen(open => !open)}
+        title="programs"
+        aria-label="programs"
+        aria-expanded={programMenuOpen}
       >
-          <AppWindow size={13} strokeWidth={2.2} />
-        </button>
+        <AppWindow size={12} strokeWidth={2} />
+      </button>
 
-        {launcherOpen && (
-          <div className="reterm-launcher-menu" role="menu" aria-label="program launchers">
-            {[
-              { kind: "browser" as const, label: "inside browser", icon: Globe },
-              { kind: "chat" as const, label: "ai chat", icon: MessageSquare },
-              { kind: "forum" as const, label: "forum", icon: MessageSquare },
-              { kind: "community" as const, label: "community", icon: Users },
-            ].map(item => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.kind}
-                  type="button"
-                  className="reterm-launcher-item"
-                  onClick={() => {
-                    openProgram(item.kind);
-                    setLauncherOpen(false);
-                  }}
-                >
-                  <Icon size={13} strokeWidth={1.8} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <ProgramMenu
+        isOpen={programMenuOpen}
+        onClose={() => setProgramMenuOpen(false)}
+      />
     </div>
   );
 }
@@ -268,8 +268,11 @@ function StatusBar() {
     try {
       localStorage.setItem("reterm_settings", JSON.stringify(settings));
     } catch {}
-  
+  }, [settings]);
+
+  React.useEffect(() => {
     document.documentElement.setAttribute("data-theme", settings.theme);
+    window.dispatchEvent(new CustomEvent("reterm-theme-change", { detail: settings.theme }));
   }, [settings.theme]);
 
   // Apply font settings
@@ -368,7 +371,7 @@ function StatusBar() {
 
 // ─── Page content ─────────────────────────────────────────────────────────────
 
-function PageContent({ page }: { page: Page }) {
+function PageContent({ page, isActive }: { page: Page; isActive: boolean }) {
   const parentDir = (filePath: string) => {
     const normalized = filePath.replace(/\\/g, "/");
     const idx = normalized.lastIndexOf("/");
@@ -376,7 +379,7 @@ function PageContent({ page }: { page: Page }) {
     return normalized.slice(0, idx);
   };
 
-  if (page.type === "terminal") return <TerminalInstance sessionId={page.sessionId} isActive={true} />;
+  if (page.type === "terminal") return <TerminalInstance sessionId={page.sessionId} isActive={isActive} />;
   if (page.type === "editor")   return <FilesPageViewer dir={parentDir(page.filePath)} selectedPath={page.filePath} />;
   if (page.type === "files")    return <FilesPageViewer dir={page.dir} />;
   if (page.type === "image")     return <ImageViewer filePath={page.filePath} />;
@@ -387,13 +390,18 @@ function PageContent({ page }: { page: Page }) {
   if (page.type === "chat")      return <ChatShell />;
   if (page.type === "forum")     return <ForumShell />;
   if (page.type === "community") return <CommunityShell />;
+  if (page.type === "mcp")       return <McpShell />;
+  if (page.type === "extensions") return <ExtensionsShell />;
+  if (page.type === "plugins")   return <PluginsShell />;
+  if (page.type === "scripts")   return <ScriptsShell />;
+  if (page.type === "playground") return <PlaygroundShell />;
   return null;
 }
 
 // ─── Main app ─────────────────────────────────────────────────────────────────
 
 export function TerminalPage() {
-  const { status, sessions, createSession, closeSession } = useTerminal();
+  const { status, sessions, hasSessionList, createSession, closeSession } = useTerminal();
   const { pages, activePageId, openTerminal, setTerminalCloser } = useApp();
   const isConnected = status === "connected";
 
@@ -413,15 +421,15 @@ export function TerminalPage() {
     prevSessionsRef.current = sessions.map(s => s.id);
   }, [sessions, openTerminal]);
 
-  // Auto-create first session if server has none
+  // Auto-create first session only after the server has told us the real list.
   const didInitRef = React.useRef(false);
   React.useEffect(() => {
-    if (isConnected && sessions.length === 0 && !didInitRef.current) {
+    if (isConnected && hasSessionList && sessions.length === 0 && !didInitRef.current) {
       didInitRef.current = true;
       createSession("terminal 1");
     }
     if (!isConnected) didInitRef.current = false;
-  }, [isConnected, sessions.length, createSession]);
+  }, [isConnected, hasSessionList, sessions.length, createSession]);
 
   // Ctrl+Shift+T → new terminal
   React.useEffect(() => {
@@ -467,27 +475,22 @@ export function TerminalPage() {
             </button>
           </div>
         ) : (
-          // Simplified: No rotateY, no exit animation. Instant switch + fade.
           <AnimatePresence mode="wait">
-            {pages.map(page => {
-              const isVisible = page.id === activePageId;
-              return (
-                <motion.div
-                  key={page.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: isVisible ? 1 : 0 }}
-                  transition={{ duration: 0.1 }} // Fast fade
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    pointerEvents: isVisible ? "auto" : "none",
-                    display: !isVisible ? "none" : undefined,
-                  }}
-                >
-                  <PageContent page={page} />
-                </motion.div>
-              );
-            })}
+            {activePage && (
+              <motion.div
+                key={activePage.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.1 }}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                }}
+              >
+                <PageContent page={activePage} isActive />
+              </motion.div>
+            )}
           </AnimatePresence>
         )}
       </div>

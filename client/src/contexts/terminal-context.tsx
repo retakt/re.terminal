@@ -19,6 +19,7 @@ export interface Session {
   title: string;
   cols:  number;
   rows:  number;
+  cwd?:  string;
 }
 
 export type ConnectionStatus =
@@ -28,6 +29,7 @@ export interface TerminalContextValue {
   status:          ConnectionStatus;
   connect:         (password: string) => Promise<void>;
   disconnect:      () => void;
+  hasSessionList:  boolean;
   sessions:        Session[];
   activeSessionId: string | null;
   createSession:   (title?: string) => void;
@@ -54,23 +56,63 @@ export function useTerminal(): TerminalContextValue {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 function getWsUrl(): string {
-  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL as string;
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  // For tmux.retakt.cc, use Caddy's WebSocket proxy (no port)
-  if (window.location.hostname === "tmux.retakt.cc") {
-    return `${proto}//${window.location.hostname}`;
+  const defaultUrl =
+    window.location.protocol === "https:"
+      ? `wss://${window.location.host}`
+      : `ws://${window.location.hostname}:3003`;
+
+  const rawUrl =
+    import.meta.env.VITE_TERMINAL_WS_URL ||
+    import.meta.env.VITE_WS_URL ||
+    defaultUrl;
+
+  try {
+    const url = new URL(rawUrl, window.location.href);
+
+    if (url.protocol === "http:") url.protocol = "ws:";
+    if (url.protocol === "https:") url.protocol = "wss:";
+
+    if (url.pathname === "/api" || url.pathname === "/api/") {
+      url.pathname = "/";
+    } else if (url.pathname.endsWith("/api")) {
+      url.pathname = url.pathname.slice(0, -4) || "/";
+    }
+
+    return url.toString();
+  } catch {
+    return rawUrl;
   }
-  return `${proto}//${window.location.hostname}:3003`;
 }
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
 const SESSION_KEY      = "reterm_session";
+
+function writeXtermSafely(xterm: XTerminal | undefined, data: string, reset = false) {
+  if (!xterm || !data) return;
+
+  requestAnimationFrame(() => {
+    try {
+      if (reset) xterm.reset();
+      xterm.write(data);
+    } catch (error) {
+      window.setTimeout(() => {
+        try {
+          if (reset) xterm.reset();
+          xterm.write(data);
+        } catch {
+          // xterm renderer can briefly be unavailable during mount/resize.
+        }
+      }, 30);
+    }
+  });
+}
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function TerminalProvider({ children }: { children: React.ReactNode }) {
   const [status,          setStatus]          = useState<ConnectionStatus>("idle");
   const [sessions,        setSessions]        = useState<Session[]>([]);
+  const [hasSessionList,  setHasSessionList]  = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const wsRef          = useRef<WebSocket | null>(null);
@@ -124,6 +166,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
       // Server sends the full list of live sessions on connect
       case "session-list": {
         const list = (msg.sessions as Session[]) || [];
+        setHasSessionList(true);
         setSessions(list);
         // Auto-select first session
         if (list.length > 0) {
@@ -172,14 +215,13 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
 
       case "output": {
         const { sessionId, data } = msg as { sessionId: string; data: string };
-        xtermsRef.current.get(sessionId)?.write(data);
+        writeXtermSafely(xtermsRef.current.get(sessionId), data);
         break;
       }
 
       case "history": {
         const { sessionId, data } = msg as { sessionId: string; data: string };
-        const xterm = xtermsRef.current.get(sessionId);
-        if (xterm && data) { xterm.reset(); xterm.write(data); }
+        writeXtermSafely(xtermsRef.current.get(sessionId), data, true);
         break;
       }
 
@@ -218,12 +260,15 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
       setStatus("connecting");
       // Don't clear sessions here — we'll get the real list from server
       setSessions([]);
+      setHasSessionList(false);
       setActiveSessionId(null);
 
       pendingResolve.current = resolve;
       pendingReject.current  = reject;
 
-      const ws = new WebSocket(`${getWsUrl()}?password=${encodeURIComponent(password)}`);
+      const wsUrl = new URL(getWsUrl(), window.location.href);
+      wsUrl.searchParams.set("password", password);
+      const ws = new WebSocket(wsUrl.toString());
       wsRef.current = ws;
 
       ws.onopen    = () => { /* wait for "ready" */ };
@@ -266,6 +311,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
     closeWs();
     try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
     setSessions([]);
+    setHasSessionList(false);
     setActiveSessionId(null);
     setStatus("idle");
     retryRef.current = 0;
@@ -351,6 +397,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{
       status, connect, disconnect,
+      hasSessionList,
       sessions, activeSessionId,
       createSession, closeSession, switchSession, renameSession,
       registerXterm, unregisterXterm, getXterm,

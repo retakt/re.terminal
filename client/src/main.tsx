@@ -1,4 +1,3 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
 import { TerminalProvider } from "@/contexts/terminal-context";
 import { AppProvider } from "@/contexts/app-context";
@@ -37,11 +36,9 @@ import "./index.css";
 // The keyboard will overlay the bottom, keeping the terminal stable.
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <TerminalProvider>
-      <AppProvider>
-        <TerminalPage />
-      </AppProvider>
-    </TerminalProvider>
-  </React.StrictMode>
+  <TerminalProvider>
+    <AppProvider>
+      <TerminalPage />
+    </AppProvider>
+  </TerminalProvider>
 );

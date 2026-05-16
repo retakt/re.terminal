@@ -137,6 +137,11 @@ const PROGRAM_TITLES: Record<ProgramKind, string> = {
   chat: "ai chat",
   forum: "forum",
   community: "community",
+  mcp: "mcp",
+  extensions: "extensions",
+  plugins: "plugins",
+  scripts: "scripts",
+  playground: "playground",
 };
 
 function viewerTitle(filePath: string, title?: string) {

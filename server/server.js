@@ -62,6 +62,8 @@ const CORS_ORIGIN = process.env.TERMINAL_CORS_ORIGIN    || "*";
 const MAX_SESSIONS= parseInt(process.env.MAX_SESSIONS   || "10", 10);
 const HISTORY_MAX = parseInt(process.env.HISTORY_MAX    || "2000", 10);
 const SHELL       = process.platform === "win32" ? "powershell.exe" : (process.env.SHELL || "bash");
+const OLLAMA_BASE_URL = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
+const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3.1";
 
 log("INFO", "startup", "re.Term server starting", { port: PORT, shell: SHELL, maxSessions: MAX_SESSIONS, logFile: LOG_FILE });
 // Sessions live here, independent of any WebSocket connection.
@@ -234,14 +236,58 @@ const FILE_ROOT = process.env.FILE_ROOT || process.env.HOME || process.cwd();
 
 /** Resolve and validate a client path against FILE_ROOT */
 function resolveSafe(clientPath) {
-  const resolved = path.resolve(FILE_ROOT, clientPath.replace(/^\//, ""));
-  if (!resolved.startsWith(path.resolve(FILE_ROOT))) {
+  const root = path.resolve(FILE_ROOT);
+  const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+  const resolved = path.resolve(root, String(clientPath || "").replace(/^[\\/]+/, ""));
+  const resolvedForCompare = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  const rootForCompare = process.platform === "win32" ? root.toLowerCase() : root;
+  const rootWithSepForCompare = process.platform === "win32" ? rootWithSep.toLowerCase() : rootWithSep;
+
+  if (resolvedForCompare !== rootForCompare && !resolvedForCompare.startsWith(rootWithSepForCompare)) {
     throw new Error("path traversal denied");
   }
   return resolved;
 }
 
 app.use(express.json({ limit: "10mb" }));
+
+// Ollama proxy for the local AI chat page.
+app.get("/api/ollama/tags", async (_req, res) => {
+  try {
+    const upstream = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
+    const data = await upstream.json();
+    res.status(upstream.status).json(data);
+  } catch (err) {
+    log("WARN", "ollama", "failed to list models", { error: err.message });
+    res.status(502).json({ error: "ollama is not reachable", models: [] });
+  }
+});
+
+app.post("/api/ollama/chat", async (req, res) => {
+  try {
+    const model = String(req.body?.model || OLLAMA_MODEL);
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+
+    const upstream = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: messages.map(message => ({
+          role: message.role === "assistant" ? "assistant" : "user",
+          content: String(message.content || ""),
+        })),
+        stream: false,
+      }),
+    });
+
+    const data = await upstream.json();
+    res.status(upstream.status).json(data);
+  } catch (err) {
+    log("WARN", "ollama", "chat request failed", { error: err.message });
+    res.status(502).json({ error: "ollama chat failed" });
+  }
+});
 
 const BINARY_FILE_MAX = 25 * 1024 * 1024;
 const MIME_BY_EXT = {
@@ -275,20 +321,113 @@ function guessMimeType(filePath) {
   return MIME_BY_EXT[ext] || "application/octet-stream";
 }
 
+async function listFiles(clientPath) {
+  const safeClientPath = clientPath || "/";
+  const dir = resolveSafe(safeClientPath);
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  const items = entries.map(e => ({
+    name: e.name,
+    type: e.isDirectory() ? "dir" : "file",
+    path: path.posix.join(safeClientPath.replace(/\\/g, "/"), e.name),
+  })).sort((a, b) => {
+    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return { path: safeClientPath, items };
+}
+
+async function readTextFile(clientPath) {
+  const filePath = resolveSafe(clientPath || "");
+  const stat = await fs.promises.stat(filePath);
+  if (stat.size > 5 * 1024 * 1024) {
+    const err = new Error("file too large (max 5MB)");
+    err.status = 413;
+    throw err;
+  }
+  const content = await fs.promises.readFile(filePath, "utf8");
+  stats.totalFilesRead++;
+  log("EVENT", "file", "file read", { path: clientPath, size: stat.size });
+  return { path: clientPath, content };
+}
+
+async function readBinaryFile(clientPath) {
+  const filePath = resolveSafe(clientPath || "");
+  const stat = await fs.promises.stat(filePath);
+  if (stat.size > BINARY_FILE_MAX) {
+    const err = new Error("file too large (max 25MB)");
+    err.status = 413;
+    throw err;
+  }
+  const content = await fs.promises.readFile(filePath);
+  stats.totalFilesRead++;
+  log("EVENT", "file", "binary file read", { path: clientPath, size: stat.size });
+  return {
+    path: clientPath,
+    mime: guessMimeType(filePath),
+    size: stat.size,
+    contentBase64: content.toString("base64"),
+  };
+}
+
+async function writeTextFile(clientPath, content) {
+  const filePath = resolveSafe(clientPath || "");
+  const text = typeof content === "string" ? content : "";
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, text, "utf8");
+  stats.totalFilesWritten++;
+  log("EVENT", "file", "file written", { path: clientPath, bytes: Buffer.byteLength(text) });
+  return { ok: true };
+}
+
+async function deletePath(clientPath) {
+  const filePath = resolveSafe(clientPath || "");
+  const stat = await fs.promises.stat(filePath);
+  if (stat.isDirectory()) {
+    await fs.promises.rm(filePath, { recursive: true, force: true });
+  } else {
+    await fs.promises.unlink(filePath);
+  }
+  return { ok: true };
+}
+
+async function makeDirectory(clientPath) {
+  const dirPath = resolveSafe(clientPath || "");
+  await fs.promises.mkdir(dirPath, { recursive: true });
+  return { ok: true };
+}
+
+async function renamePath(fromPath, toPath) {
+  const from = resolveSafe(fromPath || "");
+  const to = resolveSafe(toPath || "");
+  await fs.promises.rename(from, to);
+  return { ok: true };
+}
+
+async function handleFileRequest(data = {}) {
+  switch (data.action) {
+    case "list":
+      return listFiles(String(data.path || "/"));
+    case "read":
+      return readTextFile(String(data.path || ""));
+    case "readBinary":
+      return readBinaryFile(String(data.path || ""));
+    case "write":
+      return writeTextFile(String(data.path || ""), data.content);
+    case "delete":
+      return deletePath(String(data.path || ""));
+    case "mkdir":
+      return makeDirectory(String(data.path || ""));
+    case "rename":
+      return renamePath(String(data.from || ""), String(data.to || ""));
+    default:
+      throw new Error(`unknown file action: ${data.action || "missing"}`);
+  }
+}
+
 // List directory
 app.get("/api/files", async (req, res) => {
   try {
-    const dir     = resolveSafe((req.query.path || "") + "");
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    const items   = entries.map(e => ({
-      name:  e.name,
-      type:  e.isDirectory() ? "dir" : "file",
-      path:  path.join((req.query.path || "/") + "", e.name).replace(/\\/g, "/"),
-    })).sort((a, b) => {
-      if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-    res.json({ path: req.query.path || "/", items });
+    res.json(await listFiles((req.query.path || "/") + ""));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -297,42 +436,20 @@ app.get("/api/files", async (req, res) => {
 // Read file
 app.get("/api/file", async (req, res) => {
   try {
-    const filePath = resolveSafe((req.query.path || "") + "");
-    const stat     = await fs.promises.stat(filePath);
-    if (stat.size > 5 * 1024 * 1024) {
-      return res.status(413).json({ error: "file too large (max 5MB)" });
-    }
-    const content = await fs.promises.readFile(filePath, "utf8");
-    stats.totalFilesRead++;
-    log("EVENT", "file", "file read", { path: req.query.path, size: stat.size });
-    res.json({ path: req.query.path, content });
+    res.json(await readTextFile((req.query.path || "") + ""));
   } catch (err) {
     log("WARN", "file", "file read failed", { path: req.query.path, error: err.message });
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
 // Read file as base64 for binary viewers
 app.get("/api/file-binary", async (req, res) => {
   try {
-    const clientPath = (req.query.path || "") + "";
-    const filePath = resolveSafe(clientPath);
-    const stat = await fs.promises.stat(filePath);
-    if (stat.size > BINARY_FILE_MAX) {
-      return res.status(413).json({ error: "file too large (max 25MB)" });
-    }
-    const content = await fs.promises.readFile(filePath);
-    stats.totalFilesRead++;
-    log("EVENT", "file", "binary file read", { path: clientPath, size: stat.size });
-    res.json({
-      path: clientPath,
-      mime: guessMimeType(filePath),
-      size: stat.size,
-      contentBase64: content.toString("base64"),
-    });
+    res.json(await readBinaryFile((req.query.path || "") + ""));
   } catch (err) {
     log("WARN", "file", "binary file read failed", { path: req.query.path, error: err.message });
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
@@ -340,12 +457,7 @@ app.get("/api/file-binary", async (req, res) => {
 app.put("/api/file", async (req, res) => {
   try {
     const { path: clientPath, content } = req.body;
-    const filePath = resolveSafe(clientPath);
-    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.promises.writeFile(filePath, content, "utf8");
-    stats.totalFilesWritten++;
-    log("EVENT", "file", "file written", { path: clientPath, bytes: Buffer.byteLength(content) });
-    res.json({ ok: true });
+    res.json(await writeTextFile(clientPath, content));
   } catch (err) {
     log("WARN", "file", "file write failed", { error: err.message });
     res.status(400).json({ error: err.message });
@@ -355,14 +467,7 @@ app.put("/api/file", async (req, res) => {
 // Delete file or directory
 app.delete("/api/file", async (req, res) => {
   try {
-    const filePath = resolveSafe((req.query.path || "") + "");
-    const stat     = await fs.promises.stat(filePath);
-    if (stat.isDirectory()) {
-      await fs.promises.rm(filePath, { recursive: true, force: true });
-    } else {
-      await fs.promises.unlink(filePath);
-    }
-    res.json({ ok: true });
+    res.json(await deletePath((req.query.path || "") + ""));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -371,9 +476,7 @@ app.delete("/api/file", async (req, res) => {
 // Create directory
 app.post("/api/mkdir", async (req, res) => {
   try {
-    const dirPath = resolveSafe(req.body.path);
-    await fs.promises.mkdir(dirPath, { recursive: true });
-    res.json({ ok: true });
+    res.json(await makeDirectory(req.body.path));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -382,10 +485,7 @@ app.post("/api/mkdir", async (req, res) => {
 // Rename / move
 app.post("/api/rename", async (req, res) => {
   try {
-    const from = resolveSafe(req.body.from);
-    const to   = resolveSafe(req.body.to);
-    await fs.promises.rename(from, to);
-    res.json({ ok: true });
+    res.json(await renamePath(req.body.from, req.body.to));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -542,6 +642,27 @@ wss.on("connection", (ws, req) => {
         break;
       }
 
+      case "file": {
+        const requestId = msg.requestId;
+        handleFileRequest(data)
+          .then(result => send(ws, { type: "file-response", requestId, ok: true, result }))
+          .catch(err => {
+            log("WARN", "file", "websocket file request failed", {
+              requestId,
+              action: data?.action,
+              path: data?.path,
+              error: err.message,
+            });
+            send(ws, {
+              type: "file-response",
+              requestId,
+              ok: false,
+              error: err.message || "file request failed",
+            });
+          });
+        break;
+      }
+
       // ── Ping ──────────────────────────────────────────────────────────────
       case "ping": {
         send(ws, { type: "pong" });
@@ -605,6 +726,10 @@ httpServer.listen(PORT, "0.0.0.0", () => {
 
 function shutdown(signal) {
   log("INFO", "shutdown", `${signal} received — shutting down`, { sessions: globalSessions.size });
+  for (const client of wss.clients) {
+    try { client.close(1001, "Server shutting down"); } catch (_) {}
+  }
+  wss.close();
   for (const [id] of globalSessions) destroySession(id);
   httpServer.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5000).unref();
