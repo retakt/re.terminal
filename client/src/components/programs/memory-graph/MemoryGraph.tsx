@@ -13,7 +13,7 @@ import {
   ReactFlowProvider
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useGraphWebSocket } from '@/hooks/useGraphWebSocket';
+// WebSocket hook removed in favor of API polling
 import { Wifi, WifiOff, RefreshCw, Save, Trash2, AlertCircle, CheckCircle, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -30,91 +30,105 @@ export function MemoryGraph() {
 
 // 2. Inner component where we use hooks
 function MemoryGraphContent() {
-  const { elements: wsNodes, edges: wsEdges, status, error, connect, disconnect } = useGraphWebSocket();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [manualSaveStatus, setManualSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [status, setStatus] = useState<'connected' | 'loading' | 'error'>('loading');
+  const [error, setError] = useState<string | null>(null);
   const { fitView, getNodes, getEdges } = useReactFlow();
 
-  // Initial load effect
+  // 1. Polling Effect (Replaces WebSocket)
   useEffect(() => {
-    if (nodes.length > 0) {
-      fitView({ padding: 0.2 });
-    }
-  }, [nodes.length, fitView]);
+    const fetchGraphData = async () => {
+      setIsProcessing(true);
+      try {
+        // Poll the API endpoint
+        const res = await fetch('http://localhost:8765/api/graph/snapshot');
+        
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        
+        const data = await res.json();
+        setStatus('connected');
+        setError(null);
 
-  // Handle incoming WebSocket data safely
-  useEffect(() => {
-    if (!wsNodes) return;
+        // 2. Update Nodes (Add new ones, keep old positions)
+        setNodes((nds) => {
+          const newNodes = [...nds];
+          const existingIds = new Set(nds.map(n => n.id));
 
-    setIsProcessing(true);
-    try {
-      // 1. Update Nodes (Add new ones, keep old positions)
-      setNodes((nds) => {
-        const newNodes = [...nds];
-        const existingIds = new Set(nds.map(n => n.id));
-
-        wsNodes.forEach((n, i) => {
-          if (!existingIds.has(n.id)) {
-            newNodes.push({
-              id: n.id,
-              type: 'default',
-              position: { 
-                x: 250 + (Math.random() * 500 - 250), 
-                y: 250 + (Math.random() * 500 - 250) 
-              },
-              data: { 
-                label: n.label || 'Unknown', 
-                type: n.type || 'Entity' 
-              },
-              style: {
-                background: '#0f172a',
-                color: '#e2e8f0',
-                border: '1px solid #334155',
-                borderRadius: '6px',
-                padding: '4px 8px',
-                minWidth: '100px',
-                textAlign: 'center',
-                fontSize: '12px',
-              },
+          if (data.nodes) {
+            data.nodes.forEach((n: any) => {
+              if (!existingIds.has(n.id)) {
+                newNodes.push({
+                  id: n.id,
+                  type: 'default',
+                  position: { 
+                    x: 250 + (Math.random() * 500 - 250), 
+                    y: 250 + (Math.random() * 500 - 250) 
+                  },
+                  data: { 
+                    label: n.label || 'Unknown', 
+                    type: n.type || 'Entity' 
+                  },
+                  style: {
+                    background: '#0f172a',
+                    color: '#e2e8f0',
+                    border: '1px solid #334155',
+                    borderRadius: '6px',
+                    padding: '4px 8px',
+                    minWidth: '100px',
+                    textAlign: 'center',
+                    fontSize: '12px',
+                  },
+                });
+              }
             });
           }
+          return newNodes;
         });
-        return newNodes;
-      });
 
-      // 2. Update Edges
-      setEdges((eds) => {
-        const newEdges = [...eds];
-        const existingEdges = new Set(eds.map(e => `${e.source}-${e.target}`));
+        // 3. Update Edges
+        setEdges((eds) => {
+          const newEdges = [...eds];
+          const existingEdges = new Set(eds.map(e => `${e.source}-${e.target}`));
 
-        wsEdges.forEach((e) => {
-          const edgeId = `e-${e.source}-${e.target}`;
-          if (!existingEdges.has(edgeId)) {
-            newEdges.push({
-              id: edgeId,
-              source: e.source,
-              target: e.target,
-              type: 'smoothstep',
-              animated: true,
-              label: e.label || '',
-              markerEnd: { type: MarkerType.ArrowClosed },
-              style: { stroke: '#475569', strokeWidth: 1 },
+          if (data.edges) {
+            data.edges.forEach((e: any) => {
+              const edgeId = `e-${e.source}-${e.target}`;
+              if (!existingEdges.has(edgeId)) {
+                newEdges.push({
+                  id: edgeId,
+                  source: e.source,
+                  target: e.target,
+                  type: 'smoothstep',
+                  animated: true,
+                  label: e.label || '',
+                  markerEnd: { type: MarkerType.ArrowClosed },
+                  style: { stroke: '#475569', strokeWidth: 1 },
+                });
+              }
             });
           }
+          return newEdges;
         });
 
-        return newEdges;
-      });
+      } catch (err: any) {
+        setStatus('error');
+        setError(err.message || "Failed to fetch graph");
+      } finally {
+        setIsProcessing(false);
+      }
+    };
 
-    } catch (err) {
-      console.error("Error processing graph data:", err);
-    } finally {
-      setIsProcessing(false);
-    }
+    // Initial fetch
+    fetchGraphData();
 
-  }, [wsNodes, wsEdges]);
+    // Poll every 2 seconds
+    const interval = setInterval(fetchGraphData, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Manual Save Handler
   const handleManualSave = async () => {
@@ -176,9 +190,9 @@ function MemoryGraphContent() {
                 {status.toUpperCase()}
               </span>
             </div>
-            {isProcessing && <span className="text-xs text-blue-400 animate-pulse">Processing...</span>}
+            {isProcessing && <span className="text-xs text-blue-400 animate-pulse">Syncing...</span>}
             {status !== 'connected' && (
-              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={connect}>Reconnect</Button>
+              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => window.location.reload()}>Retry</Button>
             )}
           </div>
           
