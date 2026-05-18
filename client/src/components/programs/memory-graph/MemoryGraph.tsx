@@ -1,239 +1,185 @@
-// client/src/components/programs/memory-graph/MemoryGraph.tsx
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  ReactFlow, 
-  Controls, 
-  Background, 
-  useNodesState, 
-  useEdgesState, 
+import { useEffect, useMemo, useState } from "react";
+import {
+  Background,
+  BackgroundVariant,
+  Controls,
   MarkerType,
   Panel,
+  ReactFlow,
+  ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
   useReactFlow,
-  BackgroundVariant,
-  ReactFlowProvider
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
-// WebSocket hook removed in favor of API polling
-import { Wifi, WifiOff, RefreshCw, Save, Trash2, AlertCircle, CheckCircle, Database } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+  type Edge,
+  type Node,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { AlertCircle, Database, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-// 1. Wrap the main component to satisfy ReactFlowProvider requirement
-export function MemoryGraph() {
+type GraphResponse = {
+  nodes?: Array<{
+    id: string;
+    label?: string;
+    type?: string;
+    labels?: string[];
+  }>;
+  edges?: Array<{
+    id?: string;
+    source: string;
+    target: string;
+    label?: string;
+  }>;
+};
+
+function getProjectId() {
+  if (typeof window === "undefined") return "default-user";
+  return window.localStorage.getItem("reterm.chat.sessionId") || "default-user";
+}
+
+function nodeClass(type?: string) {
+  switch ((type || "").toLowerCase()) {
+    case "fact":
+      return "memory-node--fact";
+    case "preference":
+      return "memory-node--preference";
+    case "error":
+      return "memory-node--error";
+    case "fix":
+      return "memory-node--fix";
+    case "project":
+      return "memory-node--project";
+    default:
+      return "memory-node--entity";
+  }
+}
+
+function formatLabel(label?: string) {
+  if (!label) return "memory";
+  return label.length > 72 ? `${label.slice(0, 69)}...` : label;
+}
+
+export function MemoryGraph({ isActive = true }: { isActive?: boolean }) {
   return (
-    <div className="w-full h-full relative">
+    <div className="memory-graph-shell h-full w-full">
       <ReactFlowProvider>
-        <MemoryGraphContent />
+        <MemoryGraphContent isActive={isActive} />
       </ReactFlowProvider>
     </div>
   );
 }
 
-// 2. Inner component where we use hooks
-function MemoryGraphContent() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [manualSaveStatus, setManualSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [status, setStatus] = useState<'connected' | 'loading' | 'error'>('loading');
-  const [error, setError] = useState<string | null>(null);
-  const { fitView, getNodes, getEdges } = useReactFlow();
+function MemoryGraphContent({ isActive }: { isActive: boolean }) {
+  const projectId = useMemo(() => getProjectId(), []);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [status, setStatus] = useState<"loading" | "connected" | "error">("loading");
+  const [error, setError] = useState("");
+  const [lastSync, setLastSync] = useState("");
+  const { fitView } = useReactFlow();
 
-  // 1. Polling Effect (Replaces WebSocket)
+  const fetchGraphData = async () => {
+    setStatus("loading");
+    try {
+      const res = await fetch(`/api/memory/graph?projectId=${encodeURIComponent(projectId)}&scope=all`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json() as GraphResponse;
+      const graphNodes = Array.isArray(data.nodes) ? data.nodes : [];
+      const graphEdges = Array.isArray(data.edges) ? data.edges : [];
+      const count = Math.max(graphNodes.length, 1);
+      const radius = 280;
+
+      setNodes(graphNodes.map((node, index) => {
+        const angle = (Math.PI * 2 * index) / count;
+        const ring = index % 3 === 0 ? radius * 0.58 : radius;
+        return {
+          id: node.id,
+          type: "default",
+          position: {
+            x: Math.cos(angle) * ring,
+            y: Math.sin(angle) * ring,
+          },
+          data: {
+            label: (
+              <div className="memory-node-label">
+                <span>{formatLabel(node.label || node.id)}</span>
+                <small>{node.type || node.labels?.[0] || "node"}</small>
+              </div>
+            ),
+          },
+          className: `memory-node ${nodeClass(node.type)}`,
+        };
+      }));
+
+      setEdges(graphEdges.map((edge, index) => ({
+        id: edge.id || `e-${edge.source}-${edge.target}-${index}`,
+        source: edge.source,
+        target: edge.target,
+        label: edge.label || "",
+        type: "smoothstep",
+        animated: false,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        className: "memory-edge",
+      })));
+
+      setStatus("connected");
+      setError("");
+      setLastSync(new Date().toLocaleTimeString());
+      window.setTimeout(() => fitView({ padding: 0.22, duration: 240 }), 30);
+    } catch (err) {
+      setStatus("error");
+      setError(err instanceof Error ? err.message : "failed to fetch graph");
+    }
+  };
+
   useEffect(() => {
-    const fetchGraphData = async () => {
-      setIsProcessing(true);
-      try {
-        // Poll the API endpoint
-        const res = await fetch('http://localhost:8765/api/graph/snapshot');
-        
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        
-        const data = await res.json();
-        setStatus('connected');
-        setError(null);
-
-        // 2. Update Nodes (Add new ones, keep old positions)
-        setNodes((nds) => {
-          const newNodes = [...nds];
-          const existingIds = new Set(nds.map(n => n.id));
-
-          if (data.nodes) {
-            data.nodes.forEach((n: any) => {
-              if (!existingIds.has(n.id)) {
-                newNodes.push({
-                  id: n.id,
-                  type: 'default',
-                  position: { 
-                    x: 250 + (Math.random() * 500 - 250), 
-                    y: 250 + (Math.random() * 500 - 250) 
-                  },
-                  data: { 
-                    label: n.label || 'Unknown', 
-                    type: n.type || 'Entity' 
-                  },
-                  style: {
-                    background: '#0f172a',
-                    color: '#e2e8f0',
-                    border: '1px solid #334155',
-                    borderRadius: '6px',
-                    padding: '4px 8px',
-                    minWidth: '100px',
-                    textAlign: 'center',
-                    fontSize: '12px',
-                  },
-                });
-              }
-            });
-          }
-          return newNodes;
-        });
-
-        // 3. Update Edges
-        setEdges((eds) => {
-          const newEdges = [...eds];
-          const existingEdges = new Set(eds.map(e => `${e.source}-${e.target}`));
-
-          if (data.edges) {
-            data.edges.forEach((e: any) => {
-              const edgeId = `e-${e.source}-${e.target}`;
-              if (!existingEdges.has(edgeId)) {
-                newEdges.push({
-                  id: edgeId,
-                  source: e.source,
-                  target: e.target,
-                  type: 'smoothstep',
-                  animated: true,
-                  label: e.label || '',
-                  markerEnd: { type: MarkerType.ArrowClosed },
-                  style: { stroke: '#475569', strokeWidth: 1 },
-                });
-              }
-            });
-          }
-          return newEdges;
-        });
-
-      } catch (err: any) {
-        setStatus('error');
-        setError(err.message || "Failed to fetch graph");
-      } finally {
-        setIsProcessing(false);
-      }
-    };
-
-    // Initial fetch
-    fetchGraphData();
-
-    // Poll every 2 seconds
-    const interval = setInterval(fetchGraphData, 2000);
-
+    if (!isActive) return;
+    void fetchGraphData();
+    const interval = setInterval(() => void fetchGraphData(), 4000);
     return () => clearInterval(interval);
-  }, []);
-
-  // Manual Save Handler
-  const handleManualSave = async () => {
-    setManualSaveStatus('saving');
-    try {
-      const res = await fetch('http://localhost:8765/api/debug/force-save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `Manual Save ${new Date().toLocaleTimeString()}` })
-      });
-      if (res.ok) setManualSaveStatus('success');
-      else setManualSaveStatus('error');
-    } catch (e) {
-      setManualSaveStatus('error');
-    } finally {
-      setTimeout(() => setManualSaveStatus('idle'), 3000);
-    }
-  };
-
-  // Clear Memory Handler
-  const handleClearMemory = async () => {
-    if (!confirm("⚠️ Are you sure? This will wipe all memory from FalkorDB.")) return;
-    try {
-      await fetch('http://localhost:8765/api/debug/clear', { method: 'POST' });
-      setNodes([]);
-      setEdges([]);
-    } catch (e) {
-      alert("Failed to clear memory");
-    }
-  };
+  }, [isActive, projectId]);
 
   return (
-    <div className="w-full h-full">
+    <div className="h-full w-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         fitView
-        panOnDrag={[true, true]}
+        minZoom={0.12}
+        maxZoom={1.6}
+        panOnDrag
         zoomOnScroll
-        minZoom={0.1}
-        maxZoom={1.5}
         attributionPosition="bottom-right"
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#334155" />
-        <Controls />
-        
-        {/* Status Panel */}
-        <Panel position="top-right" className="bg-slate-900/95 backdrop-blur p-3 rounded-lg border border-slate-700 shadow-lg z-50">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex items-center gap-2">
-              {status === 'connected' ? (
-                <Wifi className="w-4 h-4 text-emerald-500" />
-              ) : (
-                <WifiOff className="w-4 h-4 text-rose-500" />
-              )}
-              <span className={`text-xs font-bold ${status === 'connected' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                {status.toUpperCase()}
-              </span>
-            </div>
-            {isProcessing && <span className="text-xs text-blue-400 animate-pulse">Syncing...</span>}
-            {status !== 'connected' && (
-              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => window.location.reload()}>Retry</Button>
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1} className="memory-graph-bg" />
+        <Controls className="memory-graph-controls" />
+
+        <Panel position="top-right" className="memory-graph-status">
+          <div className="flex items-center gap-2">
+            {status === "connected" ? (
+              <Wifi className="size-3.5 text-primary" />
+            ) : (
+              <WifiOff className="size-3.5 text-red-500" />
             )}
+            <span className="font-mono text-[10px] uppercase text-muted-foreground">{status}</span>
+            <Button size="icon" variant="ghost" className="chat-tool-button size-7 rounded-sm" onClick={() => void fetchGraphData()}>
+              <RefreshCw className={`size-3.5 ${status === "loading" ? "animate-spin" : ""}`} />
+            </Button>
           </div>
-          
+          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1"><Database className="size-3" /> {nodes.length}</span>
+            <span>{edges.length} edges</span>
+            {lastSync && <span>{lastSync}</span>}
+          </div>
           {error && (
-            <div className="mt-1 p-1.5 bg-rose-900/30 border border-rose-800 rounded text-xs text-rose-400 flex items-start gap-2">
-              <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-              <span className="truncate max-w-[200px]">{error}</span>
+            <div className="mt-2 flex items-start gap-2 rounded-sm border border-red-500/30 bg-red-500/10 p-2 text-[11px] text-red-500">
+              <AlertCircle className="mt-0.5 size-3 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
-        </Panel>
-
-        {/* Action Panel */}
-        <Panel position="bottom-left" className="bg-slate-900/95 backdrop-blur p-2 rounded-lg border border-slate-700 shadow-lg flex gap-2 z-50">
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            onClick={handleManualSave}
-            disabled={status !== 'connected' || manualSaveStatus === 'saving'}
-            className="flex items-center gap-2 h-8 text-xs"
-          >
-            {manualSaveStatus === 'saving' ? <RefreshCw className="w-3 h-3 animate-spin" /> : 
-             manualSaveStatus === 'success' ? <CheckCircle className="w-3 h-3 text-emerald-500" /> :
-             manualSaveStatus === 'error' ? <AlertCircle className="w-3 h-3 text-rose-500" /> :
-             <Save className="w-3 h-3" />}
-            <span>{manualSaveStatus === 'success' ? 'Saved!' : 'Test Save'}</span>
-          </Button>
-
-          <Button 
-            variant="destructive" 
-            size="sm" 
-            onClick={handleClearMemory}
-            className="flex items-center gap-2 h-8 text-xs"
-          >
-            <Trash2 className="w-3 h-3" /> Clear
-          </Button>
-          
-          <div className="h-6 w-[1px] bg-slate-700 mx-1"></div>
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="flex items-center gap-1"><Database className="w-3 h-3"/> {nodes.length}</span>
-            <span className="flex items-center gap-1"><span className="h-1 w-1 bg-slate-400 rounded-full"></span> {edges.length}</span>
-          </div>
         </Panel>
       </ReactFlow>
     </div>

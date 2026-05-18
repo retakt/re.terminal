@@ -4,7 +4,7 @@
  * Terminal pages are restored by matching against the server's session-list.
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getBaseName, getViewerKind, type ProgramKind } from "@/lib/file-routing";
 
 export type PageType =
@@ -17,31 +17,29 @@ export type PageType =
   | "doc"
   | ProgramKind;
 
-export interface TerminalPage {
+export interface PageMeta {
   id: string;
-  type: "terminal";
-  sessionId: string;
   title: string;
+  pinned?: boolean;
 }
 
-export interface FilesPage {
-  id: string;
+export interface TerminalPage extends PageMeta {
+  type: "terminal";
+  sessionId: string;
+}
+
+export interface FilesPage extends PageMeta {
   type: "files";
-  title: string;
   dir: string;
 }
 
-export interface EditorPage {
-  id: string;
+export interface EditorPage extends PageMeta {
   type: "editor";
   filePath: string;
-  title: string;
 }
 
-export interface ViewerPageBase {
-  id: string;
+export interface ViewerPageBase extends PageMeta {
   filePath: string;
-  title: string;
 }
 
 export interface ImagePage extends ViewerPageBase {
@@ -60,10 +58,8 @@ export interface DocPage extends ViewerPageBase {
   type: "doc";
 }
 
-export interface ProgramPage {
-  id: string;
+export interface ProgramPage extends PageMeta {
   type: ProgramKind;
-  title: string;
 }
 
 export type Page = TerminalPage | FilesPage | EditorPage | ImagePage | PdfPage | SpreadsheetPage | DocPage | ProgramPage;
@@ -82,6 +78,9 @@ export interface AppContextValue {
   openPath: (filePath: string) => void;
   closePage: (id: string) => void;
   switchPage: (id: string) => void;
+  renamePage: (id: string, title: string) => void;
+  reorderPage: (sourceId: string, targetId: string, placement?: "before" | "after") => void;
+  togglePagePin: (id: string) => void;
   updateDir: (id: string, dir: string) => void;
   setTerminalCloser: (fn: (sessionId: string) => void) => void;
 }
@@ -133,7 +132,7 @@ function loadActiveId(): string | null {
 }
 
 const PROGRAM_TITLES: Record<ProgramKind, string> = {
-  browser: "inside browser",
+  browser: "lightpanda",
   chat: "ai chat",
   forum: "forum",
   community: "community",
@@ -171,7 +170,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const existing = prev.find(p => p.type === "terminal" && p.sessionId === sessionId);
       if (existing) {
         setActivePageId(existing.id);
-        return prev;
+        return prev.map(p => p.id === existing.id && p.type === "terminal" && p.title !== title ? { ...p, title } : p);
       }
       const page: TerminalPage = { id: uid(), type: "terminal", sessionId, title };
       setActivePageId(page.id);
@@ -344,6 +343,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setActivePageId(id);
   }, []);
 
+  const renamePage = useCallback((id: string, title: string) => {
+    const clean = title.trim().slice(0, 80);
+    if (!clean) return;
+    setPages(prev => prev.map(p => p.id === id ? { ...p, title: clean } as Page : p));
+  }, []);
+
+  const reorderPage = useCallback((sourceId: string, targetId: string, placement: "before" | "after" = "before") => {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    setPages(prev => {
+      const sourceIndex = prev.findIndex(p => p.id === sourceId);
+      const targetIndex = prev.findIndex(p => p.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return prev;
+      const next = [...prev];
+      const [source] = next.splice(sourceIndex, 1);
+      const targetAfterRemoval = next.findIndex(p => p.id === targetId);
+      const insertAt = placement === "after" ? targetAfterRemoval + 1 : targetAfterRemoval;
+      next.splice(Math.max(0, Math.min(insertAt, next.length)), 0, source);
+      return next;
+    });
+  }, []);
+
+  const togglePagePin = useCallback((id: string) => {
+    setPages(prev => prev.map(p => p.id === id ? { ...p, pinned: !p.pinned } as Page : p));
+  }, []);
+
   const updateDir = useCallback((id: string, dir: string) => {
     setPages(prev => prev.map(p =>
       p.id === id && p.type === "files" ? { ...p, dir } : p
@@ -354,24 +378,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     onCloseTerminalRef.current = fn;
   }, []);
 
+  const value = useMemo<AppContextValue>(() => ({
+    pages,
+    activePageId,
+    openTerminal,
+    openFiles,
+    openEditor,
+    openImage,
+    openPdf,
+    openSpreadsheet,
+    openDoc,
+    openProgram,
+    openPath,
+    closePage,
+    switchPage,
+    renamePage,
+    reorderPage,
+    togglePagePin,
+    updateDir,
+    setTerminalCloser,
+  }), [
+    pages,
+    activePageId,
+    openTerminal,
+    openFiles,
+    openEditor,
+    openImage,
+    openPdf,
+    openSpreadsheet,
+    openDoc,
+    openProgram,
+    openPath,
+    closePage,
+    switchPage,
+    renamePage,
+    reorderPage,
+    togglePagePin,
+    updateDir,
+    setTerminalCloser,
+  ]);
+
   return (
-    <Ctx.Provider value={{
-      pages,
-      activePageId,
-      openTerminal,
-      openFiles,
-      openEditor,
-      openImage,
-      openPdf,
-      openSpreadsheet,
-      openDoc,
-      openProgram,
-      openPath,
-      closePage,
-      switchPage,
-      updateDir,
-      setTerminalCloser,
-    }}>
+    <Ctx.Provider value={value}>
       {children}
     </Ctx.Provider>
   );

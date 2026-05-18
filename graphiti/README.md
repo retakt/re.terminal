@@ -26,6 +26,20 @@ FALKORDB_DATABASE=graphiti_memory
 
 Restart the Node service after changing those environment variables.
 
+The chat model is proxied by the Node server through `OLLAMA_BASE_URL`. The default is:
+
+```bash
+OLLAMA_BASE_URL=https://chat-api.retakt.cc
+```
+
+That endpoint currently exposes:
+
+```text
+joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b
+```
+
+If you enable the optional Graphiti MCP profile, `.env.example` also points Graphiti at the same endpoint through its OpenAI-compatible `/v1` API.
+
 ## Optional Graphiti MCP
 
 Graphiti MCP is behind a Compose profile so the database can run without it.

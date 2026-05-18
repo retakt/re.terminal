@@ -1,12 +1,13 @@
-// ── Slash command parser ──────────────────────────────────────────────────────
+// Slash command parser
 
-import type { SessionOptions } from "../types";
-import { FULL_THINK_OPTIONS, NO_THINK_OPTIONS, BALANCED_OPTIONS } from "./config";
+import type { ChatMode, SessionOptions } from "../types";
+import { BALANCED_OPTIONS, DEV_OPTIONS, FULL_THINK_OPTIONS, NO_THINK_OPTIONS } from "./config";
 
 export interface SlashResult {
   isCommand: true;
   response: string;
   optionOverrides?: Partial<SessionOptions>;
+  modeOverride?: ChatMode;
   webSearchOverride?: boolean;
 }
 
@@ -17,54 +18,66 @@ export function parseSlashCommand(text: string): SlashResult | null {
   const [cmd, ...args] = trimmed.slice(1).split(/\s+/);
 
   switch (cmd.toLowerCase()) {
+    case "dev":
+      return {
+        isCommand: true,
+        response: "Dev/Ops mode enabled. MCP-first, concise, raw tool errors shown directly.",
+        modeOverride: "dev",
+        optionOverrides: { ...DEV_OPTIONS },
+      };
     case "think":
       return {
         isCommand: true,
-        response: "✓ Full thinking mode **enabled**. Re will reason deeply. Use `/nothink` or `/auto` to go back.",
+        response: "Full thinking mode enabled. Use `/nothink`, `/auto`, or `/dev` to change.",
+        modeOverride: "think",
         optionOverrides: { ...FULL_THINK_OPTIONS },
       };
     case "nothink":
       return {
         isCommand: true,
-        response: "✓ Thinking **disabled**. Re will respond instantly. Use `/think` or `/auto` to change.",
+        response: "No-think mode enabled. Fast replies, no forced reasoning.",
+        modeOverride: "nothink",
         optionOverrides: { ...NO_THINK_OPTIONS },
       };
     case "auto":
       return {
         isCommand: true,
-        response: "✓ **Auto mode** enabled. Re will think only when the query needs it.",
+        response: "Auto mode enabled. Normal assistant behavior restored.",
+        modeOverride: "auto",
         optionOverrides: { ...BALANCED_OPTIONS },
       };
     case "temp": {
       const val = parseFloat(args[0] ?? "");
-      if (isNaN(val) || val < 0 || val > 2)
-        return { isCommand: true, response: "Usage: `/temp <0.0–2.0>`" };
+      if (isNaN(val) || val < 0 || val > 2) {
+        return { isCommand: true, response: "Usage: `/temp <0.0-2.0>`" };
+      }
       return {
         isCommand: true,
-        response: `✓ Temperature set to **${val}**.`,
+        response: `Temperature set to ${val}.`,
         optionOverrides: { temperature: val },
       };
     }
     case "topk": {
       const val = parseInt(args[0] ?? "", 10);
-      if (isNaN(val) || val < 1)
+      if (isNaN(val) || val < 1) {
         return { isCommand: true, response: "Usage: `/topk <integer>`" };
+      }
       return {
         isCommand: true,
-        response: `✓ top_k set to **${val}**.`,
+        response: `top_k set to ${val}.`,
         optionOverrides: { top_k: val },
       };
     }
     case "dweb":
       return {
         isCommand: true,
-        response: "✓ Web search **disabled**. Re will answer from training data only. Use `/eweb` to re-enable.",
+        response: "Web search disabled. Use `/eweb` to re-enable.",
         webSearchOverride: false,
       };
     case "eweb":
       return {
         isCommand: true,
-        response: "✓ Web search **enabled**. Re will search the web when needed.",
+        response: "Web search enabled for explicit current-web requests.",
         webSearchOverride: true,
       };
     case "help":
@@ -73,20 +86,15 @@ export function parseSlashCommand(text: string): SlashResult | null {
         isCommand: true,
         response: [
           "**commands:**",
-          "- `/think` — force full reasoning mode",
-          "- `/nothink` — force no reasoning, fastest replies",
-          "- `/auto` — auto mode (thinks only for complex queries) ← default",
-          "- `/temp <0–2>` — set temperature",
-          "- `/topk <int>` — set top_k sampling",
-          "- `/dweb` — web search disabled (training data)",
-          "- `/eweb` — web search enabled",
-          "- `/help` — show this list",
-          "",
-          "**built-in tools (Re uses these automatically):**",
-          "- Weather — ask about weather in any city",
-          "- Exchange rate — ask to convert currencies",
-          "- Time — ask what time it is anywhere",
-          "- Web search — modes: general, factcheck, news, reddit, wiki, code",
+          "- `/dev` - Dev/Ops mode: MCP-first, concise, raw errors",
+          "- `/think` - force full reasoning mode",
+          "- `/nothink` - fastest replies, no forced reasoning",
+          "- `/auto` - normal assistant mode",
+          "- `/temp <0-2>` - set temperature",
+          "- `/topk <int>` - set top_k sampling",
+          "- `/dweb` - disable web search",
+          "- `/eweb` - enable web search for explicit current-web requests",
+          "- `/help` - show this list",
         ].join("\n"),
       };
     default:

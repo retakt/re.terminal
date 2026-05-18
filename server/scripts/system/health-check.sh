@@ -56,7 +56,7 @@ check_service "Exchange Rate API" "https://open.er-api.com/v6/latest/USD"  6
 echo ""
 echo "[Application Services]"
 check_service "YouTube Backend" "https://yt.retakt.cc/api/health"  5
-check_service "Open Terminal"   "https://tmux.retakt.cc/api/config" 3
+check_service "Open Terminal"   "https://tmux.retakt.cc/health"     3
 
 echo ""
 echo "----------------------------------------------------------------"

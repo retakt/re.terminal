@@ -1,178 +1,163 @@
-// graph-visualizer.tsx
-// Real-time Graphiti Memory Visualization Component
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DatabaseIcon, RefreshCwIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useChatContext } from "../engine/chat-provider";
 
-import React, { useEffect, useRef, useState } from 'react';
-
-interface Node {
+interface GraphNode {
   id: string;
   label: string;
-  type: string;
+  type?: string;
 }
 
-interface Edge {
+interface GraphEdge {
+  id?: string;
   source: string;
   target: string;
-  label: string;
+  label?: string;
 }
 
 interface GraphData {
-  nodes: Node[];
-  edges: Edge[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
 }
 
-const GRAPH_WS_URL = 'ws://localhost:8765/ws/graph';
+function compactLabel(label: string, max = 28) {
+  return label.length > max ? `${label.slice(0, max - 1)}...` : label;
+}
 
-export function GraphVisualizer() {
+function colorForType(type?: string) {
+  switch ((type || "").toLowerCase()) {
+    case "fact":
+      return "var(--accent-blue)";
+    case "preference":
+      return "var(--accent-green)";
+    case "error":
+      return "var(--accent-red)";
+    case "fix":
+      return "var(--accent-yellow)";
+    case "project":
+      return "var(--accent-magenta)";
+    default:
+      return "var(--fg-muted)";
+  }
+}
+
+export function GraphVisualizer({ isActive = true }: { isActive?: boolean }) {
+  const { sessionId } = useChatContext();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] });
-  const [status, setStatus] = useState('Connecting...');
+  const [status, setStatus] = useState<"loading" | "connected" | "error">("loading");
+  const [error, setError] = useState("");
+
+  const fetchGraph = async () => {
+    setStatus("loading");
+    try {
+      const res = await fetch(`/api/memory/graph?projectId=${encodeURIComponent(sessionId)}&scope=all`);
+      if (!res.ok) throw new Error(`graph api ${res.status}`);
+      const data = await res.json();
+      setGraphData({
+        nodes: Array.isArray(data.nodes) ? data.nodes : [],
+        edges: Array.isArray(data.edges) ? data.edges : [],
+      });
+      setStatus("connected");
+      setError("");
+    } catch (err) {
+      setStatus("error");
+      setError(err instanceof Error ? err.message : "graph failed");
+    }
+  };
 
   useEffect(() => {
-    const ws = new WebSocket(GRAPH_WS_URL);
+    if (!isActive) return;
+    void fetchGraph();
+    const interval = setInterval(() => void fetchGraph(), 3000);
+    return () => clearInterval(interval);
+  }, [isActive, sessionId]);
 
-    ws.onopen = () => {
-      setStatus('Connected to FalkorDB');
-    };
+  const layout = useMemo(() => {
+    const width = 760;
+    const height = 520;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(width, height) * 0.36;
+    const count = Math.max(1, graphData.nodes.length);
 
-    ws.onmessage = (event) => {
-      try {
-        const data: GraphData = JSON.parse(event.data);
-        setGraphData(data);
-        setStatus(`Live: ${data.nodes.length} nodes, ${data.edges.length} edges`);
-      } catch (e) {
-        console.error('Error parsing graph data:', e);
-      }
-    };
-
-    ws.onclose = () => {
-      setStatus('Disconnected - Reconnecting...');
-    };
-
-    ws.onerror = () => {
-      setStatus('Connection Error');
-    };
-
-    return () => ws.close();
-  }, []);
+    return new Map(
+      graphData.nodes.map((node, index) => {
+        const angle = (Math.PI * 2 * index) / count - Math.PI / 2;
+        const ring = index % 3 === 0 ? radius * 0.62 : radius;
+        return [
+          node.id,
+          {
+            ...node,
+            x: centerX + Math.cos(angle) * ring,
+            y: centerY + Math.sin(angle) * ring,
+          },
+        ];
+      }),
+    );
+  }, [graphData.nodes]);
 
   useEffect(() => {
-    drawGraph();
-  }, [graphData]);
-
-  const drawGraph = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const width = canvas.width;
     const height = canvas.height;
-
-    // Clear canvas
     ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg-base") || "#010409";
+    ctx.fillRect(0, 0, width, height);
 
-    // Simple force-directed layout (basic implementation)
-    const nodes = graphData.nodes.map(n => ({
-      ...n,
-      x: width / 2 + (Math.random() - 0.5) * 200,
-      y: height / 2 + (Math.random() - 0.5) * 200,
-      vx: 0,
-      vy: 0
-    }));
+    ctx.lineWidth = 1;
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
 
-    // Run simple simulation
-    for (let i = 0; i < 50; i++) {
-      // Repulsion
-      for (let j = 0; j < nodes.length; j++) {
-        for (let k = j + 1; k < nodes.length; k++) {
-          const dx = nodes[j].x - nodes[k].x;
-          const dy = nodes[j].y - nodes[k].y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = 2000 / (dist * dist);
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
-          nodes[j].vx += fx;
-          nodes[j].vy += fy;
-          nodes[k].vx -= fx;
-          nodes[k].vy -= fy;
-        }
+    for (const edge of graphData.edges) {
+      const source = layout.get(edge.source);
+      const target = layout.get(edge.target);
+      if (!source || !target) continue;
+      ctx.strokeStyle = "rgba(139, 148, 158, 0.42)";
+      ctx.beginPath();
+      ctx.moveTo(source.x, source.y);
+      ctx.lineTo(target.x, target.y);
+      ctx.stroke();
+      if (edge.label) {
+        ctx.fillStyle = "rgba(139, 148, 158, 0.8)";
+        ctx.fillText(compactLabel(edge.label, 18), (source.x + target.x) / 2, (source.y + target.y) / 2);
       }
-
-      // Attraction
-      graphData.edges.forEach(edge => {
-        const source = nodes.find(n => n.id === edge.source);
-        const target = nodes.find(n => n.id === edge.target);
-        if (source && target) {
-          const dx = target.x - source.x;
-          const dy = target.y - source.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = dist * 0.01;
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
-          source.vx += fx;
-          source.vy += fy;
-          target.vx -= fx;
-          target.vy -= fy;
-        }
-      });
-
-      // Apply velocities
-      nodes.forEach(node => {
-        node.vx *= 0.9;
-        node.vy *= 0.9;
-        node.x += node.vx;
-        node.y += node.vy;
-        node.x = Math.max(20, Math.min(width - 20, node.x));
-        node.y = Math.max(20, Math.min(height - 20, node.y));
-      });
     }
 
-    // Draw edges
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 2;
-    graphData.edges.forEach(edge => {
-      const source = nodes.find(n => n.id === edge.source);
-      const target = nodes.find(n => n.id === edge.target);
-      if (source && target) {
-        ctx.beginPath();
-        ctx.moveTo(source.x, source.y);
-        ctx.lineTo(target.x, target.y);
-        ctx.stroke();
-
-        // Draw edge label
-        ctx.fillStyle = '#60a5fa';
-        ctx.font = '10px sans-serif';
-        ctx.fillText(edge.label, (source.x + target.x) / 2, (source.y + target.y) / 2);
-      }
-    });
-
-    // Draw nodes
-    nodes.forEach(node => {
-      ctx.fillStyle = '#10b981';
+    for (const node of layout.values()) {
+      const fill = colorForType(node.type);
+      ctx.fillStyle = fill;
       ctx.beginPath();
-      ctx.arc(node.x, node.y, 15, 0, Math.PI * 2);
+      ctx.arc(node.x, node.y, 10, 0, Math.PI * 2);
       ctx.fill();
-
-      // Draw node label
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(node.label.substring(0, 10), node.x, node.y + 25);
-    });
-  };
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.stroke();
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--fg-base") || "#e6edf3";
+      ctx.fillText(compactLabel(node.label || node.id), node.x, node.y + 25);
+    }
+  }, [graphData, layout]);
 
   return (
-    <div className="w-full h-full bg-slate-900 rounded-lg p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-bold text-white">🧠 Memory Graph (Real-Time)</h3>
-        <span className="text-sm text-blue-400">{status}</span>
+    <div className="chat-graph-surface flex h-full min-h-0 flex-col overflow-hidden rounded-sm">
+      <div className="flex items-center gap-2 border-b border-[color:var(--chat-border)] px-2 py-2">
+        <DatabaseIcon className="size-3.5 text-primary" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
+          {status === "connected" ? `${graphData.nodes.length} nodes / ${graphData.edges.length} edges` : error || "loading graph"}
+        </span>
+        <Button variant="ghost" size="icon" className="chat-tool-button size-6 rounded-sm" onClick={() => void fetchGraph()}>
+          <RefreshCwIcon className={`size-3 ${status === "loading" ? "animate-spin" : ""}`} />
+        </Button>
       </div>
       <canvas
         ref={canvasRef}
-        width={800}
-        height={600}
-        className="w-full h-full bg-slate-950 rounded border border-slate-700"
+        width={760}
+        height={520}
+        className="min-h-0 flex-1"
       />
     </div>
   );

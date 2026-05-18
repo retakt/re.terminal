@@ -1,15 +1,22 @@
 ```
 # Dependencies
 node_modules/
-
+artifacts/
+client/artifacts/
 # Environment
 .env
 .env.local
 .env.*
+!.env.example
+!**/.env.example
 
 # Logs and temp files
 *.log
 *.tmp
+server/data/
+client/data/
+client/dist/
+client/artifacts/
 
 # Editors
 .vscode/

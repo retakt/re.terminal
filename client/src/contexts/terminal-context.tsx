@@ -8,7 +8,7 @@
 
 import React, {
   createContext, useCallback, useContext,
-  useEffect, useRef, useState,
+  useEffect, useMemo, useRef, useState,
 } from "react";
 import type { Terminal as XTerminal } from "@xterm/xterm";
 
@@ -394,15 +394,42 @@ export function TerminalProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, [status, sendMsg]);
 
+  const value = useMemo<TerminalContextValue>(() => ({
+    status,
+    connect,
+    disconnect,
+    hasSessionList,
+    sessions,
+    activeSessionId,
+    createSession,
+    closeSession,
+    switchSession,
+    renameSession,
+    registerXterm,
+    unregisterXterm,
+    getXterm,
+    sendInput,
+    sendResize,
+  }), [
+    status,
+    connect,
+    disconnect,
+    hasSessionList,
+    sessions,
+    activeSessionId,
+    createSession,
+    closeSession,
+    switchSession,
+    renameSession,
+    registerXterm,
+    unregisterXterm,
+    getXterm,
+    sendInput,
+    sendResize,
+  ]);
+
   return (
-    <Ctx.Provider value={{
-      status, connect, disconnect,
-      hasSessionList,
-      sessions, activeSessionId,
-      createSession, closeSession, switchSession, renameSession,
-      registerXterm, unregisterXterm, getXterm,
-      sendInput, sendResize,
-    }}>
+    <Ctx.Provider value={value}>
       {children}
     </Ctx.Provider>
   );

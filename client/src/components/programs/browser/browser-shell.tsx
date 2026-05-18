@@ -1,106 +1,431 @@
 import * as React from "react";
-import { Globe, ExternalLink } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bot,
+  Braces,
+  Chrome,
+  Clock,
+  ExternalLink,
+  Globe,
+  Link as LinkIcon,
+  Loader2,
+  PanelRightClose,
+  PanelRightOpen,
+  Puzzle,
+  RefreshCcw,
+  Search,
+  ShieldCheck,
+  TerminalSquare,
+} from "lucide-react";
+import {
+  getLightpandaStatus,
+  navigateLightpanda,
+  normalizeBrowserUrl,
+  openHeadfulBrowser,
+  type LightpandaPageResult,
+  type LightpandaStatus,
+} from "@/lib/browser-api";
 
-const DEFAULT_URL = "https://duckduckgo.com/";
-const START_PAGE = `
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      html, body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: linear-gradient(180deg, #f5f7fb, #edf2ff);
-        color: #122033;
-      }
-      body {
-        display: grid;
-        place-items: center;
-      }
-      .card {
-        max-width: 420px;
-        margin: 24px;
-        padding: 22px;
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.88);
-        box-shadow: 0 18px 40px rgba(34, 60, 80, 0.18);
-      }
-      h1 { margin: 0 0 10px; font-size: 22px; }
-      p { margin: 0; line-height: 1.6; color: #42536a; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h1>inside browser</h1>
-      <p>Use the address bar above to open a web page inside the app.</p>
-    </div>
-  </body>
-</html>
-`;
+const INSPECTOR_EXIT_MS = 380;
+const PHONE_QUERY = "(max-width: 767px), (hover: none) and (pointer: coarse)";
 
-function normalizeUrl(input: string) {
-  const raw = input.trim();
-  if (!raw) return DEFAULT_URL;
-  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(raw)) return raw;
-  return `https://${raw}`;
+function matchesPhoneLayout() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia(PHONE_QUERY).matches
+  );
 }
 
-export function BrowserShell() {
-  const [address, setAddress] = React.useState(DEFAULT_URL);
-  const [frameUrl, setFrameUrl] = React.useState<string | null>(null);
-  const [frameDoc, setFrameDoc] = React.useState(START_PAGE);
+function duration(ms?: number) {
+  if (typeof ms !== "number") return "n/a";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const next = normalizeUrl(address);
-    setAddress(next);
-    setFrameUrl(next);
-    setFrameDoc("");
+function compact(value = "", limit = 160) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+}
+
+function useIsPhoneLayout() {
+  const [isPhone, setIsPhone] = React.useState(matchesPhoneLayout);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const query = window.matchMedia(PHONE_QUERY);
+    const update = () => setIsPhone(query.matches);
+
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return isPhone;
+}
+
+export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
+  const isPhone = useIsPhoneLayout();
+  const previousIsPhoneRef = React.useRef(isPhone);
+  const [address, setAddress] = React.useState("");
+  const [visualUrl, setVisualUrl] = React.useState("");
+  const [history, setHistory] = React.useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = React.useState(-1);
+  const [status, setStatus] = React.useState<LightpandaStatus | null>(null);
+  const [result, setResult] = React.useState<LightpandaPageResult | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [headfulNotice, setHeadfulNotice] = React.useState("");
+  const [inspectorOpen, setInspectorOpen] = React.useState(() => !matchesPhoneLayout());
+  const [inspectorClosing, setInspectorClosing] = React.useState(false);
+  const inspectorTimerRef = React.useRef<number | null>(null);
+
+  const clearInspectorTimer = React.useCallback(() => {
+    if (inspectorTimerRef.current === null) return;
+    window.clearTimeout(inspectorTimerRef.current);
+    inspectorTimerRef.current = null;
+  }, []);
+
+  const loadStatus = React.useCallback(async () => {
+    const next = await getLightpandaStatus().catch((err) => ({
+      ok: false,
+      engine: "lightpanda",
+      status: "down",
+      error: err instanceof Error ? err.message : String(err),
+    }));
+    setStatus(next);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isActive) return;
+    void loadStatus();
+    const interval = window.setInterval(() => void loadStatus(), 15000);
+    return () => window.clearInterval(interval);
+  }, [isActive, loadStatus]);
+
+  React.useEffect(() => clearInspectorTimer, [clearInspectorTimer]);
+
+  React.useEffect(() => {
+    const wasPhone = previousIsPhoneRef.current;
+    previousIsPhoneRef.current = isPhone;
+
+    clearInspectorTimer();
+    setInspectorClosing(false);
+    if (!isPhone) {
+      setInspectorOpen(true);
+      return;
+    }
+
+    if (!wasPhone) {
+      setInspectorOpen(false);
+    }
+  }, [clearInspectorTimer, isPhone]);
+
+  const navigate = React.useCallback(async (target: string, pushHistory = true) => {
+    const nextUrl = normalizeBrowserUrl(target);
+    if (!nextUrl) return;
+    setAddress(nextUrl);
+    setVisualUrl(nextUrl);
+    setLoading(true);
+    setError("");
+    if (pushHistory) {
+      const nextHistory = [...history.slice(0, historyIndex + 1), nextUrl].slice(-40);
+      setHistory(nextHistory);
+      setHistoryIndex(nextHistory.length - 1);
+    }
+    try {
+      const next = await navigateLightpanda(nextUrl);
+      setResult(next);
+      if (!next.ok && next.error) setError(next.error);
+    } catch (err) {
+      setResult(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+      void loadStatus();
+    }
+  }, [history, historyIndex, loadStatus]);
+
+  const goHistory = (delta: number) => {
+    const nextIndex = Math.max(0, Math.min(history.length - 1, historyIndex + delta));
+    setHistoryIndex(nextIndex);
+    void navigate(history[nextIndex], false);
   };
 
+  const page = result?.page;
+
+  const closeInspector = React.useCallback(() => {
+    if (!inspectorOpen) return;
+
+    clearInspectorTimer();
+    if (!isPhone) {
+      setInspectorOpen(false);
+      setInspectorClosing(false);
+      return;
+    }
+
+    setInspectorOpen(false);
+    setInspectorClosing(true);
+    inspectorTimerRef.current = window.setTimeout(() => {
+      setInspectorClosing(false);
+      inspectorTimerRef.current = null;
+    }, INSPECTOR_EXIT_MS);
+  }, [clearInspectorTimer, inspectorOpen, isPhone]);
+
+  const toggleInspector = React.useCallback(() => {
+    clearInspectorTimer();
+
+    if (!isPhone) {
+      setInspectorOpen((open) => !open);
+      setInspectorClosing(false);
+      return;
+    }
+
+    if (inspectorOpen) {
+      setInspectorOpen(false);
+      setInspectorClosing(true);
+      inspectorTimerRef.current = window.setTimeout(() => {
+        setInspectorClosing(false);
+        inspectorTimerRef.current = null;
+      }, INSPECTOR_EXIT_MS);
+      return;
+    }
+
+    setInspectorClosing(false);
+    setInspectorOpen(true);
+  }, [clearInspectorTimer, inspectorOpen, isPhone]);
+
+  const openHeadful = React.useCallback(async () => {
+    const target = normalizeBrowserUrl(address || page?.url || visualUrl || "about:blank");
+    setHeadfulNotice("opening chrome...");
+    try {
+      const response = await openHeadfulBrowser(target);
+      setHeadfulNotice(String(response.note || "opened chrome"));
+      window.setTimeout(() => setHeadfulNotice(""), 3500);
+      void loadStatus();
+    } catch (err) {
+      setHeadfulNotice(err instanceof Error ? err.message : String(err));
+    }
+  }, [address, loadStatus, page?.url, visualUrl]);
+
+  const visibleLinks = React.useMemo(
+    () => (page?.links || [])
+      .map((link) => ({
+        text: String(link.text || "").trim(),
+        href: String(link.href || "").trim(),
+      }))
+      .filter((link) => link.text || link.href)
+      .slice(0, 24),
+    [page?.links],
+  );
+
+  const inspectorMounted = inspectorOpen || (isPhone && inspectorClosing);
+  const inspectorMotionClass = isPhone
+    ? inspectorClosing ? "is-closing" : inspectorOpen ? "is-open" : ""
+    : inspectorOpen ? "is-open" : "";
+
   return (
-    <div className="program-shell program-shell--browser">
-      <div className="program-hero">
-        <div className="program-kicker">
-          <Globe size={14} />
-          <span>inside browser</span>
+    <div className="program-shell lightpanda-browser">
+      <header className="lightpanda-toolbar">
+        <div className="lightpanda-titlebar">
+          <div className="lightpanda-brand">
+            <span className="lightpanda-brand-icon">
+              <Globe size={16} />
+            </span>
+            <span className="lightpanda-brand-title">lightpanda</span>
+            <strong className={status?.ok ? "is-ok" : "is-down"}>{status?.ok ? "ready" : "down"}</strong>
+            <em><Clock size={11} />{duration(status?.durationMs)}</em>
+          </div>
+          <div className="lightpanda-toolbar-actions">
+            <button
+              type="button"
+              className="lightpanda-open lightpanda-open--extract chat-tool-button"
+              onClick={() => void navigate(address)}
+              title="Extract page"
+            >
+              <ExternalLink size={16} />
+              <span className="lightpanda-open__label">extract</span>
+            </button>
+            <button
+              type="button"
+              className="lightpanda-open lightpanda-open--icon chat-tool-button"
+              onClick={() => void openHeadful()}
+              title="Open a real Chrome window connected to CDP"
+              aria-label="Open Chrome"
+            >
+              <Chrome size={16} />
+            </button>
+            {isPhone && (
+              <button
+                type="button"
+                className={`lightpanda-inspector-toggle chat-tool-button ${inspectorOpen ? "is-open is-active" : ""}`}
+                onClick={toggleInspector}
+                title={inspectorOpen ? "Close inspector" : "Open inspector"}
+                aria-label={inspectorOpen ? "Close inspector" : "Open inspector"}
+              >
+                {inspectorOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+              </button>
+            )}
+          </div>
         </div>
-        <h2>lightweight web view</h2>
-        <p>Open a site inside the app with a simple address bar and iframe-based preview.</p>
-      </div>
+      </header>
 
-      <form className="program-launcher" onSubmit={handleSubmit}>
-        <input
-          className="program-input"
-          value={address}
-          onChange={e => setAddress(e.target.value)}
-          placeholder="enter a url or domain"
-          autoCapitalize="off"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-        />
-        <button className="program-button" type="submit">
-          <ExternalLink size={14} />
-          <span>open</span>
-        </button>
-      </form>
+      <main className="lightpanda-main">
+        <section className="lightpanda-preview">
+          {page ? (
+            <article className="lightpanda-preview-document">
+              <header>
+                <span>extracted page</span>
+                <strong>{page.stats?.links ?? 0} links</strong>
+              </header>
+              <h1>{page.title || page.url}</h1>
+              <p>{compact(page.text || "No readable text returned by Lightpanda.", 1400)}</p>
+            </article>
+          ) : (
+            <div className={`lightpanda-preview-empty ${loading ? "is-loading" : ""}`}>
+              {loading ? <Loader2 size={26} className="animate-spin" /> : <Globe size={26} />}
+              <strong>{loading ? "loading page" : "ready to browse"}</strong>
+              <span>{loading ? visualUrl : "navigate from the address bar; extracted text and links appear in the inspector."}</span>
+            </div>
+          )}
+          <form
+            className="lightpanda-address"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void navigate(address);
+            }}
+          >
+            <button
+              type="button"
+              className="lightpanda-nav-btn lightpanda-nav-btn--back"
+              onClick={() => goHistory(-1)}
+              disabled={historyIndex <= 0}
+              title="Back"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <button
+              type="button"
+              className="lightpanda-nav-btn lightpanda-nav-btn--forward"
+              onClick={() => goHistory(1)}
+              disabled={historyIndex >= history.length - 1}
+              title="Forward"
+            >
+              <ArrowRight size={16} />
+            </button>
+            <button
+              type="button"
+              className="lightpanda-nav-btn lightpanda-nav-btn--reload"
+              onClick={() => void navigate(address, false)}
+              title="Reload"
+            >
+              <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
+            </button>
+            <label className="lightpanda-address-field">
+              <Search size={14} />
+              <input
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                placeholder="url, domain, or docs page"
+                autoCapitalize="off"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+          </form>
+          <div className="lightpanda-preview-status">
+            <span className={loading ? "is-loading" : page ? "is-ok" : ""}>
+              {loading ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
+              {loading ? "loading" : page?.title || "preview"}
+            </span>
+            <code>{page?.url || visualUrl || "no page loaded"}</code>
+          </div>
+        </section>
 
-      <div className="program-frame-shell">
-        <iframe
-          className="program-frame"
-          src={frameUrl || undefined}
-          srcDoc={frameUrl ? undefined : frameDoc}
-          title="inside browser"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
-        />
-      </div>
+        {inspectorMounted && (
+          <>
+            {isPhone && (
+              <button
+                type="button"
+                className={`lightpanda-mobile-backdrop ${inspectorMotionClass}`}
+                onClick={closeInspector}
+                aria-label="Close browser inspector"
+                disabled={inspectorClosing}
+              />
+            )}
+
+            <aside className={`lightpanda-inspector ${inspectorMotionClass}`}>
+              <div className="lightpanda-mobile-header">
+                <Globe size={14} />
+                <span>browser inspector</span>
+              </div>
+              <div className="lightpanda-inspector-body">
+                <section className="lightpanda-panel lightpanda-panel--overlay">
+                  <div className="lightpanda-panel-title">
+                    <Bot size={14} />
+                    <span>ai browser</span>
+                    <strong>{result?.engine || "lightpanda"}</strong>
+                  </div>
+                  <div className="lightpanda-kv">
+                    <span>cdp</span>
+                    <code>{status?.cdpUrl || "ws://127.0.0.1:9222"}</code>
+                    <span>nav</span>
+                    <code>{duration(result?.durationMs)}</code>
+                    <span>page</span>
+                    <code>{page?.title || error || "not loaded"}</code>
+                  </div>
+                  {error && <pre className="lightpanda-error">{error}</pre>}
+                  {status?.hint && !status.ok && <pre className="lightpanda-hint">{status.hint}</pre>}
+                </section>
+
+                <section className="lightpanda-panel lightpanda-panel--links">
+                  <div className="lightpanda-panel-title">
+                    <TerminalSquare size={14} />
+                    <span>extraction</span>
+                    <strong>{page?.stats?.links ?? 0} links</strong>
+                  </div>
+                  <p className="lightpanda-text-preview">
+                    {compact(page?.text || headfulNotice || "Navigate to a page. Lightpanda extracts text, links, forms, and timing for AI use. Use chrome when you want a real headful browser window.", 900)}
+                  </p>
+                </section>
+
+                <section className="lightpanda-panel lightpanda-panel--links">
+                  <div className="lightpanda-panel-title">
+                    <LinkIcon size={14} />
+                    <span>links</span>
+                    <strong>{page?.links?.length || 0}</strong>
+                  </div>
+                  <div className="lightpanda-link-list">
+                    {visibleLinks.length === 0 && (
+                      <div className="lightpanda-link-empty">no readable link labels returned</div>
+                    )}
+                    {visibleLinks.map((link, index) => (
+                      <button key={`${link.href}-${index}`} type="button" onClick={() => void navigate(link.href)}>
+                        <span>{compact(link.text || link.href || "untitled link", 56)}</span>
+                        <code>{compact(link.href || link.text || "no href", 72)}</code>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="lightpanda-panel lightpanda-extension-slots">
+                  <div className="lightpanda-panel-title">
+                    <Puzzle size={14} />
+                    <span>extensions later</span>
+                    <strong>slots</strong>
+                  </div>
+                  <div>
+                    <span><ShieldCheck size={12} /> MCP browser tools</span>
+                    <span><Braces size={12} /> userscripts</span>
+                    <span><Puzzle size={12} /> web extensions</span>
+                  </div>
+                </section>
+              </div>
+            </aside>
+          </>
+        )}
+      </main>
     </div>
   );
 }

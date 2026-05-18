@@ -38,29 +38,29 @@ const TOKYO_NIGHT_DARK = {
   brightCyan:    "#7dcfff", brightWhite:   "#c0caf5",
 };
 
-// Tokyo Night Light theme - exact colors from iTerm2 plist (P3 converted to sRGB approx)
-const TOKYO_NIGHT_LIGHT = {
+// GitHub Light terminal theme. Keep the terminal paper-light in light mode.
+const GITHUB_LIGHT = {
   background:          "#ffffff",
-  foreground:          "#0f0f0f",
-  cursor:              "#0f0f0f",
+  foreground:          "#24292f",
+  cursor:              "#24292f",
   cursorAccent:        "#ffffff",
-  selectionBackground: "rgba(15, 118, 110, 0.2)",
+  selectionBackground: "rgba(9, 105, 218, 0.20)",
   // ANSI 0-7
-  black:   "#0f0f0f", red:     "#8c4351", green:   "#33635c",
-  yellow:  "#8f5e15", blue:    "#34548a", magenta: "#5a4a78",
-  cyan:    "#0f4b6e", white:   "#787c99",
+  black:   "#24292f", red:     "#cf222e", green:   "#116329",
+  yellow:  "#4d2d00", blue:    "#0969da", magenta: "#8250df",
+  cyan:    "#1b7c83", white:   "#6e7781",
   // ANSI 8-15 (bright)
-  brightBlack:   "#5b5876", brightRed:     "#db4b5c",
-  brightGreen:   "#3d7465", brightYellow:  "#a38f3e",
-  brightBlue:    "#4d7ac7", brightMagenta: "#755b99",
-  brightCyan:    "#2c7d96", brightWhite:   "#848cb3",
+  brightBlack:   "#57606a", brightRed:     "#a40e26",
+  brightGreen:   "#1a7f37", brightYellow:  "#9a6700",
+  brightBlue:    "#0550ae", brightMagenta: "#6639ba",
+  brightCyan:    "#0a7f8c", brightWhite:   "#8c959f",
 };
 
 const isMobile = () => navigator.maxTouchPoints > 0;
 
 function getTheme() {
   const theme = document.documentElement.getAttribute("data-theme");
-  if (theme === "light") return TOKYO_NIGHT_LIGHT;
+  if (theme === "light") return GITHUB_LIGHT;
   return TOKYO_NIGHT_DARK;
 }
 
@@ -74,7 +74,6 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
   const mobile       = React.useRef(isMobile());
 
   React.useEffect(() => {
-    if (!isActive) return;
     if (!containerRef.current) return;
     const el = containerRef.current;
     let disposed = false;
@@ -208,7 +207,7 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
       applyTheme();
 
       // Only auto-focus on desktop — on mobile this triggers keyboard popup
-      if (!mobile.current) xterm.focus();
+      if (!mobile.current && isActive) xterm.focus();
     });
 
     xtermRef.current = xterm;
@@ -250,16 +249,16 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
       fitRef.current   = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, isActive]);
+  }, [sessionId]);
 
   // Re-focus on tab switch (desktop only)
   React.useEffect(() => {
     if (!isActive || mobile.current) return;
-    const t = setTimeout(() => {
+    const id = requestAnimationFrame(() => {
       xtermRef.current?.focus();
       try { fitRef.current?.fit(); } catch (_) {}
-    }, 80);
-    return () => clearTimeout(t);
+    });
+    return () => cancelAnimationFrame(id);
   }, [isActive]);
 
   // Mobile: scroll to end when terminal becomes active (e.g., after keyboard opens)

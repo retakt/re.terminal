@@ -1,7 +1,13 @@
 // ── Ollama API client ────────────────────────────────────────────────────────
 // Pure API service — no React dependencies. Reusable by scripts/MCP/extensions.
 
-const OLLAMA_URL = import.meta.env.VITE_OLLAMA_URL ?? `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:11434`.replace(/^wss?/, "http");
+const OLLAMA_URL = (import.meta.env.VITE_OLLAMA_URL as string | undefined)?.replace(/\/+$/, "");
+
+function ollamaEndpoint(path: "/api/chat" | "/api/tags") {
+  if (!OLLAMA_URL) return `/api/ollama${path.replace("/api", "")}`;
+  const base = OLLAMA_URL.replace(/\/api$/, "");
+  return `${base}${path}`;
+}
 
 export interface OllamaMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -30,6 +36,7 @@ export interface OllamaChatOptions {
   messages: OllamaMessage[];
   stream?: boolean;
   think?: boolean;
+  format?: "json" | Record<string, unknown>;
   tools?: OllamaTool[];
   options?: {
     temperature?: number;
@@ -37,6 +44,8 @@ export interface OllamaChatOptions {
     top_p?: number;
     num_ctx?: number;
   };
+  projectId?: string;
+  userId?: string;
   signal?: AbortSignal;
 }
 
@@ -51,6 +60,7 @@ export interface OllamaChunk {
 
 export interface OllamaToolCheckResponse {
   message?: {
+    content?: string;
     tool_calls?: Array<{ function: { name: string; arguments: Record<string, string> } }>;
   };
 }
@@ -58,7 +68,7 @@ export interface OllamaToolCheckResponse {
 // ── Non-streaming request (for tool checks) ──────────────────────────────────
 
 export async function ollamaChatNonStream(options: OllamaChatOptions): Promise<OllamaToolCheckResponse> {
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+  const response = await fetch(ollamaEndpoint("/api/chat"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -78,7 +88,7 @@ export async function ollamaChatNonStream(options: OllamaChatOptions): Promise<O
 // ── Streaming request (for final response) ───────────────────────────────────
 
 export async function* ollamaChatStream(options: OllamaChatOptions): AsyncGenerator<OllamaChunk> {
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+  const response = await fetch(ollamaEndpoint("/api/chat"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -123,7 +133,7 @@ export async function* ollamaChatStream(options: OllamaChatOptions): AsyncGenera
 
 export async function ollamaListModels(): Promise<string[]> {
   try {
-    const response = await fetch(`${OLLAMA_URL}/api/tags`);
+    const response = await fetch(ollamaEndpoint("/api/tags"));
     if (!response.ok) return [];
     const data = await response.json();
     return (data.models ?? []).map((m: { name?: string }) => m.name).filter(Boolean);

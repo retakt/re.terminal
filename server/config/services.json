@@ -37,7 +37,7 @@
       },
       {
         "name": "Open Terminal",
-        "url": "https://tmux.retakt.cc/api/config",
+        "url": "https://tmux.retakt.cc/health",
         "timeout": 3,
         "category": "application"
       }

@@ -34,6 +34,11 @@ import {
 } from "react";
 import { toast } from "sonner";
 import * as monaco from "monaco-editor";
+import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
+import HtmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
+import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
+import TsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import { getFileTypeLabel, getMonacoLanguageId } from "@/lib/file-routing";
 import { fileApi } from "@/lib/file-api";
 
@@ -43,18 +48,18 @@ if (typeof window !== "undefined") {
   (window as any).MonacoEnvironment = {
     getWorker(_: string, label: string) {
       if (label === "json") {
-        return new Worker(new URL("monaco-editor/esm/vs/language/json/json.worker", import.meta.url), { type: "module" });
+        return new JsonWorker();
       }
       if (label === "css" || label === "scss" || label === "less") {
-        return new Worker(new URL("monaco-editor/esm/vs/language/css/css.worker", import.meta.url), { type: "module" });
+        return new CssWorker();
       }
       if (label === "html" || label === "handlebars" || label === "razor") {
-        return new Worker(new URL("monaco-editor/esm/vs/language/html/html.worker", import.meta.url), { type: "module" });
+        return new HtmlWorker();
       }
       if (label === "typescript" || label === "javascript") {
-        return new Worker(new URL("monaco-editor/esm/vs/language/typescript/ts.worker", import.meta.url), { type: "module" });
+        return new TsWorker();
       }
-      return new Worker(new URL("monaco-editor/esm/vs/editor/editor.worker", import.meta.url), { type: "module" });
+      return new EditorWorker();
     },
   };
 }
@@ -243,6 +248,7 @@ function MonacoViewer({
     if (!container) return;
 
     let cancelled = false;
+    let themeObserver: MutationObserver | null = null;
 
     async function init() {
       try {
@@ -282,25 +288,40 @@ function MonacoViewer({
         if (cancelled) return;
 
         // Define custom theme
-        const isLight = document.documentElement.getAttribute("data-theme") === "light";
-        const rootStyle = getComputedStyle(document.documentElement);
-        const bgBase = rootStyle.getPropertyValue("--bg-base").trim() || (isLight ? "#ffffff" : "#0d1117");
-        const fgBase = rootStyle.getPropertyValue("--fg-base").trim() || (isLight ? "#0f0f0f" : "#f5f5f3");
-        const bgHighlight = rootStyle.getPropertyValue("--bg-highlight").trim() || (isLight ? "#ececf1" : "#161b22");
-        const fgSubtle = rootStyle.getPropertyValue("--fg-subtle").trim() || (isLight ? "#848cb3" : "#6e7681");
-        const accentCyan = rootStyle.getPropertyValue("--accent-cyan").trim() || (isLight ? "#0f4b6e" : "#7dcfff");
+        const applyTheme = () => {
+          const isLight = document.documentElement.getAttribute("data-theme") === "light";
+          const rootStyle = getComputedStyle(document.documentElement);
+          const bgBase = rootStyle.getPropertyValue("--bg-base").trim() || (isLight ? "#ffffff" : "#0d1117");
+          const fgBase = rootStyle.getPropertyValue("--fg-base").trim() || (isLight ? "#0f0f0f" : "#f5f5f3");
+          const bgHighlight = rootStyle.getPropertyValue("--bg-highlight").trim() || (isLight ? "#ececf1" : "#161b22");
+          const fgSubtle = rootStyle.getPropertyValue("--fg-subtle").trim() || (isLight ? "#848cb3" : "#6e7681");
+          const accentCyan = rootStyle.getPropertyValue("--accent-cyan").trim() || (isLight ? "#0f4b6e" : "#7dcfff");
 
-        monaco.editor.defineTheme("file-viewer-theme", {
-          base: isLight ? "vs" : "vs-dark",
-          inherit: true,
-          rules: [],
-          colors: {
-            "editor.background": bgBase,
-            "editor.foreground": fgBase,
-            "editor.lineHighlightBackground": bgHighlight,
-            "editorLineNumber.foreground": fgSubtle,
-            "editorCursor.foreground": accentCyan,
-          },
+          monaco.editor.defineTheme("file-viewer-theme", {
+            base: isLight ? "vs" : "vs-dark",
+            inherit: true,
+            rules: [],
+            colors: {
+              "editor.background": bgBase,
+              "editor.foreground": fgBase,
+              "editor.lineHighlightBackground": bgHighlight,
+              "editorLineNumber.foreground": fgSubtle,
+              "editorCursor.foreground": accentCyan,
+            },
+          });
+
+          monaco.editor.setTheme("file-viewer-theme");
+        };
+
+        applyTheme();
+
+        themeObserver = new MutationObserver(() => {
+          if (cancelled) return;
+          applyTheme();
+        });
+        themeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["data-theme"],
         });
 
         const editor = monaco.editor.create(container as HTMLElement, {
@@ -348,6 +369,8 @@ function MonacoViewer({
 
     return () => {
       cancelled = true;
+      themeObserver?.disconnect();
+      themeObserver = null;
       editorRef.current?.dispose();
       editorRef.current = null;
       monacoRef.current = null;

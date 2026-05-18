@@ -21,17 +21,33 @@ import { URL } from "url";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import os from "os";
+import { execSync } from "child_process";
 import {
   checkMemoryHealth,
   getMemoryStatus,
   saveCommand,
   saveError,
+  saveFact,
   saveFix,
   savePreference,
   searchMemory,
   updateMemory,
   getGraphSnapshot,
 } from "./lib/memory-client.js";
+import {
+  callMcpTool,
+  getExtensionCatalog,
+  getMcpLogs,
+  getServiceStatus,
+  lightpandaNavigate,
+  lightpandaStatus,
+  openHeadfulBrowser,
+  listMcpServers,
+  listMcpToolDefinitions,
+  listMcpTools,
+  routeMcpIntent,
+} from "./lib/mcp-gateway.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -73,8 +89,10 @@ const CORS_ORIGIN = process.env.TERMINAL_CORS_ORIGIN    || "*";
 const MAX_SESSIONS= parseInt(process.env.MAX_SESSIONS   || "10", 10);
 const HISTORY_MAX = parseInt(process.env.HISTORY_MAX    || "2000", 10);
 const SHELL       = process.platform === "win32" ? "powershell.exe" : (process.env.SHELL || "bash");
-const OLLAMA_BASE_URL = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
+const OLLAMA_BASE_URL = (process.env.OLLAMA_BASE_URL || "https://chat-api.retakt.cc").replace(/\/+$/, "").replace(/\/api$/, "");
 const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3.1";
+const MEMORY_EXTRACTION_MODEL = process.env.MEMORY_EXTRACTION_MODEL || "";
+const MEMORY_AUTOSAVE = !["0", "false", "off", "no"].includes(String(process.env.MEMORY_AUTOSAVE || "true").toLowerCase());
 
 log("INFO", "startup", "re.Term server starting", { port: PORT, shell: SHELL, maxSessions: MAX_SESSIONS, logFile: LOG_FILE });
 // Sessions live here, independent of any WebSocket connection.
@@ -102,6 +120,120 @@ const subscribers = new Map();
 
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function ollamaUrl(pathname) {
+  return `${OLLAMA_BASE_URL}${pathname}`;
+}
+
+function sanitizeOllamaMessage(message) {
+  return {
+    role: ["system", "assistant", "user", "tool"].includes(message?.role) ? message.role : "user",
+    content: String(message?.content || ""),
+    ...(Array.isArray(message?.images) ? { images: message.images } : {}),
+    ...(message?.audio ? { audio: String(message.audio) } : {}),
+    ...(message?.tool_name ? { tool_name: String(message.tool_name) } : {}),
+    ...(Array.isArray(message?.tool_calls) ? { tool_calls: message.tool_calls } : {}),
+  };
+}
+
+function parseMemoryExtraction(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    const memories = Array.isArray(parsed) ? parsed : parsed.memories;
+    if (!Array.isArray(memories)) return [];
+    return memories
+      .map((memory) => ({
+        subject: String(memory?.subject || "user").slice(0, 120),
+        predicate: String(memory?.predicate || "remembers").slice(0, 80),
+        object: String(memory?.object || "").slice(0, 500),
+        summary: String(memory?.summary || "").slice(0, 700),
+        confidence: Number(memory?.confidence ?? 0.7),
+        source: "chat.autonomous",
+      }))
+      .filter((memory) => {
+        const combined = `${memory.subject} ${memory.predicate} ${memory.object} ${memory.summary}`.toLowerCase();
+        if (!(memory.summary || memory.object)) return false;
+        if (memory.confidence < 0.6) return false;
+        if (/\b(asked|question|wanted to know|discussed|talked about|conversation)\b/.test(combined)
+          && !/\b(prefer|preference|always|never|default|project|server|repo|api|endpoint|fix|fixed|error|decision|uses|using)\b/.test(combined)) {
+          return false;
+        }
+        return true;
+      });
+  } catch {
+    return [];
+  }
+}
+
+function shouldAttemptAutonomousMemory(userMessage, assistantMessage) {
+  const text = String(userMessage || "").trim();
+  if (!MEMORY_AUTOSAVE || !text || !String(assistantMessage || "").trim()) return false;
+  if (text.length < 18) return false;
+  if (/^(hi|hello|hey|yo|sup|thanks|thank you|ok|okay|cool|nice|great|gm|gn)[!.?\s]*$/i.test(text)) return false;
+  const lower = text.toLowerCase();
+  return [
+    /\bi\s+(prefer|like|want|need|use|always|usually|never|don't|dont|do not|hate|love)\b/,
+    /\bmy\s+(name|email|domain|website|repo|repository|project|server|vps|api|model|workflow|preference|style)\b/,
+    /\bwe\s+(decided|use|are using|should use|will use|need to|prefer)\b/,
+    /\b(from now on|going forward|default to|keep using|stop using)\b/,
+    /\b(error|failed|failure|bug|fix|fixed|workaround|root cause|solution)\b/,
+    /\b(config|setting|env|endpoint|token|port|database|falkor|graphiti|ollama|mcp)\b/,
+  ].some((pattern) => pattern.test(lower));
+}
+
+async function extractDurableMemories({ projectId, model, userMessage, assistantMessage }) {
+  if (!shouldAttemptAutonomousMemory(userMessage, assistantMessage)) return [];
+
+  const prompt = [
+    "Extract only durable, useful long-term memories from this chat turn.",
+    "Save preferences, stable user/project facts, recurring constraints, decisions, errors and fixes.",
+    "Do not save one-off questions, greetings, filler, or facts that are likely temporary.",
+    "Do not save that the user asked a question or discussed a topic.",
+    "Return strict JSON only: {\"memories\":[{\"subject\":\"...\",\"predicate\":\"...\",\"object\":\"...\",\"summary\":\"...\",\"confidence\":0.0}]}",
+    "If nothing should be saved, return {\"memories\":[]}.",
+    "",
+    `User: ${userMessage}`,
+    `Assistant: ${assistantMessage}`,
+  ].join("\n");
+
+  try {
+    const upstream = await fetch(ollamaUrl("/api/chat"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MEMORY_EXTRACTION_MODEL || model,
+        stream: false,
+        format: "json",
+        think: false,
+        options: { temperature: 0, num_ctx: 4096 },
+        messages: [
+          { role: "system", content: "You are a precise memory extraction layer for an AI assistant." },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
+
+    if (!upstream.ok) {
+      log("WARN", "memory", "memory extraction model call failed", { status: upstream.status });
+      return [];
+    }
+
+    const data = await upstream.json();
+    const extracted = parseMemoryExtraction(data?.message?.content || data?.response || "");
+    const saved = [];
+
+    for (const memory of extracted.slice(0, 5)) {
+      const result = await saveFact(projectId, memory);
+      if (result?.success && result.memory) saved.push(result.memory);
+    }
+
+    return saved;
+  } catch (err) {
+    log("WARN", "memory", "memory extraction failed", { error: err.message });
+    return [];
+  }
 }
 
 function send(ws, msg) {
@@ -221,6 +353,10 @@ app.get("/health", (_req, res) => {
     sessions: globalSessions.size,
     stats,
     memory:   getMemoryStatus(),
+    mcp:      {
+      servers: listMcpServers().length,
+      tools:   listMcpTools().length,
+    },
   });
 });
 
@@ -263,11 +399,81 @@ function resolveSafe(clientPath) {
 
 app.use(express.json({ limit: "10mb" }));
 
+// MCP gateway API
+app.get("/api/mcp/servers", (_req, res) => {
+  res.json({ servers: listMcpServers() });
+});
+
+app.get("/api/mcp/tools", (_req, res) => {
+  res.json({ tools: listMcpTools() });
+});
+
+app.get("/api/mcp/tool-definitions", (_req, res) => {
+  res.json({ tools: listMcpToolDefinitions() });
+});
+
+app.get("/api/mcp/logs", (_req, res) => {
+  res.json({ logs: getMcpLogs() });
+});
+
+app.get("/api/services/status", async (_req, res) => {
+  try {
+    res.json(await getServiceStatus());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/api/browser/status", async (_req, res) => {
+  res.json(await lightpandaStatus());
+});
+
+app.post("/api/browser/navigate", async (req, res) => {
+  try {
+    res.json(await lightpandaNavigate(req.body || {}));
+  } catch (err) {
+    res.status(500).json({ ok: false, engine: "lightpanda", error: err.message });
+  }
+});
+
+app.post("/api/browser/open-headful", async (req, res) => {
+  try {
+    res.json(await openHeadfulBrowser(req.body || {}));
+  } catch (err) {
+    res.status(500).json({ ok: false, engine: "chrome-headful", error: err.message });
+  }
+});
+
+app.post("/api/mcp/route", (req, res) => {
+  res.json(routeMcpIntent(req.body?.text || "", {
+    projectId: req.body?.projectId || req.body?.userId,
+    content: req.body?.content,
+    find: req.body?.find,
+    replace: req.body?.replace,
+  }));
+});
+
+app.post("/api/mcp/call", async (req, res) => {
+  try {
+    const result = await callMcpTool(req.body?.name, req.body?.args || {});
+    res.json({ success: true, result });
+  } catch (err) {
+    log("WARN", "mcp", "tool call failed", { tool: req.body?.name, error: err.message });
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/extensions/catalog", (_req, res) => {
+  res.json({ items: getExtensionCatalog() });
+});
+
 // Memory Graph API
 app.get("/api/memory/graph", async (req, res) => {
   try {
     const projectId = String(req.query.projectId || req.query.userId || "default-user");
-    const snapshot = await getGraphSnapshot(projectId);
+    const snapshot = await getGraphSnapshot(projectId, {
+      all: String(req.query.scope || "").toLowerCase() === "all",
+    });
     res.json(snapshot);
   } catch (err) {
     log("WARN", "memory", "graph snapshot failed", { error: err.message });
@@ -278,7 +484,7 @@ app.get("/api/memory/graph", async (req, res) => {
 // Ollama proxy for the local AI chat page.
 app.get("/api/ollama/tags", async (_req, res) => {
   try {
-    const upstream = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
+    const upstream = await fetch(ollamaUrl("/api/tags"));
     const data = await upstream.json();
     res.status(upstream.status).json(data);
   } catch (err) {
@@ -293,27 +499,11 @@ app.post("/api/ollama/chat", async (req, res) => {
     const messages = Array.isArray(req.body?.messages) ? [...req.body.messages] : [];
     const userId = String(req.body?.userId || req.body?.projectId || process.env.MEMORY_PROJECT_ID || "default-user");
     const lastUserMessage = [...messages].reverse().find(m => m?.role === "user")?.content;
+    const stream = req.body?.stream !== false;
 
     let memories = [];
     if (lastUserMessage) {
-      const [saveResult, searchResult] = await Promise.all([
-        saveCommand(userId, String(lastUserMessage), ""),
-        searchMemory(userId, String(lastUserMessage)),
-      ]);
-
-      if (saveResult?.ok === false) {
-        log("WARN", "memory", "memory write skipped", { userId, reason: saveResult.reason });
-      }
-      
-      // Broadcast memory update to all clients
-      const payload = JSON.stringify({ type: "memory-update", projectId: userId, timestamp: Date.now() });
-      for (const client of wss.clients) {
-        if (client.readyState === WebSocket.OPEN) {
-          try { client.send(payload); } catch (_) {}
-        }
-      }
-      
-      memories = Array.isArray(searchResult) ? searchResult : [];
+      memories = await searchMemory(userId, String(lastUserMessage));
     }
 
     const memoryPrompt = memories.length > 0
@@ -337,24 +527,69 @@ app.post("/api/ollama/chat", async (req, res) => {
       log("INFO", "chat", "memory injected for user", { userId, count: memories.length });
     }
 
-    const upstream = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+    const { projectId: _projectId, userId: _userId, signal: _signal, ...requestBody } = req.body || {};
+    const body = {
+      ...requestBody,
+      model,
+      messages: messages.map(sanitizeOllamaMessage),
+      stream,
+    };
+
+    const upstream = await fetch(ollamaUrl("/api/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        messages: messages.map(message => ({
-          role: ["system", "assistant", "user"].includes(message?.role) ? message.role : "user",
-          content: String(message?.content || ""),
-        })),
-        stream: false,
-      }),
+      body: JSON.stringify(body),
     });
+
+    if (stream) {
+      res.status(upstream.status);
+      res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/x-ndjson");
+      res.setHeader("Cache-Control", "no-cache");
+      if (!upstream.body) {
+        res.end();
+        return;
+      }
+      const reader = upstream.body.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          res.write(Buffer.from(value));
+        }
+      } finally {
+        res.end();
+      }
+      return;
+    }
 
     const data = await upstream.json();
     res.status(upstream.status).json(data);
   } catch (err) {
     log("WARN", "ollama", "chat request failed", { error: err.message });
     res.status(502).json({ error: "ollama chat failed" });
+  }
+});
+
+app.post("/api/memory/extract", async (req, res) => {
+  try {
+    const projectId = String(req.body?.projectId || req.body?.userId || process.env.MEMORY_PROJECT_ID || "default-user");
+    const model = String(req.body?.model || OLLAMA_MODEL);
+    const userMessage = String(req.body?.userMessage || "");
+    const assistantMessage = String(req.body?.assistantMessage || "");
+    const memories = await extractDurableMemories({ projectId, model, userMessage, assistantMessage });
+
+    if (memories.length > 0) {
+      const payload = JSON.stringify({ type: "memory-update", projectId, timestamp: Date.now(), count: memories.length });
+      for (const client of wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          try { client.send(payload); } catch (_) {}
+        }
+      }
+    }
+
+    res.json({ success: true, memories });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -815,6 +1050,16 @@ app.post("/api/memory/preference", async (req, res) => {
   }
 });
 
+app.post("/api/memory/fact", async (req, res) => {
+  try {
+    const { projectId, memory } = req.body;
+    if (!projectId || !memory) return res.status(400).json({ error: "projectId and memory required" });
+    sendMemoryWriteResult(res, await saveFact(projectId, memory));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/memory/search", async (req, res) => {
   try {
     const { projectId, q: query } = req.query;
@@ -843,14 +1088,12 @@ app.put("/api/memory/:id", async (req, res) => {
 function getTailscaleIP() {
   // Try tailscale CLI first
   try {
-    const { execSync } = require('child_process');
     const ip = execSync('tailscale ip -4 2>/dev/null', { encoding: 'utf8' }).trim();
     if (ip) return ip;
   } catch (_) {}
 
   // Fallback: check network interfaces for 100.x.x.x
   try {
-    const os = require('os');
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
       for (const iface of interfaces[name]) {
