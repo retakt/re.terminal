@@ -6,7 +6,7 @@ import {
 import { MarkdownText } from "./markdown-text";
 import { ToolFallback } from "./tool-fallback";
 import { TooltipIconButton } from "./tooltip-icon-button";
-import { Reasoning, ReasoningGroup } from "./reasoning";
+import { useChatContext } from "../engine/chat-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -20,6 +20,8 @@ import {
   SuggestionPrimitive,
   ThreadPrimitive,
   useAuiState,
+  useThreadViewport,
+  useThreadViewportStore,
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
@@ -29,6 +31,7 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  LoaderIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
@@ -36,41 +39,48 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import type { FC } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import type { AssistantRunLog } from "../types";
 
 // ── Thread root ───────────────────────────────────────────────────────────────
 
-export const Thread: FC = () => {
+const ThreadActiveContext = createContext(true);
+
+export const Thread: FC<{ isActive?: boolean }> = ({ isActive = true }) => {
   return (
-    <ThreadPrimitive.Root
-      className="chat-thread-root aui-root @container flex h-full flex-col"
-      style={{
-        ["--thread-max-width" as string]: "44rem",
-        ["--composer-radius" as string]: "6px",
-        ["--composer-padding" as string]: "8px",
-      }}
-    >
-      <ThreadPrimitive.Viewport
-        turnAnchor="top"
-        className="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
+    <ThreadActiveContext.Provider value={isActive}>
+      <ThreadPrimitive.Root
+        className="chat-thread-root aui-root @container flex h-full flex-col"
+        style={{
+          ["--thread-max-width" as string]: "40rem",
+          ["--composer-radius" as string]: "6px",
+          ["--composer-padding" as string]: "8px",
+        }}
       >
-        <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-3 pt-3">
-          <AuiIf condition={(s) => s.thread.isEmpty}>
-            <ThreadWelcome />
-          </AuiIf>
+        <ThreadPrimitive.Viewport
+          turnAnchor="top"
+          className="chat-thread-viewport relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto scroll-smooth"
+        >
+          <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-3 pt-3">
+            <AuiIf condition={(s) => s.thread.isEmpty}>
+              <ThreadWelcome />
+            </AuiIf>
 
-          <div className="mb-10 flex flex-col gap-y-5 empty:hidden">
-            <ThreadPrimitive.Messages>
-              {() => <ThreadMessage />}
-            </ThreadPrimitive.Messages>
+            <div className="mb-10 flex flex-col gap-y-5 empty:hidden">
+              <ThreadPrimitive.Messages>
+                {() => <ThreadMessage />}
+              </ThreadPrimitive.Messages>
+            </div>
+
+            <ThreadPrimitive.ViewportFooter className="chat-thread-footer sticky bottom-0 mt-auto flex flex-col gap-1.5 overflow-visible rounded-t-(--composer-radius) pb-1.5 md:pb-2">
+              <ThreadScrollToBottom />
+              <ChatStatusLoader />
+              <Composer />
+            </ThreadPrimitive.ViewportFooter>
           </div>
-
-          <ThreadPrimitive.ViewportFooter className="chat-thread-footer sticky bottom-0 mt-auto flex flex-col gap-3 overflow-visible rounded-t-(--composer-radius) pb-3 md:pb-4">
-            <ThreadScrollToBottom />
-            <Composer />
-          </ThreadPrimitive.ViewportFooter>
-        </div>
-      </ThreadPrimitive.Viewport>
-    </ThreadPrimitive.Root>
+        </ThreadPrimitive.Viewport>
+      </ThreadPrimitive.Root>
+    </ThreadActiveContext.Provider>
   );
 };
 
@@ -88,20 +98,58 @@ const ThreadMessage: FC = () => {
 // ── Scroll to bottom ──────────────────────────────────────────────────────────
 
 const ThreadScrollToBottom: FC = () => {
+  const isAtBottom = useThreadViewport((s) => s.isAtBottom);
+  const viewportStore = useThreadViewportStore();
+
+  const scrollToBottom = useCallback(() => {
+    viewportStore.getState().scrollToBottom({ behavior: "smooth" });
+  }, [viewportStore]);
+
   return (
-    <ThreadPrimitive.ScrollToBottom asChild>
-      <TooltipIconButton
-        tooltip="Scroll to bottom"
-        variant="outline"
-        className="chat-tool-button absolute -top-10 z-10 self-center rounded-sm p-3 disabled:invisible transition-all duration-150"
-      >
-        <ArrowDownIcon />
-      </TooltipIconButton>
-    </ThreadPrimitive.ScrollToBottom>
+    <TooltipIconButton
+      tooltip="Scroll to bottom"
+      variant="outline"
+      aria-hidden={isAtBottom}
+      tabIndex={isAtBottom ? -1 : 0}
+      onClick={scrollToBottom}
+      className={cn(
+        "chat-scroll-bottom-button absolute left-1/2 top-0 z-20 !size-10 !rounded-full !p-0",
+        isAtBottom ? "pointer-events-none" : "is-visible",
+      )}
+    >
+      <ArrowDownIcon className="size-4" />
+    </TooltipIconButton>
   );
 };
 
 // ── Welcome screen ────────────────────────────────────────────────────────────
+
+const STATUS_LABELS = {
+  idle: "",
+  loading: "loading",
+  "checking-memory": "checking memory",
+  "choosing-tool": "choosing tool",
+  "calling-tool": "calling tool",
+  reasoning: "reasoning",
+  crafting: "crafting response",
+  "saving-memory": "saving memory",
+} as const;
+
+const ChatStatusLoader: FC = () => {
+  const { activityStatus } = useChatContext();
+  const isRunning = useAuiState((s) => s.thread.isRunning);
+  const label = activityStatus !== "idle" ? STATUS_LABELS[activityStatus] : (isRunning ? "working" : "");
+
+  if (!label) return null;
+
+  return (
+    <div className="chat-run-status mx-auto flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground">
+      <LoaderIcon className="size-3 animate-spin text-primary" />
+      <span>{label}</span>
+      <span className="chat-run-status-dots" aria-hidden>...</span>
+    </div>
+  );
+};
 
 const ThreadWelcome: FC = () => {
   return (
@@ -158,7 +206,7 @@ const Composer: FC = () => {
       <ComposerPrimitive.AttachmentDropzone asChild>
         <div
           className={cn(
-            "chat-composer-shell flex w-full flex-col gap-2 rounded-(--composer-radius) p-(--composer-padding)",
+            "chat-composer-shell relative flex w-full flex-col overflow-hidden rounded-(--composer-radius) p-0",
             "transition-all duration-150",
             "data-[dragging=true]:border-dashed",
           )}
@@ -166,8 +214,9 @@ const Composer: FC = () => {
           <ComposerAttachments />
           <ComposerPrimitive.Input
             placeholder="Send a message..."
-            className="max-h-32 min-h-9 w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-5 outline-none placeholder:text-muted-foreground/60"
-            rows={1}
+            className="chat-composer-input w-full resize-none bg-transparent px-2.5 pb-8 pt-2 text-[13px] leading-5 outline-none placeholder:text-muted-foreground/60"
+            minRows={2}
+            maxRows={8}
             autoFocus
             aria-label="Message input"
           />
@@ -180,7 +229,7 @@ const Composer: FC = () => {
 
 const ComposerAction: FC = () => {
   return (
-    <div className="relative flex items-center justify-between">
+    <div className="absolute inset-x-2.5 bottom-1.5 flex items-center justify-between">
       <ComposerAddAttachment />
       <AuiIf condition={(s) => !s.thread.isRunning}>
         <ComposerPrimitive.Send asChild>
@@ -229,9 +278,6 @@ const MessageError: FC = () => {
 // ── Assistant message ─────────────────────────────────────────────────────────
 
 const AssistantMessage: FC = () => {
-  const ACTION_BAR_PT = "pt-1.5";
-  const ACTION_BAR_HEIGHT = `-mb-7.5 min-h-7.5 ${ACTION_BAR_PT}`;
-
   return (
     <MessagePrimitive.Root
       data-role="assistant"
@@ -241,19 +287,59 @@ const AssistantMessage: FC = () => {
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
-            Reasoning,
-            ReasoningGroup,
+            Reasoning: () => null,
+            ReasoningGroup: () => null,
             tools: { Fallback: ToolFallback },
           }}
         />
         <MessageError />
+        <AssistantDebugMeta />
       </div>
 
-      <div className={cn("ms-2 flex items-center", ACTION_BAR_HEIGHT)}>
+      <div className="chat-assistant-action-row ms-2 flex items-center">
         <BranchPicker />
         <AssistantActionBar />
       </div>
     </MessagePrimitive.Root>
+  );
+};
+
+function shortModelName(model = "") {
+  const clean = model.split("/").pop() || model || "model";
+  return clean.length > 24 ? `${clean.slice(0, 21)}...` : clean;
+}
+
+function formatDuration(ms?: number) {
+  if (typeof ms !== "number") return "running";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+const AssistantDebugMeta: FC = () => {
+  const { runLogsRef } = useChatContext();
+  const [run, setRun] = useState<AssistantRunLog | null>(null);
+  const isLast = useAuiState((s: any) => Boolean(s.message?.isLast));
+  const isActive = useContext(ThreadActiveContext);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const refresh = () => {
+      const latest = [...runLogsRef.current].reverse().find((entry) => entry.status !== "queued") || null;
+      setRun(latest);
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 500);
+    return () => window.clearInterval(interval);
+  }, [isActive, runLogsRef]);
+
+  if (!run || !isLast) return null;
+
+  return (
+    <div className="chat-message-meta">
+      <span className="chat-meta-pill chat-meta-pill--model">{shortModelName(run.model)}</span>
+      <span className="chat-meta-pill chat-meta-pill--run">{run.id.slice(0, 8)}</span>
+      <span className="chat-meta-pill chat-meta-pill--time">{formatDuration(run.durationMs)}</span>
+      <span className="chat-meta-pill chat-meta-pill--tools">{run.toolsUsed.length || run.toolCount} tools</span>
+    </div>
   );
 };
 
@@ -262,7 +348,7 @@ const AssistantActionBar: FC = () => {
     <ActionBarPrimitive.Root
       hideWhenRunning
       autohide="not-last"
-      className="col-start-3 row-start-2 -ms-1 flex gap-1 text-muted-foreground"
+      className="chat-message-actions col-start-3 row-start-2 -ms-1 flex gap-0.5 text-muted-foreground"
     >
       <ActionBarPrimitive.Copy asChild>
         <TooltipIconButton tooltip="Copy">

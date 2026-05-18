@@ -1,0 +1,1061 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { fileURLToPath } from "url";
+import {
+  checkMemoryHealth,
+  getGraphSnapshot,
+  getMemoryStatus,
+  saveFact,
+  searchMemory,
+} from "./memory-client.js";
+import {
+  getLightpandaConfig,
+  lightpandaFetch,
+  lightpandaNavigate,
+  lightpandaStatus,
+  openHeadfulBrowser,
+} from "./lightpanda-client.js";
+
+const execFileAsync = promisify(execFile);
+const DEFAULT_TIMEOUT_MS = 8000;
+const MAX_WRITE_BYTES = 1024 * 1024;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function ollamaBaseUrl() {
+  return (process.env.OLLAMA_BASE_URL || "https://chat-api.retakt.cc").replace(/\/+$/, "").replace(/\/api$/, "");
+}
+
+function serverRoot() {
+  return path.resolve(__dirname, "..");
+}
+
+function normalizeSearxngBase(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const url = new URL(raw);
+    url.search = "";
+    url.hash = "";
+    if (url.pathname.endsWith("/search")) {
+      url.pathname = url.pathname.slice(0, -"/search".length) || "/";
+    }
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return raw.replace(/\/+$/, "").replace(/\/search$/, "");
+  }
+}
+
+function configuredSearxngBase() {
+  const envBase = normalizeSearxngBase(process.env.SEARXNG_URL);
+  if (envBase) return envBase;
+
+  try {
+    const configPath = path.join(serverRoot(), "config", "services.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    const services = Object.values(config.services || {}).flat();
+    const searchService = services.find((service) =>
+      /searxng/i.test(`${service.name || ""} ${service.url || ""}`)
+    );
+    return normalizeSearxngBase(searchService?.url);
+  } catch {
+    return "";
+  }
+}
+
+function safeText(value, limit = 12000) {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
+  return text.length > limit ? `${text.slice(0, limit)}\n...[truncated]` : text;
+}
+
+function fileRoot() {
+  const workspaceDefault = path.basename(process.cwd()).toLowerCase() === "server"
+    ? path.resolve(process.cwd(), "..")
+    : process.cwd();
+  return path.resolve(process.env.FILE_ROOT || workspaceDefault);
+}
+
+function resolveSafe(clientPath = ".") {
+  const root = fileRoot();
+  const resolved = path.resolve(root, String(clientPath || ".").replace(/^[\\/]+/, ""));
+  const rootCompare = process.platform === "win32" ? root.toLowerCase() : root;
+  const resolvedCompare = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  if (resolvedCompare !== rootCompare && !resolvedCompare.startsWith(rootCompare + path.sep)) {
+    throw new Error("path traversal denied");
+  }
+  return resolved;
+}
+
+function findGitRoot(start = process.cwd()) {
+  let current = path.resolve(start || process.cwd());
+  while (true) {
+    if (fs.existsSync(path.join(current, ".git"))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return "";
+    current = parent;
+  }
+}
+
+async function runGit(args, cwd = process.cwd()) {
+  const repo = findGitRoot(cwd);
+  if (!repo) throw new Error("git repository unavailable");
+  const { stdout, stderr } = await execFileAsync("git", args, {
+    cwd: repo,
+    timeout: DEFAULT_TIMEOUT_MS,
+    windowsHide: true,
+  });
+  return safeText((stdout || stderr || "").trim() || "ok");
+}
+
+async function runCommand(command, args = [], options = {}) {
+  const { stdout, stderr } = await execFileAsync(command, args, {
+    cwd: options.cwd || process.cwd(),
+    timeout: options.timeout || DEFAULT_TIMEOUT_MS,
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+  });
+  return safeText((stdout || stderr || "").trim() || "ok");
+}
+
+async function dockerContainerNames() {
+  const output = await runCommand("docker", ["ps", "-a", "--format", "{{.Names}}"], { timeout: 10000 });
+  return output.split(/\r?\n/).map((name) => name.trim()).filter(Boolean);
+}
+
+async function resolveDockerContainerName(name) {
+  const raw = String(name || "").trim();
+  if (!raw) return "";
+  const names = await dockerContainerNames();
+  if (names.includes(raw)) return raw;
+  const normalized = raw.toLowerCase();
+  const aliases = new Map([
+    ["yt-worker", "retakt-yt-worker"],
+    ["youtube-worker", "retakt-yt-worker"],
+    ["yt worker", "retakt-yt-worker"],
+    ["youtube worker", "retakt-yt-worker"],
+    ["yt-api", "retakt-yt-api"],
+    ["youtube-api", "retakt-yt-api"],
+    ["redis", "retakt-redis"],
+  ]);
+  const alias = aliases.get(normalized);
+  if (alias && names.includes(alias)) return alias;
+  const exactSuffix = names.find((entry) => entry.toLowerCase().endsWith(`-${normalized}`));
+  if (exactSuffix) return exactSuffix;
+  const contains = names.filter((entry) => entry.toLowerCase().includes(normalized));
+  if (contains.length === 1) return contains[0];
+  throw new Error(`docker container not found: ${raw}. available containers: ${names.join(", ") || "none"}`);
+}
+
+async function readDirectory(args = {}) {
+  const dir = resolveSafe(args.path || ".");
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  return safeText(entries.slice(0, 200).map((entry) => ({
+    name: entry.name,
+    type: entry.isDirectory() ? "directory" : "file",
+  })));
+}
+
+async function readTextFile(args = {}) {
+  const file = resolveSafe(args.path || "");
+  const stat = await fs.promises.stat(file);
+  if (stat.isDirectory()) throw new Error("path is a directory");
+  if (stat.size > 512 * 1024) throw new Error("file too large for MCP read");
+  return safeText(await fs.promises.readFile(file, "utf8"));
+}
+
+async function writeTextFile(args = {}) {
+  const relativePath = String(args.path || "").trim();
+  const content = String(args.content ?? "");
+  if (!relativePath) throw new Error("path is required");
+  if (Buffer.byteLength(content, "utf8") > MAX_WRITE_BYTES) throw new Error("content too large for MCP write");
+  const file = resolveSafe(relativePath);
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  await fs.promises.writeFile(file, content, "utf8");
+  return safeText({
+    ok: true,
+    path: path.relative(fileRoot(), file),
+    bytes: Buffer.byteLength(content, "utf8"),
+  });
+}
+
+async function replaceInFile(args = {}) {
+  const relativePath = String(args.path || "").trim();
+  const find = String(args.find ?? "");
+  const replace = String(args.replace ?? "");
+  if (!relativePath) throw new Error("path is required");
+  if (!find) throw new Error("find is required");
+  const file = resolveSafe(relativePath);
+  const stat = await fs.promises.stat(file);
+  if (stat.isDirectory()) throw new Error("path is a directory");
+  if (stat.size > MAX_WRITE_BYTES) throw new Error("file too large for MCP replace");
+  const before = await fs.promises.readFile(file, "utf8");
+  if (!before.includes(find)) throw new Error("find text not found");
+  const after = before.split(find).join(replace);
+  await fs.promises.writeFile(file, after, "utf8");
+  return safeText({
+    ok: true,
+    path: path.relative(fileRoot(), file),
+    replacements: before.split(find).length - 1,
+    bytes: Buffer.byteLength(after, "utf8"),
+  });
+}
+
+async function searchFiles(args = {}) {
+  const query = String(args.query || "").toLowerCase();
+  if (!query) throw new Error("query is required");
+  const start = resolveSafe(args.path || ".");
+  const matches = [];
+
+  async function walk(dir, depth = 0) {
+    if (depth > 4 || matches.length >= 80) return;
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (matches.length >= 80) break;
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
+      const full = path.join(dir, entry.name);
+      if (entry.name.toLowerCase().includes(query)) {
+        matches.push(path.relative(fileRoot(), full));
+      }
+      if (entry.isDirectory()) await walk(full, depth + 1);
+    }
+  }
+
+  await walk(start);
+  return safeText(matches);
+}
+
+async function searchWeb(args = {}) {
+  const query = String(args.query || "").trim();
+  if (!query) throw new Error("query is required");
+  const base = configuredSearxngBase();
+  if (!base) {
+    throw new Error("SearXNG is not configured. Set SEARXNG_URL or add the SearXNG service URL to server/config/services.json.");
+  }
+  const params = new URLSearchParams({
+    q: query,
+    format: "json",
+    pageno: "1",
+    language: "en",
+  });
+  const url = `${base}/search?${params.toString()}`;
+  let response;
+  try {
+    response = await fetch(url, {
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new Error(`search failed for ${base}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!response.ok) throw new Error(`search failed: ${response.status}`);
+  const data = await response.json();
+  const results = (data.results || []).slice(0, Math.min(Number(args.limit || 5), 8)).map((item) => ({
+    title: item.title,
+    url: item.url,
+    content: String(item.content || "").slice(0, 420),
+  }));
+  return safeText({ query, results });
+}
+
+async function fetchUrl(args = {}) {
+  const url = String(args.url || "").trim();
+  if (!/^https?:\/\//i.test(url)) throw new Error("url must start with http:// or https://");
+  const response = await fetch(url, {
+    headers: { "User-Agent": "re.Term MCP fetch/1.0" },
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`fetch failed: ${response.status}`);
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  return safeText({ url, contentType, text: text.replace(/\s+/g, " ").slice(0, 8000) });
+}
+
+async function localDockerStatus() {
+  return runCommand("docker", ["info", "--format", "{{json .}}"], { timeout: 10000 });
+}
+
+async function localDockerContainers() {
+  return runCommand("docker", ["ps", "-a", "--format", "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}"], { timeout: 10000 });
+}
+
+async function localDockerContainerStatus(args = {}) {
+  const name = String(args.name || args.container || "").trim();
+  if (!name) return localDockerContainers();
+  const resolvedName = await resolveDockerContainerName(name);
+  return runCommand("docker", [
+    "ps",
+    "-a",
+    "--filter",
+    `name=^/${resolvedName}$`,
+    "--format",
+    "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}",
+  ], { timeout: 10000 });
+}
+
+async function localDockerLogs(args = {}) {
+  const name = String(args.name || args.container || "").trim();
+  if (!name) throw new Error("container name is required");
+  const resolvedName = await resolveDockerContainerName(name);
+  const tail = String(Math.max(10, Math.min(Number(args.tail || 120), 500)));
+  const logs = await runCommand("docker", ["logs", "--tail", tail, resolvedName], { timeout: 10000 });
+  return safeText({
+    container: resolvedName,
+    requested: name,
+    tail,
+    logs,
+  });
+}
+
+async function localDockerDiskUsage() {
+  return runCommand("docker", ["system", "df"], { timeout: 10000 });
+}
+
+async function ollamaHealth() {
+  const base = ollamaBaseUrl();
+  const startedAt = Date.now();
+  const response = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
+  const text = await response.text();
+  return safeText({
+    ok: response.ok,
+    status: response.status,
+    durationMs: Date.now() - startedAt,
+    baseUrl: base,
+    bodyPreview: text.slice(0, 1200),
+  });
+}
+
+async function ollamaModels() {
+  const base = ollamaBaseUrl();
+  const response = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`ollama models failed: ${response.status}`);
+  return safeText({
+    baseUrl: base,
+    models: (data.models || []).map((model) => model.name).filter(Boolean),
+  });
+}
+
+async function ollamaChatProbe(args = {}) {
+  const base = ollamaBaseUrl();
+  const model = String(args.model || process.env.OLLAMA_MODEL || "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b");
+  const startedAt = Date.now();
+  const response = await fetch(`${base}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    body: JSON.stringify({
+      model,
+      stream: false,
+      think: false,
+      options: { temperature: 0, num_ctx: 1024 },
+      messages: [
+        { role: "system", content: "Return the word ok only." },
+        { role: "user", content: "health probe" },
+      ],
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `ollama chat probe failed: ${response.status}`);
+  return safeText({
+    ok: true,
+    status: response.status,
+    durationMs: Date.now() - startedAt,
+    baseUrl: base,
+    model,
+    response: data.message?.content || data.response || "",
+  });
+}
+
+function monitorPaths() {
+  const root = serverRoot();
+  const logDir = process.env.MONITOR_LOG_DIR || path.join(root, "logs");
+  return {
+    log: process.env.MONITOR_LOG_FILE || path.join(logDir, "ai-monitor.log"),
+    pid: process.env.MONITOR_PID_FILE || path.join(logDir, "ai-monitor.pid"),
+    healthScript: path.join(root, "scripts", "system", "health-check.sh"),
+    config: path.join(root, "config", "monitor.conf"),
+  };
+}
+
+async function readTail(filePath, bytes = 12000) {
+  const stat = await fs.promises.stat(filePath);
+  const start = Math.max(0, stat.size - bytes);
+  const handle = await fs.promises.open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(stat.size - start);
+    await handle.read(buffer, 0, buffer.length, start);
+    return buffer.toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+async function monitorStatus() {
+  const paths = monitorPaths();
+  const [pid, logTail, config] = await Promise.all([
+    fs.promises.readFile(paths.pid, "utf8").then((value) => value.trim()).catch((err) => `unavailable: ${err.message}`),
+    readTail(paths.log).catch((err) => `unavailable: ${err.message}`),
+    fs.promises.readFile(paths.config, "utf8").catch((err) => `unavailable: ${err.message}`),
+  ]);
+  return safeText({
+    pidFile: paths.pid,
+    logFile: paths.log,
+    configFile: paths.config,
+    pid,
+    config,
+    recentLogs: logTail,
+  });
+}
+
+async function monitorRecentLogs(args = {}) {
+  const paths = monitorPaths();
+  const bytes = Math.max(1000, Math.min(Number(args.bytes || 12000), 64000));
+  return safeText({
+    logFile: paths.log,
+    recentLogs: await readTail(paths.log, bytes),
+  });
+}
+
+async function monitorHealthCheck() {
+  const paths = monitorPaths();
+  if (!fs.existsSync(paths.healthScript)) throw new Error(`health script not found: ${paths.healthScript}`);
+  const shell = process.platform === "win32" ? "bash" : "bash";
+  return runCommand(shell, [paths.healthScript], { cwd: serverRoot(), timeout: 15000 });
+}
+
+const builtinServers = [
+  {
+    id: "local",
+    title: "Local System",
+    type: "builtin",
+    transport: "internal",
+    enabled: true,
+    description: "Scoped local workspace and host context. File tools stay inside FILE_ROOT.",
+    tools: [
+      {
+        name: "list_directory",
+        description: "List files and directories under FILE_ROOT. Use for fuzzy requests like show files, what's in this folder, list workspace.",
+        inputSchema: { type: "object", properties: { path: { type: "string" } } },
+        execute: readDirectory,
+      },
+      {
+        name: "read_text_file",
+        description: "Read a small text file under FILE_ROOT. Use for open/read/cat/show file requests.",
+        inputSchema: { type: "object", required: ["path"], properties: { path: { type: "string" } } },
+        execute: readTextFile,
+      },
+      {
+        name: "write_text_file",
+        description: "Create or overwrite a text file under FILE_ROOT. Use for create/write/save/edit file when full content is known.",
+        inputSchema: { type: "object", required: ["path", "content"], properties: { path: { type: "string" }, content: { type: "string" } } },
+        execute: writeTextFile,
+      },
+      {
+        name: "replace_in_file",
+        description: "Edit a text file under FILE_ROOT by replacing exact text. Use for change/update/patch/rename text inside a file.",
+        inputSchema: { type: "object", required: ["path", "find", "replace"], properties: { path: { type: "string" }, find: { type: "string" }, replace: { type: "string" } } },
+        execute: replaceInFile,
+      },
+      {
+        name: "search_files",
+        description: "Search file and directory names under FILE_ROOT. Use when the user gives an approximate filename or asks find file.",
+        inputSchema: { type: "object", required: ["query"], properties: { query: { type: "string" }, path: { type: "string" } } },
+        execute: searchFiles,
+      },
+      {
+        name: "host_info",
+        description: "Return read-only host OS, CPU, memory, and uptime information.",
+        inputSchema: { type: "object", properties: {} },
+        execute: async () => safeText({
+          platform: process.platform,
+          arch: process.arch,
+          hostname: os.hostname(),
+          uptimeSeconds: os.uptime(),
+          loadAverage: os.loadavg(),
+          totalMemory: os.totalmem(),
+          freeMemory: os.freemem(),
+          cpus: os.cpus().length,
+        }),
+      },
+    ],
+  },
+  {
+    id: "git",
+    title: "Git",
+    type: "builtin",
+    transport: "internal",
+    enabled: true,
+    description: "Read-only git repository inspection.",
+    tools: [
+      {
+        name: "status",
+        description: "Show current git status. Use for repo status, what changed, branch state.",
+        inputSchema: { type: "object", properties: {} },
+        execute: () => runGit(["status", "--short", "--branch"]),
+      },
+      {
+        name: "recent_commits",
+        description: "Show recent commits. Use for git history, recent work, last commits.",
+        inputSchema: { type: "object", properties: { limit: { type: "string" } } },
+        execute: (args = {}) => runGit(["log", "--oneline", `-${Math.min(Number(args.limit || 10), 30)}`]),
+      },
+      {
+        name: "diff_summary",
+        description: "Show current git diff statistics. Use for what files changed or diff overview.",
+        inputSchema: { type: "object", properties: {} },
+        execute: () => runGit(["diff", "--stat"]),
+      },
+    ],
+  },
+  {
+    id: "memory",
+    title: "Graph Memory",
+    type: "builtin",
+    transport: "internal",
+    enabled: true,
+    description: "FalkorDB/Graphiti memory tools.",
+    tools: [
+      {
+        name: "status",
+        description: "Check memory backend health.",
+        inputSchema: { type: "object", properties: {} },
+        execute: async () => safeText(await checkMemoryHealth()),
+      },
+      {
+        name: "search",
+        description: "Search long-term memory for this chat/project. Use for what do you remember, memory, saved notes.",
+        inputSchema: { type: "object", required: ["projectId", "query"], properties: { projectId: { type: "string" }, query: { type: "string" } } },
+        execute: async (args) => safeText(await searchMemory(args.projectId || "default-user", args.query || "")),
+      },
+      {
+        name: "save_fact",
+        description: "Save a durable long-term memory fact. Use for remember this, note this, save as memory.",
+        inputSchema: { type: "object", required: ["projectId", "summary"], properties: { projectId: { type: "string" }, summary: { type: "string" }, subject: { type: "string" }, predicate: { type: "string" }, object: { type: "string" } } },
+        execute: async (args) => safeText(await saveFact(args.projectId || "default-user", {
+          type: "fact",
+          subject: args.subject || "user",
+          predicate: args.predicate || "asked assistant to remember",
+          object: args.object || args.summary || "",
+          summary: args.summary || args.object || "",
+          confidence: 1,
+          source: "mcp.memory",
+        })),
+      },
+      {
+        name: "graph_snapshot",
+        description: "Return current memory graph nodes and edges.",
+        inputSchema: { type: "object", properties: { projectId: { type: "string" } } },
+        execute: async (args) => safeText(await getGraphSnapshot(args.projectId || "default-user", { all: true })),
+      },
+    ],
+  },
+  {
+    id: "web",
+    title: "Web Fetch/Search",
+    type: "builtin",
+    transport: "internal",
+    enabled: true,
+    description: "Read-only web search and fetch wrapper for current information.",
+    tools: [
+      {
+        name: "search",
+        description: "Search the web through configured SEARXNG_URL or server/config/services.json.",
+        inputSchema: { type: "object", required: ["query"], properties: { query: { type: "string" }, limit: { type: "string" } } },
+        execute: searchWeb,
+      },
+      {
+        name: "fetch_url",
+        description: "Fetch a URL and return bounded text content.",
+        inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string" } } },
+        execute: fetchUrl,
+      },
+    ],
+  },
+  {
+    id: "browser",
+    title: "Lightpanda Browser",
+    type: "builtin",
+    transport: "cdp",
+    enabled: true,
+    description: "Shared headless browser engine for AI web navigation, extraction, and future extensions.",
+    tools: [
+      {
+        name: "lightpanda_status",
+        description: "Check Lightpanda CDP browser status and response time.",
+        inputSchema: { type: "object", properties: {} },
+        execute: lightpandaStatus,
+      },
+      {
+        name: "lightpanda_navigate",
+        description: "Navigate with Lightpanda and return title, URL, text, links, forms, stats, and duration.",
+        inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string" }, waitMs: { type: "string" } } },
+        execute: (args) => lightpandaFetch(args),
+      },
+      {
+        name: "lightpanda_extract",
+        description: "Extract page text and structured browser metadata from a URL using Lightpanda.",
+        inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string" }, waitMs: { type: "string" } } },
+        execute: (args) => lightpandaFetch(args),
+      },
+      {
+        name: "browser_open_headful",
+        description: "Open a real Chrome window connected to the shared CDP port for user-visible browsing.",
+        inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string" } } },
+        execute: openHeadfulBrowser,
+      },
+    ],
+  },
+  {
+    id: "ops",
+    title: "Local Ops",
+    type: "builtin",
+    transport: "internal",
+    enabled: true,
+    description: "Read-only local Docker, Ollama API, and cold-start monitor tools.",
+    tools: [
+      {
+        name: "local_docker_status",
+        description: "Check local Docker engine status with docker info. Use for docker status and docker daemon checks.",
+        inputSchema: { type: "object", properties: {} },
+        execute: localDockerStatus,
+      },
+      {
+        name: "local_docker_containers",
+        description: "List local Docker containers and their status. Use for container status, ps, unhealthy containers.",
+        inputSchema: { type: "object", properties: {} },
+        execute: localDockerContainers,
+      },
+      {
+        name: "local_docker_container_status",
+        description: "Check status for a named local Docker container/service. Use for fuzzy service names like yt worker, api worker, backend worker.",
+        inputSchema: { type: "object", properties: { name: { type: "string" } } },
+        execute: localDockerContainerStatus,
+      },
+      {
+        name: "local_docker_logs",
+        description: "Read recent logs for a named local Docker container. Read-only and bounded.",
+        inputSchema: { type: "object", required: ["name"], properties: { name: { type: "string" }, tail: { type: "string" } } },
+        execute: localDockerLogs,
+      },
+      {
+        name: "local_docker_disk_usage",
+        description: "Show local Docker image/container/volume disk usage.",
+        inputSchema: { type: "object", properties: {} },
+        execute: localDockerDiskUsage,
+      },
+      {
+        name: "ollama_health",
+        description: "Check configured Ollama-compatible API health using /api/tags.",
+        inputSchema: { type: "object", properties: {} },
+        execute: ollamaHealth,
+      },
+      {
+        name: "ollama_models",
+        description: "List models from the configured Ollama-compatible API.",
+        inputSchema: { type: "object", properties: {} },
+        execute: ollamaModels,
+      },
+      {
+        name: "ollama_chat_probe",
+        description: "Run a short non-streaming chat probe against the configured Ollama-compatible API.",
+        inputSchema: { type: "object", properties: { model: { type: "string" } } },
+        execute: ollamaChatProbe,
+      },
+      {
+        name: "monitor_status",
+        description: "Read cold-start monitor pid/config and recent logs.",
+        inputSchema: { type: "object", properties: {} },
+        execute: monitorStatus,
+      },
+      {
+        name: "monitor_recent_logs",
+        description: "Read recent cold-start monitor logs.",
+        inputSchema: { type: "object", properties: { bytes: { type: "string" } } },
+        execute: monitorRecentLogs,
+      },
+      {
+        name: "monitor_health_check",
+        description: "Run the existing read-only system health-check script.",
+        inputSchema: { type: "object", properties: {} },
+        execute: monitorHealthCheck,
+      },
+    ],
+  },
+];
+
+const extensionCatalog = [
+  { name: "OpenWebUI MCP Streamable HTTP", type: "MCP", target: "MCP", risk: "medium", source: "https://docs.openwebui.com/features/mcp", description: "Connect Streamable HTTP MCP servers to OpenWebUI-style clients." },
+  { name: "OpenWebUI mcpo bridge", type: "OpenWebUI Tool", target: "Extensions", risk: "medium", source: "https://docs.openwebui.com/features/extensibility/plugin/tools/openapi-servers/mcp/", description: "Expose stdio/SSE MCP tools as OpenAPI endpoints." },
+  { name: "OpenWebUI Functions", type: "OpenWebUI Function", target: "Extensions", risk: "high", source: "https://docs.openwebui.com/features/extensibility/plugin/functions/", description: "Python functions that alter platform behavior; catalog only for v1." },
+  { name: "Claude-style Skills", type: "Claude Skill", target: "Extensions", risk: "low", source: "https://support.claude.com/en/articles/10949351-getting-started-with-model-context-protocol-mcp-on-claude-for-desktop", description: "Reusable instructions and workflows that can be adapted later." },
+  { name: "MCP for claude.ai browser bridge", type: "Browser Extension", target: "Extensions", risk: "high", source: "https://chromewebstore.google.com/detail/mcp-for-claudeai/jbdhaamjibfahpekpnjeikanebpdpfpb", description: "Browser bridge idea; keep separate from MCP server execution." },
+];
+
+let callLog = [];
+const serverResponseMs = new Map();
+const serverHealthOk = new Map();
+
+function isServerEnabled(server) {
+  if (server.id === "git" && !findGitRoot()) return false;
+  return Boolean(server.enabled);
+}
+
+function serverStatus(server) {
+  if (server.id === "git" && !findGitRoot()) return "disabled";
+  if (server.id === "web" && !configuredSearxngBase()) return "needs_config";
+  if (server.id === "memory" && !getMemoryStatus().ready) {
+    return getMemoryStatus().fallback?.enabled ? "degraded" : "error";
+  }
+  if (serverHealthOk.get(server.id) === false) return "error";
+  return "ready";
+}
+
+export function listMcpServers() {
+  return builtinServers.map((server) => ({
+    id: server.id,
+    title: server.title,
+    type: server.type,
+    transport: server.transport,
+    enabled: isServerEnabled(server),
+    description: server.description,
+    status: serverStatus(server),
+    toolCount: isServerEnabled(server) ? server.tools.length : 0,
+    responseMs: serverResponseMs.get(server.id) ?? null,
+  }));
+}
+
+export function listMcpTools() {
+  return builtinServers.flatMap((server) => isServerEnabled(server) ? server.tools.map((tool) => ({
+    name: `mcp__${server.id}__${tool.name}`,
+    serverId: server.id,
+    serverTitle: server.title,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    enabled: true,
+  })) : []);
+}
+
+export function listMcpToolDefinitions() {
+  return listMcpTools()
+    .filter((tool) => tool.enabled)
+    .map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: `[${tool.serverTitle}] ${tool.description}`,
+        parameters: tool.inputSchema || { type: "object", properties: {} },
+      },
+    }));
+}
+
+export function getMcpLogs() {
+  return callLog.slice(-100).reverse();
+}
+
+export function getExtensionCatalog() {
+  return extensionCatalog;
+}
+
+function firstQuoted(text) {
+  const match = String(text || "").match(/["'`](.+?)["'`]/);
+  return match?.[1] || "";
+}
+
+function pathCandidate(text) {
+  const quoted = firstQuoted(text);
+  if (quoted && /[\\/.\w-]/.test(quoted)) return quoted;
+  const match = String(text || "").match(/(?:file|path)\s+([^\s]+(?:\.[a-z0-9]+)?)/i);
+  return match?.[1] || "";
+}
+
+function replacementCandidate(text) {
+  const replaceMatch = String(text || "").match(/replace\s+["'`]?(.+?)["'`]?\s+with\s+["'`]?(.+?)["'`]?(?:\s+in\s+file\b|\s+file\b|\s+path\b|$)/i);
+  if (replaceMatch) return { find: replaceMatch[1].trim(), replace: replaceMatch[2].trim() };
+  const changeMatch = String(text || "").match(/change\s+["'`]?(.+?)["'`]?\s+(?:to|into)\s+["'`]?(.+?)["'`]?(?:\s+in\s+file\b|\s+file\b|\s+path\b|$)/i);
+  if (changeMatch) return { find: changeMatch[1].trim(), replace: changeMatch[2].trim() };
+  return { find: "", replace: "" };
+}
+
+function containerNameCandidate(text) {
+  const raw = String(text || "");
+  const quoted = firstQuoted(raw);
+  if (quoted) return quoted.trim();
+  const exact = raw.match(/\b([a-z0-9][a-z0-9_.-]*(?:worker|api|backend|frontend|server|service)[a-z0-9_.-]*)\b/i)?.[1];
+  if (exact) return exact;
+  if (/\byt\b|\byoutube\b/i.test(raw) && /\bworker\b/i.test(raw)) return "yt-worker";
+  return "";
+}
+
+function useTools(candidates, reason, risk = "low") {
+  return {
+    answer_directly: false,
+    must_call_tools: true,
+    tool_candidates: candidates,
+    risk,
+    reason,
+  };
+}
+
+function isCasualNoTool(text) {
+  const lower = String(text || "").trim().toLowerCase();
+  return /^(hi|hello|hey|yo|sup|thanks|thank you|ok|okay|cool|nice|great|gm|gn)[!.?\s]*$/.test(lower);
+}
+
+function extractBrowserTarget(text = "") {
+  const raw = String(text || "");
+  const url = raw.match(/https?:\/\/[^\s)]+/i)?.[0];
+  if (url) return url.replace(/[.,;]+$/, "");
+  const domain = raw.match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s"'<>]*)?/i)?.[0];
+  if (domain) return domain.replace(/[.,;]+$/, "");
+  const quoted = raw.match(/["“']([^"”']+)["”']/)?.[1];
+  return quoted && /\./.test(quoted) ? quoted.trim() : "";
+}
+
+export function routeMcpIntent(text = "", options = {}) {
+  const raw = String(text || "");
+  const lower = raw.toLowerCase();
+  const projectId = String(options.projectId || "default-user");
+  const pathArg = pathCandidate(raw);
+  const result = {
+    answer_directly: true,
+    must_call_tools: false,
+    tool_candidates: [],
+    risk: "low",
+    reason: "direct answer is acceptable",
+  };
+  const use = (name, args = {}, reason = "matched fuzzy MCP intent", risk = "low") => useTools([{ name, arguments: args }], reason, risk);
+
+  if (isCasualNoTool(raw)) return result;
+
+  const browserTarget = extractBrowserTarget(raw);
+  if ((/\b(lightpanda|browser|open page|open url|visit|navigate|extract page|read webpage|webpage|browse)\b/.test(lower) && browserTarget) || /^https?:\/\//i.test(browserTarget)) {
+    return use("mcp__browser__lightpanda_navigate", {
+      url: browserTarget,
+    }, "browser/page navigation requires Lightpanda MCP");
+  }
+
+  if (/\b(search|look up|lookup|browse|web|google|find latest|latest news|current news|news|right now on the web)\b/.test(lower)) {
+    return use("mcp__web__search", { query: raw.slice(0, 240), limit: "5" }, "explicit current/web request requires web MCP");
+  }
+
+  if (/\b(docker|container|containers|image|images|volume|volumes)\b/.test(lower)) {
+    if (/\b(disk|space|usage|size|df|volume|volumes|image|images|storage|full)\b/.test(lower)) {
+      return use("mcp__ops__local_docker_disk_usage", {}, "Docker disk usage requires local Docker MCP");
+    }
+    if (/\b(ps|list|containers?|running|unhealthy)\b/.test(lower)) {
+      return use("mcp__ops__local_docker_containers", {}, "Docker container status requires local Docker MCP");
+    }
+    return use("mcp__ops__local_docker_status", {}, "Docker status requires local Docker MCP");
+  }
+
+  if (/\b(worker|service|pm2|process|backend|frontend|api)\b/.test(lower) && /\b(status|logs?|running|health|check|tail)\b/.test(lower)) {
+    const name = containerNameCandidate(raw);
+    if (/\b(log|logs|tail)\b/.test(lower) && name) {
+      return use("mcp__ops__local_docker_logs", { name, tail: "120" }, "named service logs require Docker logs MCP");
+    }
+    return use("mcp__ops__local_docker_container_status", name ? { name } : {}, "named service status requires Docker container MCP");
+  }
+
+  if (/\b(ollama|model|models|chat-api|chat api|llm api|api health|api probe)\b/.test(lower)) {
+    if (/\b(model|models|tags|available)\b/.test(lower)) return use("mcp__ops__ollama_models", {}, "Ollama model listing requires Ollama MCP");
+    if (/\b(probe|chat|generate|completion)\b/.test(lower)) return use("mcp__ops__ollama_chat_probe", {}, "Ollama chat probe requires Ollama MCP");
+    return use("mcp__ops__ollama_health", {}, "Ollama health check requires Ollama MCP");
+  }
+
+  if (/\b(cold start|cold-start|pinger|ping monitor|monitor|health check|health-check)\b/.test(lower)) {
+    if (/\b(log|logs|recent|tail)\b/.test(lower)) return use("mcp__ops__monitor_recent_logs", {}, "monitor logs require monitor MCP");
+    if (/\b(run|check|health)\b/.test(lower)) return use("mcp__ops__monitor_health_check", {}, "monitor health check requires monitor MCP");
+    return use("mcp__ops__monitor_status", {}, "monitor status requires monitor MCP");
+  }
+
+  if (/\b(vps|remote server)\b/.test(lower)) {
+    return use("mcp__ops__ollama_health", {}, "VPS agent is disabled; checking configured APIs locally instead", "medium");
+  }
+
+  if (/\b(create|write|save|overwrite)\b.*\bfile\b|\bmake\b.*\bfile\b/.test(lower)) {
+    return use("mcp__local__write_text_file", {
+      path: pathArg || "mcp-test.txt",
+      content: options.content || "Created by MCP write_text_file.\n",
+    }, "file creation/write requires the scoped filesystem write tool", "medium");
+  }
+
+  if (/\b(edit|change|update|patch|replace)\b.*\bfile\b|\breplace\b/.test(lower)) {
+    const replacement = replacementCandidate(raw);
+    return use("mcp__local__replace_in_file", {
+      path: pathArg || "mcp-test.txt",
+      find: options.find || replacement.find,
+      replace: options.replace || replacement.replace,
+    }, "file edits require the scoped filesystem replace tool", "medium");
+  }
+
+  if (/\b(read|open|show|cat|view|peek)\b.*\bfile\b/.test(lower)) {
+    return use("mcp__local__read_text_file", { path: pathArg || "" }, "file reads require the scoped filesystem read tool");
+  }
+
+  if (/\b(list|show|open)\b.*\b(files|folder|directory|workspace)\b/.test(lower)) {
+    return use("mcp__local__list_directory", { path: pathArg || "." }, "directory listing requires the scoped filesystem list tool");
+  }
+
+  if (/\b(find|search)\b.*\b(file|folder|directory)\b/.test(lower)) {
+    return use("mcp__local__search_files", { query: firstQuoted(raw) || raw.slice(0, 80), path: "." }, "file discovery requires the scoped filesystem search tool");
+  }
+
+  if (/\b(repo|git|commit|diff|branch|status)\b/.test(lower)) {
+    if (/\b(diff|changed|changes)\b/.test(lower)) return use("mcp__git__diff_summary", {}, "repo change questions require git diff");
+    if (/\b(commit|history|log)\b/.test(lower)) return use("mcp__git__recent_commits", { limit: "8" }, "repo history questions require git log");
+    return use("mcp__git__status", {}, "repo status questions require git status");
+  }
+
+  if (/\b(memory|remembered|knowledge graph|graphiti|falkor|falkordb)\b/.test(lower)) {
+    if (/\b(graph|nodes?|edges?|falkor|falkordb)\b/.test(lower)) return use("mcp__memory__graph_snapshot", { projectId }, "memory graph questions require graph snapshot");
+    return use("mcp__memory__search", { projectId, query: raw.slice(0, 240) }, "memory questions require memory search");
+  }
+
+  if (/\b(search|look up|lookup|browse|web|google|find latest|latest|current|today|news|right now)\b/.test(lower)) {
+    return use("mcp__web__search", { query: raw.slice(0, 240), limit: "5" }, "current information requires web search");
+  }
+
+  return result;
+}
+
+export async function callMcpTool(name, args = {}) {
+  const match = String(name || "").match(/^mcp__([^_]+)__(.+)$/);
+  if (!match) throw new Error(`invalid MCP tool name: ${name}`);
+  const [, serverId, toolName] = match;
+  const server = builtinServers.find((entry) => entry.id === serverId);
+  if (!server || !isServerEnabled(server)) throw new Error(`MCP server not enabled: ${serverId}`);
+  const tool = server.tools.find((entry) => entry.name === toolName);
+  if (!tool) throw new Error(`MCP tool not found: ${name}`);
+
+  const startedAt = Date.now();
+  const entry = {
+    id: `${startedAt}-${Math.random().toString(36).slice(2, 8)}`,
+    tool: name,
+    serverId,
+    args,
+    status: "running",
+    startedAt,
+    durationMs: 0,
+    result: "",
+  };
+  callLog.push(entry);
+
+  try {
+    const result = await tool.execute(args || {});
+    entry.status = "complete";
+    entry.durationMs = Date.now() - startedAt;
+    serverResponseMs.set(server.id, entry.durationMs);
+    serverHealthOk.set(server.id, !(result && typeof result === "object" && result.ok === false));
+    entry.result = result;
+    return result;
+  } catch (err) {
+    entry.status = "error";
+    entry.durationMs = Date.now() - startedAt;
+    serverResponseMs.set(server.id, entry.durationMs);
+    serverHealthOk.set(server.id, false);
+    entry.result = err?.message || String(err);
+    throw err;
+  } finally {
+    callLog = callLog.slice(-200);
+  }
+}
+
+async function measureTool(name, args = {}) {
+  const startedAt = Date.now();
+  try {
+    const match = String(name || "").match(/^mcp__([^_]+)__(.+)$/);
+    if (!match) throw new Error(`invalid MCP tool name: ${name}`);
+    const [, serverId, toolName] = match;
+    const server = builtinServers.find((entry) => entry.id === serverId);
+    if (!server || !isServerEnabled(server)) throw new Error(`MCP server not enabled: ${serverId}`);
+    const tool = server.tools.find((entry) => entry.name === toolName);
+    if (!tool) throw new Error(`MCP tool not found: ${name}`);
+    const result = await tool.execute(args || {});
+    const durationMs = Date.now() - startedAt;
+    serverResponseMs.set(server.id, durationMs);
+    let parsedResult = result;
+    if (typeof result === "string" && /^[\s\r\n]*[{[]/.test(result)) {
+      try { parsedResult = JSON.parse(result); } catch {}
+    }
+    if (parsedResult && typeof parsedResult === "object" && parsedResult.ok === false) {
+      serverHealthOk.set(server.id, false);
+      return {
+        ok: false,
+        tool: name,
+        durationMs,
+        error: parsedResult.error || parsedResult.reason || "service reported not ok",
+        preview: safeText(result, 700),
+      };
+    }
+    serverHealthOk.set(server.id, true);
+    return {
+      ok: true,
+      tool: name,
+      durationMs,
+      preview: safeText(result, 700),
+    };
+  } catch (err) {
+    const match = String(name || "").match(/^mcp__([^_]+)__/);
+    if (match) serverHealthOk.set(match[1], false);
+    return {
+      ok: false,
+      tool: name,
+      durationMs: Date.now() - startedAt,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function getServiceStatus() {
+  const startedAt = Date.now();
+  const [memory, ollama, docker, browser, monitor, git, web] = await Promise.all([
+    measureTool("mcp__memory__status"),
+    measureTool("mcp__ops__ollama_health"),
+    measureTool("mcp__ops__local_docker_status"),
+    measureTool("mcp__browser__lightpanda_status"),
+    measureTool("mcp__ops__monitor_status"),
+    findGitRoot()
+      ? measureTool("mcp__git__status")
+      : Promise.resolve({ ok: true, skipped: true, tool: "mcp__git__status", durationMs: 0, preview: "git repository unavailable" }),
+    configuredSearxngBase()
+      ? measureTool("mcp__web__search", { query: "health check", limit: "1" })
+      : Promise.resolve({
+        ok: false,
+        tool: "mcp__web__search",
+        durationMs: 0,
+        error: "SearXNG is not configured",
+      }),
+  ]);
+
+  serverHealthOk.set("memory", Boolean(memory.ok));
+  serverHealthOk.set("browser", Boolean(browser.ok));
+  serverHealthOk.set("git", Boolean(git.ok));
+  serverHealthOk.set("web", Boolean(web.ok));
+  serverHealthOk.set("ops", Boolean(ollama.ok || docker.ok || monitor.ok));
+  serverResponseMs.set("ops", Math.max(ollama.durationMs || 0, docker.durationMs || 0, monitor.durationMs || 0));
+
+  return {
+    ok: true,
+    durationMs: Date.now() - startedAt,
+    backend: { ok: true, port: Number(process.env.PORT || 3003), durationMs: 0 },
+    lightpanda: {
+      ...browser,
+      config: getLightpandaConfig(),
+    },
+    services: {
+      memory,
+      ollama,
+      docker,
+      browser,
+      monitor,
+      git,
+      web,
+    },
+    mcpServers: listMcpServers(),
+  };
+}
+
+export { lightpandaNavigate, lightpandaStatus, openHeadfulBrowser, getLightpandaConfig };

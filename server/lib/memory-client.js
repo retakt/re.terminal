@@ -1,5 +1,11 @@
 import net from "net";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { randomUUID } from "crypto";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const DISABLED_VALUES = new Set(["0", "false", "off", "no", "disabled"]);
 
@@ -31,6 +37,8 @@ const MEMORY_ENABLED = envFlag(
 );
 const MEMORY_PROVIDER = (process.env.MEMORY_PROVIDER || "falkordb").toLowerCase();
 const MEMORY_TIMEOUT_MS = Math.max(250, Number(process.env.MEMORY_TIMEOUT_MS || 1500));
+const MEMORY_FALLBACK_ENABLED = envFlag("MEMORY_FALLBACK_ENABLED", true);
+const MEMORY_FALLBACK_FILE = process.env.MEMORY_FALLBACK_FILE || path.resolve(__dirname, "..", "data", "memory-fallback.json");
 const FALKORDB_HOST = process.env.FALKORDB_HOST || urlConfig.host || "127.0.0.1";
 const FALKORDB_PORT = Number(process.env.FALKORDB_PORT || urlConfig.port || 6380);
 const FALKORDB_USERNAME = process.env.FALKORDB_USERNAME || urlConfig.username || "";
@@ -49,6 +57,74 @@ function safeMessage(err) {
 function skipped(reason) {
   lastError = reason;
   return { ok: false, success: false, skipped: true, reason };
+}
+
+async function readFallbackStore() {
+  try {
+    const raw = await fs.promises.readFile(MEMORY_FALLBACK_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.memories) ? parsed.memories : [];
+  } catch (err) {
+    if (err?.code === "ENOENT") return [];
+    throw err;
+  }
+}
+
+async function writeFallbackStore(memories) {
+  await fs.promises.mkdir(path.dirname(MEMORY_FALLBACK_FILE), { recursive: true });
+  await fs.promises.writeFile(
+    MEMORY_FALLBACK_FILE,
+    JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), memories }, null, 2),
+    "utf8",
+  );
+}
+
+async function saveFallbackMemory(memory, backendError = "") {
+  if (!MEMORY_FALLBACK_ENABLED) return skipped(backendError || "memory backend unavailable");
+  const now = new Date().toISOString();
+  const next = {
+    id: randomUUID(),
+    memoryId: randomUUID(),
+    type: memory.type || "fact",
+    projectId: String(memory.projectId || "default-user"),
+    timestamp: Date.now(),
+    createdAt: now,
+    updatedAt: now,
+    fallback: true,
+    backendError,
+    ...memory,
+  };
+  const memories = await readFallbackStore();
+  memories.unshift(next);
+  await writeFallbackStore(memories.slice(0, 2000));
+  lastError = backendError;
+  return { ok: true, success: true, skipped: false, fallback: true, backendError, memory: next };
+}
+
+async function searchFallbackMemory(projectId, query, limit = 10) {
+  if (!MEMORY_FALLBACK_ENABLED) return [];
+  const needle = String(query || "").toLowerCase();
+  const memories = await readFallbackStore().catch(() => []);
+  return memories
+    .filter((memory) => String(memory.projectId || "") === String(projectId))
+    .filter((memory) => {
+      if (!needle) return true;
+      return [
+        memory.text,
+        memory.output,
+        memory.message,
+        memory.context,
+        memory.error,
+        memory.description,
+        memory.key,
+        memory.value,
+        memory.summary,
+        memory.subject,
+        memory.predicate,
+        memory.object,
+      ].some((value) => String(value || "").toLowerCase().includes(needle));
+    })
+    .slice(0, limit);
 }
 
 function withTimeout(promise, label) {
@@ -80,6 +156,7 @@ function nodeProperties(node) {
 
 function inferType(properties, labels = []) {
   const labelText = Array.isArray(labels) ? labels.join(" ").toLowerCase() : String(labels || "").toLowerCase();
+  if (labelText.includes("fact") || properties.type === "fact" || properties.summary != null) return "fact";
   if (labelText.includes("preference") || properties.key != null) return "preference";
   if (labelText.includes("fix") || properties.description != null) return "fix";
   if (labelText.includes("error") || properties.message != null) return "error";
@@ -119,6 +196,11 @@ export function getMemoryStatus() {
       host: FALKORDB_HOST,
       port: FALKORDB_PORT,
       database: FALKORDB_DATABASE,
+    },
+    fallback: {
+      enabled: MEMORY_FALLBACK_ENABLED,
+      ready: MEMORY_FALLBACK_ENABLED,
+      file: MEMORY_FALLBACK_FILE,
     },
   };
 }
@@ -203,13 +285,15 @@ async function runQuery(query, params = {}) {
   return normalizeRows(result);
 }
 
-async function writeMemory(operation) {
+async function writeMemory(operation, fallbackMemory = null) {
   if (!MEMORY_ENABLED) return skipped("memory is disabled");
   try {
     const memory = await operation();
     return { ok: true, success: true, skipped: false, memory };
   } catch (err) {
-    return skipped(safeMessage(err));
+    const reason = safeMessage(err);
+    if (fallbackMemory) return saveFallbackMemory(fallbackMemory, reason);
+    return skipped(reason);
   }
 }
 
@@ -219,11 +303,25 @@ export async function checkMemoryHealth() {
     await runQuery("RETURN 1 AS ok");
     return { ...getMemoryStatus(), ok: true };
   } catch (err) {
-    return { ...getMemoryStatus(), ok: false, skipped: true, reason: safeMessage(err) };
+    const reason = safeMessage(err);
+    return {
+      ...getMemoryStatus(),
+      ok: MEMORY_FALLBACK_ENABLED,
+      degraded: MEMORY_FALLBACK_ENABLED,
+      backendOk: false,
+      skipped: !MEMORY_FALLBACK_ENABLED,
+      reason,
+    };
   }
 }
 
 export async function saveCommand(projectId, command, output = "") {
+  const fallbackMemory = {
+    projectId: String(projectId),
+    type: "command",
+    text: String(command || ""),
+    output: String(output || ""),
+  };
   return writeMemory(async () => {
     const rows = await runQuery(
       `
@@ -249,10 +347,16 @@ export async function saveCommand(projectId, command, output = "") {
       },
     );
     return firstMemory(rows);
-  });
+  }, fallbackMemory);
 }
 
 export async function saveError(projectId, error, context = "") {
+  const fallbackMemory = {
+    projectId: String(projectId),
+    type: "error",
+    message: String(error || ""),
+    context: String(context || ""),
+  };
   return writeMemory(async () => {
     const rows = await runQuery(
       `
@@ -278,10 +382,16 @@ export async function saveError(projectId, error, context = "") {
       },
     );
     return firstMemory(rows);
-  });
+  }, fallbackMemory);
 }
 
 export async function saveFix(projectId, error, fix) {
+  const fallbackMemory = {
+    projectId: String(projectId),
+    type: "fix",
+    error: String(error || ""),
+    description: String(fix || ""),
+  };
   return writeMemory(async () => {
     const rows = await runQuery(
       `
@@ -307,10 +417,16 @@ export async function saveFix(projectId, error, fix) {
       },
     );
     return firstMemory(rows);
-  });
+  }, fallbackMemory);
 }
 
 export async function savePreference(projectId, key, value) {
+  const fallbackMemory = {
+    projectId: String(projectId),
+    type: "preference",
+    key: String(key || ""),
+    value: String(value || ""),
+  };
   return writeMemory(async () => {
     const rows = await runQuery(
       `
@@ -334,7 +450,64 @@ export async function savePreference(projectId, key, value) {
       },
     );
     return firstMemory(rows);
-  });
+  }, fallbackMemory);
+}
+
+export async function saveFact(projectId, memory = {}) {
+  const subject = String(memory.subject || "user");
+  const predicate = String(memory.predicate || memory.type || "remembers");
+  const object = String(memory.object || memory.summary || memory.text || "");
+  const summary = String(memory.summary || `${subject} ${predicate} ${object}`.trim());
+  const fallbackMemory = {
+    projectId: String(projectId),
+    type: "fact",
+    subject,
+    predicate,
+    object,
+    summary,
+    confidence: Number(memory.confidence ?? 0.7),
+    source: String(memory.source || "chat"),
+  };
+  return writeMemory(async () => {
+    if (!summary) throw new Error("memory summary is required");
+
+    const rows = await runQuery(
+      `
+        MERGE (p:Project {id: $projectId})
+        MERGE (s:Entity {projectId: $projectId, name: $subject})
+        CREATE (f:Fact {
+          memoryId: $memoryId,
+          type: "fact",
+          subject: $subject,
+          predicate: $predicate,
+          object: $object,
+          summary: $summary,
+          confidence: $confidence,
+          source: $source,
+          timestamp: $timestamp,
+          createdAt: $createdAt,
+          updatedAt: $createdAt
+        })
+        CREATE (s)-[:HAS_FACT]->(f)
+        MERGE (p)-[:HAS_MEMORY]->(f)
+        MERGE (p)-[:HAS_ENTITY]->(s)
+        RETURN f, ID(f) AS nodeId
+      `,
+      {
+        projectId: String(projectId),
+        memoryId: randomUUID(),
+        subject,
+        predicate,
+        object,
+        summary,
+        confidence: Number(memory.confidence ?? 0.7),
+        source: String(memory.source || "chat"),
+        timestamp: Date.now(),
+        createdAt: new Date().toISOString(),
+      },
+    );
+    return firstMemory(rows);
+  }, fallbackMemory);
 }
 
 export async function updateMemory(projectId, memory = {}) {
@@ -385,6 +558,16 @@ export async function updateMemory(projectId, memory = {}) {
           value: String(memory.value || ""),
         },
       },
+      fact: {
+        set: "n.subject = $subject, n.predicate = $predicate, n.object = $object, n.summary = $summary, n.confidence = $confidence",
+        params: {
+          subject: String(memory.subject || ""),
+          predicate: String(memory.predicate || ""),
+          object: String(memory.object || ""),
+          summary: String(memory.summary || ""),
+          confidence: Number(memory.confidence ?? 0.7),
+        },
+      },
     };
 
     const update = byType[type] || byType.command;
@@ -424,6 +607,10 @@ export async function searchMemory(projectId, query) {
            OR toLower(coalesce(n.description, '')) CONTAINS toLower($query)
            OR toLower(coalesce(n.key, '')) CONTAINS toLower($query)
            OR toLower(coalesce(n.value, '')) CONTAINS toLower($query)
+           OR toLower(coalesce(n.summary, '')) CONTAINS toLower($query)
+           OR toLower(coalesce(n.subject, '')) CONTAINS toLower($query)
+           OR toLower(coalesce(n.predicate, '')) CONTAINS toLower($query)
+           OR toLower(coalesce(n.object, '')) CONTAINS toLower($query)
         RETURN n, ID(n) AS nodeId
         ORDER BY n.timestamp DESC
         LIMIT 10
@@ -434,23 +621,45 @@ export async function searchMemory(projectId, query) {
       },
     );
 
-    return rows.map(normalizeMemoryRow).filter(Boolean);
+    const graphResults = rows.map(normalizeMemoryRow).filter(Boolean);
+    const fallbackResults = await searchFallbackMemory(projectId, query, Math.max(0, 10 - graphResults.length));
+    return [...graphResults, ...fallbackResults].slice(0, 10);
   } catch (err) {
     lastError = safeMessage(err);
-    return [];
+    return searchFallbackMemory(projectId, query, 10);
   }
 }
 
-export async function getGraphSnapshot(projectId) {
+function graphNodeLabel(props = {}) {
+  return props.name
+    || props.summary
+    || props.text
+    || props.message
+    || props.key
+    || props.error
+    || props.object
+    || "Memory";
+}
+
+export async function getGraphSnapshot(projectId, options = {}) {
   if (!MEMORY_ENABLED) return { nodes: [], edges: [] };
 
   try {
+    const all = Boolean(options.all);
     const rows = await runQuery(
-      `
-        MATCH (p:Project {id: $projectId})-->(n)
-        OPTIONAL MATCH (n)-[r]->(m)
-        RETURN n, ID(n) AS sourceId, m, ID(m) AS targetId, r
-      `,
+      all
+        ? `
+          MATCH (n)
+          OPTIONAL MATCH (n)-[r]->(m)
+          RETURN n, ID(n) AS sourceId, m, ID(m) AS targetId, r
+          LIMIT 400
+        `
+        : `
+          MATCH (p:Project {id: $projectId})-->(n)
+          OPTIONAL MATCH (n)-[r]->(m)
+          RETURN n, ID(n) AS sourceId, m, ID(m) AS targetId, r
+          LIMIT 300
+        `,
       { projectId: String(projectId) },
     );
 
@@ -468,8 +677,9 @@ export async function getGraphSnapshot(projectId) {
         const props = nodeProperties(n);
         nodesMap.set(sourceId, {
           id: String(sourceId),
-          label: props.text || props.message || props.key || props.error || "Memory",
+          label: graphNodeLabel(props),
           type: inferType(props, n?.labels || []),
+          labels: n?.labels || [],
           ...props,
         });
       }
@@ -478,8 +688,9 @@ export async function getGraphSnapshot(projectId) {
         const props = nodeProperties(m);
         nodesMap.set(targetId, {
           id: String(targetId),
-          label: props.text || props.message || props.key || props.error || "Memory",
+          label: graphNodeLabel(props),
           type: inferType(props, m?.labels || []),
+          labels: m?.labels || [],
           ...props,
         });
       }
@@ -502,6 +713,17 @@ export async function getGraphSnapshot(projectId) {
     };
   } catch (err) {
     lastError = safeMessage(err);
-    return { nodes: [], edges: [] };
+    const memories = await searchFallbackMemory(projectId, "", 200);
+    return {
+      nodes: memories.map((memory) => ({
+        id: memory.id,
+        label: graphNodeLabel(memory),
+        type: memory.type || "fact",
+        ...memory,
+      })),
+      edges: [],
+      fallback: true,
+      backendError: safeMessage(err),
+    };
   }
 }

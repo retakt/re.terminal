@@ -43,7 +43,7 @@ const APP_ITEMS: ProgramMenuItem[] = [
   },
   {
     id: "browser",
-    label: "inside browser",
+    label: "lightpanda",
     icon: Globe,
   },
   {

@@ -1,7 +1,9 @@
 // ── Tool executors ───────────────────────────────────────────────────────────
 // Pure functions — no React dependencies. Reusable by scripts/MCP/extensions.
 
-const SEARXNG_URL = import.meta.env.VITE_SEARXNG_URL ?? `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:8080`.replace(/^wss?/, "http");
+import { callMcpTool } from "../api/mcp";
+
+const DIRECT_SEARXNG_URL = (import.meta.env.VITE_SEARXNG_URL as string | undefined)?.replace(/\/+$/, "");
 
 // ── Weather ──────────────────────────────────────────────────────────────────
 
@@ -121,6 +123,18 @@ export async function toolSearchWeb(query: string, mode: string): Promise<string
   const shapedQuery = suffix ? `${query.trim()} ${suffix}` : query.trim();
 
   try {
+    return await callMcpTool("mcp__web__search", {
+      query: shapedQuery,
+      limit: String(maxResults),
+    });
+  } catch (mcpError) {
+    if (!DIRECT_SEARXNG_URL) {
+      const message = mcpError instanceof Error ? mcpError.message : String(mcpError);
+      return `Search failed: ${message}`;
+    }
+  }
+
+  try {
     const params = new URLSearchParams({
       q: shapedQuery,
       format: "json",
@@ -128,7 +142,7 @@ export async function toolSearchWeb(query: string, mode: string): Promise<string
       language: "en",
     });
 
-    const res = await fetch(`${SEARXNG_URL}/search?${params.toString()}`, {
+    const res = await fetch(`${DIRECT_SEARXNG_URL}/search?${params.toString()}`, {
       signal: AbortSignal.timeout(5000),
     });
 
@@ -173,6 +187,10 @@ export async function toolSearchWeb(query: string, mode: string): Promise<string
 // ── Tool dispatcher ──────────────────────────────────────────────────────────
 
 export async function executeTool(name: string, args: Record<string, string>): Promise<string> {
+  if (name.startsWith("mcp__")) {
+    return callMcpTool(name, args);
+  }
+
   switch (name) {
     case "get_weather":
       return toolGetWeather(args.city ?? "Kuala Lumpur");

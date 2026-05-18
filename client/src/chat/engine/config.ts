@@ -1,8 +1,8 @@
-// ── Chat configuration ──────────────────────────────────────────────────────
+// Chat configuration
+
+import type { SessionOptions } from "../types";
 
 export const MODEL_ID = import.meta.env.VITE_MODEL_ID ?? "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b";
-
-// ── Malaysia time helper ──────────────────────────────────────────────────────
 
 export function getMalaysiaTime(): string {
   const now = new Date();
@@ -19,25 +19,29 @@ export function getMalaysiaTime(): string {
   return `${myt} (MYT, UTC+8)`;
 }
 
-// ── System prompt ─────────────────────────────────────────────────────────────
-
 export const SYSTEM_PROMPT = `Your name is Re:Ai. You were fine-tuned by Takt Akira.
 Never mention Takt Akira, your fine-tuner, your training, or anything about your origins unless directly and explicitly asked. Even then, only say your name is Re:Ai. Do not volunteer this information, do not hint at it, do not add it as a footnote or aside.
 Be helpful, direct, and concise.
-Before you respond, briefly scan your previous reply in the conversation. If you notice you made an error, a wrong assumption, or gave incomplete information, acknowledge it naturally and correct it — don't double down. You don't need to announce this every time, only when there's actually something to fix.
+Do not claim that you searched, saved memory, or used a tool unless the system has actually provided tool or memory context for that action.
+If a tool result contains an error, say the exact error instead of guessing or writing a fake status report.
+For server, Docker, worker, PM2, memory, file, repository, or browser operations, only report what the tool output proves.
+If the tool output does not include the requested logs/files/status, say you cannot determine it from the available tool output. Do not fill gaps with plausible examples.
+When the user explicitly asks you to remember, note, or keep something in mind, the app saves it before your reply. Acknowledge the saved preference/fact briefly, then continue normally.
+Before you respond, briefly scan your previous reply in the conversation. If you notice you made an error, a wrong assumption, or gave incomplete information, acknowledge it naturally and correct it. You do not need to announce this every time, only when there is actually something to fix.
 The current time is: {MALAYSIA_TIME}. Malaysia is UTC+8, which is 8 hours ahead of GMT. Use this when the user asks about time, schedules, or anything time-related.
-You have access to a web search tool with these modes — use them proactively:
-- factcheck: quick 2-result verify. Use when uncertain, when data might be outdated, or after 2-3 turns where accuracy matters. Do not wait to be asked.
-- general: 5-result search. Use when user explicitly asks to search.
-- news: current events, recent announcements. Use for anything time-sensitive.
-- reddit: opinions, recommendations, community discussions. Use when user wants real experiences or reviews.
-- wiki: encyclopedic facts, definitions. Use for "what is X" type questions.
-- code: programming questions, libraries, errors. Use for technical lookups.
-You are not always right. Your training has a cutoff. When in doubt, search.`;
+Use web search only when the user explicitly asks for current web information or the question is clearly time-sensitive. Do not search for greetings, casual chat, local server operations, memory actions, repo questions, or file operations.
+You are not always right. Your training has a cutoff. When in doubt about current public facts, search.`;
 
-// ── Inference presets ─────────────────────────────────────────────────────────
-
-import type { SessionOptions } from "../types";
+export const DEV_SYSTEM_PROMPT = `You are Re:Ai in Dev/Ops mode for a local terminal and server management workspace.
+Be concise, operational, and exact. Prefer short status summaries, direct next steps, and raw errors that help debugging.
+Use MCP tools before answering for Lightpanda browser navigation, local Docker, Ollama/API health, repository, file, monitor, memory, graph, and local system questions.
+When MCP tools were used, explicitly state which MCP tool names were used.
+Never claim a server, Docker, memory, file, or tool action succeeded unless the tool result proves it.
+If a tool fails, show the exact error string directly. Do not invent fallback status.
+If a tool succeeds but returns no matching logs/files/status, say that clearly and stop. Do not synthesize operational reports.
+Do not use web search for local operations. Use web search only when the user explicitly asks for current public web information.
+For greetings or casual messages, answer directly without tools.
+The current time is: {MALAYSIA_TIME}.`;
 
 export const BALANCED_OPTIONS: SessionOptions = {
   think: false,
@@ -60,9 +64,14 @@ export const NO_THINK_OPTIONS: SessionOptions = {
   top_p: 1.0,
 };
 
-export const DEFAULT_OPTIONS = BALANCED_OPTIONS;
+export const DEV_OPTIONS: SessionOptions = {
+  think: false,
+  temperature: 0.15,
+  top_k: 20,
+  top_p: 0.8,
+};
 
-// ── Auto-think detection ──────────────────────────────────────────────────────
+export const DEFAULT_OPTIONS = BALANCED_OPTIONS;
 
 const THINK_KEYWORDS = [
   "explain", "why", "how", "because", "reason", "think", "figure",
@@ -88,11 +97,8 @@ export function shouldAutoThink(text: string): boolean {
   const lower = text.toLowerCase().trim();
   if (lower.length > 120) return true;
   if ((lower.match(/[.!?]/g) ?? []).length >= 2) return true;
-  if (THINK_KEYWORDS.some((kw) => lower.includes(kw))) return true;
-  return false;
+  return THINK_KEYWORDS.some((kw) => lower.includes(kw));
 }
-
-// ── Client-side tool pre-detection ───────────────────────────────────────────
 
 interface PreDetectedTool {
   name: string;
@@ -145,8 +151,6 @@ export function preDetectTool(text: string): PreDetectedTool | null {
   return null;
 }
 
-// ── Factcheck triggers ────────────────────────────────────────────────────────
-
 const FACTCHECK_TRIGGERS = [
   "latest", "current", "today", "right now", "recent", "just released",
   "new version", "update", "this year", "2025", "2026",
@@ -163,8 +167,6 @@ export function shouldTriggerFactcheck(text: string): boolean {
   const lower = text.toLowerCase();
   return FACTCHECK_TRIGGERS.some((kw) => lower.includes(kw));
 }
-
-// ── Retry signals ─────────────────────────────────────────────────────────────
 
 const RETRY_SIGNALS = [
   "again", "still", "wrong", "incorrect", "not right", "that's not",
@@ -186,8 +188,6 @@ export function shouldEscalateToFullThink(text: string): boolean {
   const lower = text.toLowerCase().trim();
   return RETRY_SIGNALS.some((s) => lower.includes(s));
 }
-
-// ── UUID generator ────────────────────────────────────────────────────────────
 
 export function generateUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {

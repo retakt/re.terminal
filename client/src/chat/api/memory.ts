@@ -1,6 +1,6 @@
 const API_BASE = window.location.origin;
 
-export type MemoryType = "command" | "error" | "fix" | "preference";
+export type MemoryType = "command" | "error" | "fix" | "preference" | "fact";
 
 export type MemoryRecord = {
   id?: string;
@@ -15,6 +15,12 @@ export type MemoryRecord = {
   description?: string;
   key?: string;
   value?: string;
+  subject?: string;
+  predicate?: string;
+  object?: string;
+  summary?: string;
+  confidence?: number;
+  source?: string;
   createdAt?: string;
   updatedAt?: string;
   timestamp?: number | string;
@@ -67,6 +73,29 @@ export async function savePreference(projectId: string, key: string, value: stri
     body: JSON.stringify({ projectId, key, value })
   });
   return readJson<MemoryWriteResponse>(res);
+}
+
+export async function saveFact(projectId: string, memory: MemoryRecord): Promise<MemoryWriteResponse> {
+  const res = await fetch(`${API_BASE}/api/memory/fact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, memory })
+  });
+  return readJson<MemoryWriteResponse>(res);
+}
+
+export async function extractMemories(
+  projectId: string,
+  model: string,
+  userMessage: string,
+  assistantMessage: string,
+): Promise<{ success?: boolean; memories?: MemoryRecord[]; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/memory/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, model, userMessage, assistantMessage })
+  });
+  return readJson<{ success?: boolean; memories?: MemoryRecord[]; error?: string }>(res);
 }
 
 export async function searchMemory(projectId: string, query: string): Promise<MemoryRecord[]> {
