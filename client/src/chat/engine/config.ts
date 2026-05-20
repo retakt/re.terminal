@@ -69,7 +69,13 @@ Your job is to operate a website round by round with the user.
 
 Rules:
 - Use only browser MCP tools.
-- If the current URL or user request matches an enabled extension, use extension MCP tools first: match_url, get, plan_action, then execute_action only after confirmation if required.
+- Use mcp__browser_agent__run for normal browser tasks, website actions, extension actions, URL navigation, and learning requests.
+- Use extension tools only when browser_agent is unavailable or when you are only listing/inspecting extension metadata.
+- Do not say an action was executed unless browser_agent output status is success, or a lower-level browser tool clearly proves success.
+- If browser_agent says login/session is required, report that and stop.
+- When reporting an observation, use only the latest tool output. Do not reuse actions, page names, extension names, or labels from earlier turns.
+- If browser_agent returns no extensionId or an empty possibleNextActions list, say there are no current-page actions instead of mentioning prior extension actions.
+- Do not suggest protected, irreversible, or state-changing actions as next steps. Only mention protected actions if the user explicitly asks about them.
 - Perform at most ONE browser tool call per assistant turn.
 - After every browser tool result, stop and report:
   1. current URL/title
@@ -78,11 +84,13 @@ Rules:
   4. possible next actions as short numbered points
   5. ask the user what to do next
 - Do not continue browsing automatically.
+- Action labels are not URLs. Only treat text as a URL when it starts with http(s) or looks like a real domain.
 - Do not submit forms unless the user explicitly confirms submission in the current turn.
 - Do not fill password fields unless the user explicitly tells you to.
 - Never print, reveal, or summarize password values.
 - If a password is filled by a tool, only say "password filled" or "password field detected".
-- If the page allows injection, upload, search, login, checkout, delete, or irreversible actions, explain the risk and ask before acting.
+- If the page allows injection, upload, search, login, delete, payment, profile updates, or irreversible actions, explain the risk and ask before acting.
+- Dangerous actions require the exact confirmation phrase requested by browser_agent.
 - The current time is: {MALAYSIA_TIME}.`;
 
 export const SCRAPER_SYSTEM_PROMPT = `You are Re:Ai in Instant Scraper mode.
@@ -109,6 +117,7 @@ export const BROWSER_OPTIONS: SessionOptions = {
   temperature: 0.1,
   top_k: 10,
   top_p: 0.8,
+  browserUseExtensions: true,
 };
 
 export const SCRAPER_OPTIONS: SessionOptions = {
@@ -116,6 +125,7 @@ export const SCRAPER_OPTIONS: SessionOptions = {
   temperature: 0.1,
   top_k: 10,
   top_p: 0.8,
+  browserUseExtensions: true,
 };
 
 export const BALANCED_OPTIONS: SessionOptions = {
@@ -123,6 +133,7 @@ export const BALANCED_OPTIONS: SessionOptions = {
   temperature: 0.3,
   top_k: 15,
   top_p: 1.0,
+  browserUseExtensions: true,
 };
 
 export const FULL_THINK_OPTIONS: SessionOptions = {
@@ -130,6 +141,7 @@ export const FULL_THINK_OPTIONS: SessionOptions = {
   temperature: 1,
   top_k: 64,
   top_p: 0.95,
+  browserUseExtensions: true,
 };
 
 export const NO_THINK_OPTIONS: SessionOptions = {
@@ -137,6 +149,7 @@ export const NO_THINK_OPTIONS: SessionOptions = {
   temperature: 0.3,
   top_k: 15,
   top_p: 1.0,
+  browserUseExtensions: true,
 };
 
 export const DEV_OPTIONS: SessionOptions = {
@@ -144,6 +157,7 @@ export const DEV_OPTIONS: SessionOptions = {
   temperature: 0.15,
   top_k: 20,
   top_p: 0.8,
+  browserUseExtensions: true,
 };
 
 export const DEFAULT_OPTIONS = BALANCED_OPTIONS;

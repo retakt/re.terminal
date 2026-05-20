@@ -21,7 +21,15 @@ import {
   openHeadfulBrowser,
 } from "./lightpanda-client.js";
 import {
+  browserAgentLearn,
+  browserAgentObserve,
+  browserAgentReset,
+  browserAgentRun,
+  browserAgentStatus,
+} from "./browser-agent.js";
+import {
   getExtension,
+  getExtensionSkill,
   listExtensions,
   matchExtensionForUrl,
   planExtensionAction,
@@ -442,7 +450,16 @@ async function extensionListTool() {
 }
 
 async function extensionGetTool(args = {}) {
-  const id = String(args.id || args.extensionId || "ezhrm").trim();
+  const id = String(args.id || args.extensionId || "").trim();
+
+  if (!id) {
+    return safeText({
+      ok: true,
+      extensions: listExtensions(),
+      message: "Pass id or extensionId to fetch one extension.",
+    });
+  }
+
   const extension = getExtension(id);
 
   if (!extension) {
@@ -468,7 +485,7 @@ async function extensionMatchUrlTool(args = {}) {
 
 async function extensionPlanActionTool(args = {}) {
   return safeText(planExtensionAction({
-    extensionId: args.extensionId || args.id || args.skillId || "ezhrm",
+    extensionId: args.extensionId || args.id || args.skillId || "",
     actionId: args.actionId,
     label: args.label,
   }));
@@ -476,7 +493,7 @@ async function extensionPlanActionTool(args = {}) {
 
 async function extensionExecuteActionTool(args = {}) {
   const plan = planExtensionAction({
-    extensionId: args.extensionId || args.id || args.skillId || "ezhrm",
+    extensionId: args.extensionId || args.id || args.skillId || "",
     actionId: args.actionId,
     label: args.label,
   });
@@ -525,8 +542,25 @@ async function extensionExecuteActionTool(args = {}) {
 
   if (action.selector) {
     const currentUrl = String(args.currentUrl || args.url || "").trim();
-    if (!currentUrl) {
-      throw new Error("currentUrl is required for selector-based extension actions");
+    const skill = getExtensionSkill(plan.extension.id);
+    const page = skill?.pages && !Array.isArray(skill.pages)
+      ? skill.pages[action.pageKey]
+      : null;
+
+    const targetUrl = currentUrl || page?.url || "";
+
+    if (!targetUrl) {
+      return safeText({
+        ok: false,
+        error: "currentUrl is required for selector-based extension actions and no learned page URL was found",
+        extensionId: plan.extension.id,
+        action: {
+          id: action.id,
+          label: action.label,
+          pageKey: action.pageKey,
+          selector: action.selector,
+        },
+      });
     }
 
     return safeText({
@@ -534,8 +568,9 @@ async function extensionExecuteActionTool(args = {}) {
       extensionId: plan.extension.id,
       actionId: action.id,
       mode: "click",
+      targetUrl,
       browser: await lightpandaAction({
-        url: currentUrl,
+        url: targetUrl,
         action: "click",
         selector: action.selector,
         text: action.label,
@@ -549,6 +584,26 @@ async function extensionExecuteActionTool(args = {}) {
     error: `action has no href or selector: ${action.id}`,
     action,
   });
+}
+
+async function browserAgentRunTool(args = {}) {
+  return safeText(await browserAgentRun(args), 24000);
+}
+
+async function browserAgentObserveTool(args = {}) {
+  return safeText(await browserAgentObserve(args), 20000);
+}
+
+async function browserAgentLearnTool(args = {}) {
+  return safeText(await browserAgentLearn(args), 20000);
+}
+
+async function browserAgentResetTool(args = {}) {
+  return safeText(await browserAgentReset(args), 12000);
+}
+
+async function browserAgentStatusTool(args = {}) {
+  return safeText(await browserAgentStatus(args), 20000);
 }
 
 const builtinServers = [
@@ -700,6 +755,92 @@ const builtinServers = [
     ],
   },
   {
+    id: "browser_agent",
+    title: "Browser Agent",
+    type: "builtin",
+    transport: "internal",
+    enabled: true,
+    description: "Runtime website agent with observe-plan-act-retry-learn loop.",
+    tools: [
+      {
+        name: "run",
+        description: "Run one runtime browser-agent loop for a website instruction. Prefer this for browser-mode website actions, extension actions, URL navigation, and learning requests.",
+        inputSchema: {
+          type: "object",
+          required: ["instruction"],
+          properties: {
+            sessionId: { type: "string" },
+            instruction: { type: "string" },
+            currentUrl: { type: "string" },
+            extensionId: { type: "string" },
+            maxSteps: { type: "number" },
+            useExtensions: { type: "boolean" },
+            allowDangerous: { type: "boolean" },
+            confirm: { type: "boolean" },
+            confirmText: { type: "string" },
+          },
+        },
+        execute: browserAgentRunTool,
+      },
+      {
+        name: "observe",
+        description: "Observe the current browser page and return URL, title, forms, inputs, buttons, links, matching extension, and possible safe actions.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string" },
+            currentUrl: { type: "string" },
+            extensionId: { type: "string" },
+            useExtensions: { type: "boolean" },
+          },
+        },
+        execute: browserAgentObserveTool,
+      },
+      {
+        name: "learn",
+        description: "Learn a user-named action or alias from the current page without overwriting imported site-skill observations.",
+        inputSchema: {
+          type: "object",
+          required: ["instruction"],
+          properties: {
+            sessionId: { type: "string" },
+            instruction: { type: "string" },
+            label: { type: "string" },
+            selector: { type: "string" },
+            href: { type: "string" },
+            textPattern: { type: "string" },
+            extensionId: { type: "string" },
+            currentUrl: { type: "string" },
+            useExtensions: { type: "boolean" },
+          },
+        },
+        execute: browserAgentLearnTool,
+      },
+      {
+        name: "reset",
+        description: "Reset persisted runtime browser-agent state for this chat/session.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string" },
+          },
+        },
+        execute: browserAgentResetTool,
+      },
+      {
+        name: "status",
+        description: "Return persisted runtime browser-agent state and optional runtime-model configuration.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string" },
+          },
+        },
+        execute: browserAgentStatusTool,
+      },
+    ],
+  },
+  {
     id: "browser",
     title: "Lightpanda Browser",
     type: "builtin",
@@ -742,6 +883,7 @@ const builtinServers = [
             formIndex: { type: "string" },
             waitMs: { type: "string" },
             confirm: { type: "boolean" },
+            confirmText: { type: "string" },
           },
         },
         execute: (args) => lightpandaAction(args),
@@ -773,7 +915,7 @@ const builtinServers = [
     type: "builtin",
     transport: "internal",
     enabled: true,
-    description: "Browser extensions generated from site skills. Use this for EZHRM and other site-specific browser workflows.",
+    description: "Browser extensions generated from site skills. Use this for site-specific browser workflows.",
     tools: [
       {
         name: "list",
@@ -795,7 +937,7 @@ const builtinServers = [
       },
       {
         name: "match_url",
-        description: "Match a URL to a browser extension, for example ezhrmsys.com to the EZHRM extension.",
+        description: "Match a URL to a browser extension by domain.",
         inputSchema: {
           type: "object",
           required: ["url"],
@@ -1051,6 +1193,27 @@ function extractBrowserTarget(text = "") {
   return quoted && /\./.test(quoted) ? quoted.trim() : "";
 }
 
+function tokenSet(text = "") {
+  return new Set(String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean));
+}
+
+function mentionedExtensionId(text = "") {
+  const tokens = tokenSet(text);
+  const matched = listExtensions().find((extension) => {
+    const extensionTokens = tokenSet([
+      extension.id,
+      extension.name,
+      ...(extension.domains || []),
+    ].join(" "));
+    return Array.from(extensionTokens).some((token) => token.length >= 3 && tokens.has(token));
+  });
+  return matched?.id || "";
+}
+
 export function routeMcpIntent(text = "", options = {}) {
   const raw = String(text || "");
   const lower = raw.toLowerCase();
@@ -1073,10 +1236,46 @@ export function routeMcpIntent(text = "", options = {}) {
   if (isCasualNoTool(raw)) return result;
 
   const browserTarget = extractBrowserTarget(raw);
+  const namedExtensionId = mentionedExtensionId(raw);
+
+  if (mode === "browser") {
+    if (/\b(browser agent status|agent status)\b/i.test(lower)) {
+      return use(
+        "mcp__browser_agent__status",
+        { sessionId: projectId },
+        "browser mode status should use the runtime browser agent",
+        "low",
+        0.96
+      );
+    }
+
+    if (/\b(lightpanda|light panda|cdp)\b/i.test(lower) && /\b(status|health|ready|running|check|up|down|available)\b/i.test(lower)) {
+      return use(
+        "mcp__browser__lightpanda_status",
+        {},
+        "explicit Lightpanda/CDP status requires the low-level browser tool",
+        "low",
+        0.98
+      );
+    }
+
+    return use(
+      "mcp__browser_agent__run",
+      {
+        sessionId: projectId,
+        instruction: raw,
+        currentUrl: options.currentUrl || "",
+        ...(namedExtensionId ? { extensionId: namedExtensionId } : {}),
+      },
+      "browser mode website instructions should run through the runtime browser agent",
+      "low",
+      0.98
+    );
+  }
 
   // ── Extension / site-skill routing ──────────────────────────────────────────
-  // These are known website actions, not URLs. Route them to extensions first.
-  if (/\b(extension|extensions|ezhrm|site skill|site skills|known actions|available actions|hrm|attendance|leave application|leave status|passport request|passport request status|passport request form|salary deduction|manage bank accounts|other leaves application|view deduction details|deduction details)\b/.test(lower)) {
+  // These are known website action catalogs, not URLs. Route labels away from URL tools.
+  if (/\b(extension|extensions|site skill|site skills|known actions|available actions)\b/.test(lower) || namedExtensionId) {
     if (browserTarget) {
       return use(
         "mcp__extensions__match_url",
@@ -1087,42 +1286,24 @@ export function routeMcpIntent(text = "", options = {}) {
       );
     }
 
-    const knownLabels = [
-      ["view deduction details", "View Deduction Details"],
-      ["deduction details", "View Deduction Details"],
-      ["leave application", "Leave Application"],
-      ["leave status", "Leave Status"],
-      ["passport request form", "Passport Request Form"],
-      ["passport request status", "Passport Request Status"],
-      ["salary deduction", "Salary Deduction"],
-      ["manage bank accounts", "Manage Bank Accounts"],
-      ["other leaves application", "Other Leaves Application"],
-      ["login", "Login"],
-      ["sign in", "Login"],
-      ["search", "SEARCH"],
-    ];
-
-    const matched = knownLabels.find(([needle]) => lower.includes(needle));
-
-    if (matched) {
+    if (namedExtensionId && /\b(show|list|get|available|known|actions?)\b/.test(lower)) {
       return use(
-        "mcp__extensions__plan_action",
-        { extensionId: "ezhrm", label: matched[1] },
-        "EZHRM action should be planned through the extension layer before execution",
+        "mcp__extensions__get",
+        { id: namedExtensionId },
+        "named extension catalog should be fetched through the extension layer",
         "low",
-        0.98
+        0.94
       );
     }
 
     return use(
-      "mcp__extensions__get",
-      { id: "ezhrm" },
-      "EZHRM workflow requires the EZHRM extension",
+      "mcp__extensions__list",
+      {},
+      "extension catalog request should use the extension layer",
       "low",
-      0.92
+      0.9
     );
   }
-
 
   // ── Browser / Lightpanda routing ────────────────────────────────────────────
   // Important: status checks do NOT require a URL.
@@ -1450,9 +1631,8 @@ export function routeMcpIntent(text = "", options = {}) {
 
   return result;
 }
-
 export async function callMcpTool(name, args = {}) {
-  const match = String(name || "").match(/^mcp__([^_]+)__(.+)$/);
+  const match = String(name || "").match(/^mcp__(.+?)__(.+)$/);
   if (!match) throw new Error(`invalid MCP tool name: ${name}`);
 
   const [, serverId, toolName] = match;
@@ -1500,7 +1680,7 @@ async function measureTool(name, args = {}) {
   const startedAt = Date.now();
 
   try {
-    const match = String(name || "").match(/^mcp__([^_]+)__(.+)$/);
+    const match = String(name || "").match(/^mcp__(.+?)__(.+)$/);
     if (!match) throw new Error(`invalid MCP tool name: ${name}`);
 
     const [, serverId, toolName] = match;
@@ -1540,7 +1720,7 @@ async function measureTool(name, args = {}) {
       preview: safeText(result, 700),
     };
   } catch (err) {
-    const match = String(name || "").match(/^mcp__([^_]+)__/);
+    const match = String(name || "").match(/^mcp__(.+?)__/);
     if (match) serverHealthOk.set(match[1], false);
 
     return {

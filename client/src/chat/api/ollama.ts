@@ -169,3 +169,24 @@ export async function serverListModels(): Promise<string[]> {
     return [];
   }
 }
+
+export async function warmupModels(options: {
+  model: string;
+  includeBrowserAgent?: boolean;
+  all?: boolean;
+}) {
+  const response = await fetch("/api/models/warmup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+    body: JSON.stringify({
+      chatModel: options.model,
+      includeBrowserAgent: options.includeBrowserAgent === true,
+      all: options.all === true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Model warmup failed with HTTP ${response.status}`);
+  }
+}

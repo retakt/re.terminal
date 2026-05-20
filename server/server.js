@@ -59,6 +59,7 @@ import {
   listExtensions,
   matchExtensionForUrl,
   planExtensionAction,
+  setExtensionEnabled,
 } from "./lib/extensions.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -105,6 +106,13 @@ const OLLAMA_BASE_URL = (process.env.OLLAMA_BASE_URL || "https://chat-api.retakt
 const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3.1";
 const MEMORY_EXTRACTION_MODEL = process.env.MEMORY_EXTRACTION_MODEL || "";
 const MEMORY_AUTOSAVE = !["0", "false", "off", "no"].includes(String(process.env.MEMORY_AUTOSAVE || "true").toLowerCase());
+const MODEL_WARMUP_ENABLED = !["0", "false", "off", "no"].includes(String(process.env.MODEL_WARMUP_ENABLED || "true").toLowerCase());
+const MODEL_WARMUP_SCOPE = String(process.env.MODEL_WARMUP_SCOPE || "active").toLowerCase() === "all" ? "all" : "active";
+const MODEL_WARMUP_KEEP_ALIVE = process.env.MODEL_WARMUP_KEEP_ALIVE || "10m";
+const MODEL_WARMUP_TIMEOUT_MS = parseInt(process.env.MODEL_WARMUP_TIMEOUT_MS || "20000", 10);
+const BROWSER_AGENT_LLM_ENABLED = !["0", "false", "off", "no"].includes(String(process.env.BROWSER_AGENT_LLM_ENABLED || "false").toLowerCase());
+const BROWSER_AGENT_BASE_URL = (process.env.BROWSER_AGENT_BASE_URL || "").replace(/\/+$/, "").replace(/\/api$/, "");
+const BROWSER_AGENT_MODEL = process.env.BROWSER_AGENT_MODEL || "";
 
 log("INFO", "startup", "re.Term server starting", { port: PORT, shell: SHELL, maxSessions: MAX_SESSIONS, logFile: LOG_FILE });
 // Sessions live here, independent of any WebSocket connection.
@@ -136,6 +144,115 @@ function uid() {
 
 function ollamaUrl(pathname) {
   return `${OLLAMA_BASE_URL}${pathname}`;
+}
+
+function fetchWithTimeout(url, options = {}, timeoutMs = MODEL_WARMUP_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
+function addWarmupTarget(targets, baseUrl, model, source) {
+  const normalizedBaseUrl = String(baseUrl || "").trim().replace(/\/+$/, "").replace(/\/api$/, "");
+  const normalizedModel = String(model || "").trim();
+  if (!normalizedBaseUrl || !normalizedModel) return;
+  const key = `${normalizedBaseUrl}\n${normalizedModel}`;
+  if (!targets.has(key)) {
+    targets.set(key, { baseUrl: normalizedBaseUrl, model: normalizedModel, source });
+  }
+}
+
+async function listWarmupModels(baseUrl) {
+  const normalizedBaseUrl = String(baseUrl || "").trim().replace(/\/+$/, "").replace(/\/api$/, "");
+  if (!normalizedBaseUrl) return [];
+  const upstream = await fetchWithTimeout(`${normalizedBaseUrl}/api/tags`, { method: "GET" }, Math.min(MODEL_WARMUP_TIMEOUT_MS, 15000));
+  if (!upstream.ok) return [];
+  const data = await upstream.json().catch(() => ({}));
+  return (Array.isArray(data.models) ? data.models : [])
+    .map((model) => String(model?.name || model?.model || "").trim())
+    .filter(Boolean);
+}
+
+async function buildWarmupTargets({ chatModel, includeBrowserAgent, all }) {
+  const targets = new Map();
+  const scope = all ? "all" : MODEL_WARMUP_SCOPE;
+
+  if (scope === "all") {
+    const chatModels = await listWarmupModels(OLLAMA_BASE_URL).catch((err) => {
+      log("WARN", "ollama", "warmup model listing failed", { source: "chat", error: err.message });
+      return [];
+    });
+    for (const model of chatModels) addWarmupTarget(targets, OLLAMA_BASE_URL, model, "chat");
+    if (chatModels.length === 0) addWarmupTarget(targets, OLLAMA_BASE_URL, chatModel || OLLAMA_MODEL, "chat");
+
+    if (includeBrowserAgent && BROWSER_AGENT_LLM_ENABLED && BROWSER_AGENT_BASE_URL) {
+      const runtimeModels = await listWarmupModels(BROWSER_AGENT_BASE_URL).catch((err) => {
+        log("WARN", "browser-agent", "warmup model listing failed", { source: "browser_agent", error: err.message });
+        return [];
+      });
+      for (const model of runtimeModels) addWarmupTarget(targets, BROWSER_AGENT_BASE_URL, model, "browser_agent");
+      if (runtimeModels.length === 0) addWarmupTarget(targets, BROWSER_AGENT_BASE_URL, BROWSER_AGENT_MODEL, "browser_agent");
+    }
+  } else {
+    addWarmupTarget(targets, OLLAMA_BASE_URL, chatModel || OLLAMA_MODEL, "chat");
+    if (includeBrowserAgent && BROWSER_AGENT_LLM_ENABLED) {
+      addWarmupTarget(targets, BROWSER_AGENT_BASE_URL, BROWSER_AGENT_MODEL, "browser_agent");
+    }
+  }
+
+  return [...targets.values()];
+}
+
+async function warmupOneModel(target) {
+  const startedAt = Date.now();
+  const upstream = await fetchWithTimeout(`${target.baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: target.model,
+      messages: [{ role: "user", content: "warmup" }],
+      stream: false,
+      think: false,
+      keep_alive: MODEL_WARMUP_KEEP_ALIVE,
+      options: {
+        num_predict: 1,
+        temperature: 0,
+      },
+    }),
+  });
+  await upstream.text().catch(() => "");
+  if (!upstream.ok) {
+    throw new Error(`warmup failed with HTTP ${upstream.status}`);
+  }
+  return {
+    ok: true,
+    model: target.model,
+    source: target.source,
+    status: upstream.status,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+async function runModelWarmup({ chatModel, includeBrowserAgent, all }) {
+  const targets = await buildWarmupTargets({ chatModel, includeBrowserAgent, all });
+  const settled = await Promise.allSettled(targets.map(warmupOneModel));
+  const results = settled.map((entry, index) => {
+    const target = targets[index];
+    if (entry.status === "fulfilled") return entry.value;
+    return {
+      ok: false,
+      model: target?.model,
+      source: target?.source,
+      error: entry.reason instanceof Error ? entry.reason.message : String(entry.reason),
+    };
+  });
+  return {
+    ok: results.every((result) => result.ok),
+    scope: all ? "all" : MODEL_WARMUP_SCOPE,
+    count: targets.length,
+    results,
+  };
 }
 
 function sanitizeOllamaMessage(message) {
@@ -353,7 +470,7 @@ const app = express();
 
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
-  res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, PATCH, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Password");
   if (_req.method === "OPTIONS") { res.sendStatus(204); return; }
   next();
@@ -497,12 +614,30 @@ app.get("/api/extensions/catalog", (_req, res) => {
 app.get("/api/extensions", (_req, res) => {
   res.json({
     ok: true,
-    extensions: listExtensions(),
+    extensions: listExtensions({ includeDisabled: true }),
   });
 });
 
 app.get("/api/extensions/:id", (req, res) => {
-  const extension = getExtension(req.params.id);
+  const extension = getExtension(req.params.id, { includeDisabled: true });
+
+  if (!extension) {
+    res.status(404).json({
+      ok: false,
+      error: "extension not found",
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    extension,
+  });
+});
+
+app.patch("/api/extensions/:id", (req, res) => {
+  const enabled = req.body?.enabled !== false;
+  const extension = setExtensionEnabled(req.params.id, enabled);
 
   if (!extension) {
     res.status(404).json({
@@ -587,6 +722,52 @@ app.get("/api/ollama/tags", async (_req, res) => {
     log("WARN", "ollama", "failed to list models", { error: err.message });
     res.status(502).json({ error: "ollama is not reachable", models: [] });
   }
+});
+
+app.post("/api/models/warmup", async (req, res) => {
+  if (!MODEL_WARMUP_ENABLED) {
+    res.json({ ok: true, skipped: true, reason: "model warmup disabled" });
+    return;
+  }
+
+  const chatModel = String(req.body?.chatModel || req.body?.model || OLLAMA_MODEL);
+  const includeBrowserAgent = req.body?.includeBrowserAgent === true || req.body?.includeRuntime === true;
+  const all = req.body?.all === true;
+  const wait = req.body?.wait === true;
+
+  if (wait) {
+    try {
+      const result = await runModelWarmup({ chatModel, includeBrowserAgent, all });
+      res.json(result);
+    } catch (err) {
+      res.status(502).json({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+
+  void runModelWarmup({ chatModel, includeBrowserAgent, all })
+    .then((result) => {
+      log(result.ok ? "INFO" : "WARN", "ollama", "model warmup finished", {
+        scope: result.scope,
+        count: result.count,
+        ok: result.ok,
+        models: result.results.map((entry) => ({ model: entry.model, source: entry.source, ok: entry.ok })),
+      });
+    })
+    .catch((err) => {
+      log("WARN", "ollama", "model warmup failed", { error: err instanceof Error ? err.message : String(err) });
+    });
+
+  res.json({
+    ok: true,
+    started: true,
+    scope: all ? "all" : MODEL_WARMUP_SCOPE,
+    chatModel,
+    browserAgentModel: includeBrowserAgent && BROWSER_AGENT_LLM_ENABLED ? BROWSER_AGENT_MODEL || null : null,
+  });
 });
 
 app.post("/api/ollama/chat", async (req, res) => {

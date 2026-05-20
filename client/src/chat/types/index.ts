@@ -59,6 +59,7 @@ export interface SessionOptions {
   temperature: number;
   top_k: number;
   top_p: number;
+  browserUseExtensions: boolean;
 }
 
 export interface RuntimeContext {
