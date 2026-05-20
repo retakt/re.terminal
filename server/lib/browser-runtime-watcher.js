@@ -127,7 +127,7 @@ function parseFormFieldsFromInstruction(instruction = "") {
     let value = raw.slice(current.valueStart, next ? next.labelStart : raw.length);
     value = value
       .replace(/^\s*(?::|=|is)\s*/i, "")
-      .replace(/\s+\b(?:and\s+)?(?:submit|login|sign\s*in|enter\s+those\s+details|click|press)\b[\s\S]*$/i, "")
+      .replace(/\s+\b(?:and\s+)?(?:then\s+)?(?:submit|login|log\s*in|sign\s*in|enter\s+those\s+details|click|press)\b[\s\S]*$/i, "")
       .replace(/\s+\band\s*$/i, "")
       .trim();
 
@@ -313,7 +313,7 @@ function clickTargetFromInstruction(message = "") {
   const raw = safeText(message, 500);
   const quoted = raw.match(/["'`](.+?)["'`]/)?.[1];
   if (quoted) return safeText(quoted, 160);
-  const match = raw.match(/(?:try\s+)?(?:click(?:ing)?|open|press|tap|select|choose|go\s+to)\s+(?:on\s+|the\s+)?(.+?)(?:\s+(?:and|then)\s+(?:read|observe|inspect|show|tell|summarize).*)?$/i);
+  const match = raw.match(/(?:try\s+)?(?:click(?:ing)?|open|view|read|press|tap|select|choose|go\s+to)\s+(?:on\s+|the\s+)?(.+?)(?:\s+(?:and|then)\s+(?:read|observe|inspect|show|tell|summarize).*)?$/i);
   if (match?.[1]) {
     return safeText(match[1].replace(/\b(button|link|page|menu|section)\b/ig, " ").replace(/\s+/g, " "), 160);
   }

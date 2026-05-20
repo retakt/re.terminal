@@ -158,7 +158,7 @@ async function cdpEngineHealth(engine) {
   const status = await lightpandaStatus({
     cdpUrl,
     engineName: engine,
-    timeoutMs: Number(process.env.BROWSER_ENGINE_HEALTH_TIMEOUT_MS || 1800),
+    timeoutMs: Number(process.env.BROWSER_ENGINE_HEALTH_TIMEOUT_MS || 5000),
   });
   const matches = engineMatchesProduct(engine, status);
 

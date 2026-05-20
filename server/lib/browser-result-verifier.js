@@ -32,6 +32,33 @@ function submitResultFromToolResult(result = {}) {
   return actionResult?.submitResult || (actionResult?.action === "submit" ? actionResult : null);
 }
 
+function hasPasswordField(observation = {}) {
+  const fields = [
+    ...(Array.isArray(observation.inputs) ? observation.inputs : []),
+    ...(Array.isArray(observation.forms) ? observation.forms.flatMap((form) => form.fields || []) : []),
+  ];
+  return fields.some((field) =>
+    field?.secret || /\bpassword\b/i.test(`${field?.type || ""} ${field?.name || ""} ${field?.id || ""} ${field?.placeholder || ""}`)
+  );
+}
+
+function looksLikeLoginPage(observation = {}) {
+  const text = `${observation.url || ""} ${observation.title || ""} ${observation.textPreview || ""}`;
+  return Boolean(observation.isLoginPage || (hasPasswordField(observation) && /\b(login|log in|sign in)\b/i.test(text)));
+}
+
+function looksLikeLoginSubmitFailed(observation = {}) {
+  if (!looksLikeLoginPage(observation)) return false;
+  const text = normalize(`${observation.url || ""} ${observation.title || ""} ${observation.textPreview || ""}`);
+  return /\b(employee id is required|password is required|required|invalid|incorrect|error occurred|please try again|login failed|unauthorized)\b/i.test(text);
+}
+
+function commandIncludesSecretField(command = {}) {
+  return (Array.isArray(command?.args?.fields) ? command.args.fields : []).some((field) =>
+    field?.secret || /\b(password|pass|pwd|otp|code|pin)\b/i.test(`${field?.label || ""} ${field?.name || ""} ${field?.id || ""}`)
+  );
+}
+
 function currentUrlFromState(state = {}) {
   return state.currentUrl || state.lastValidObservation?.url || "";
 }
@@ -132,7 +159,7 @@ function verifyFill({ result = {}, command = {} }) {
   return { ok: true };
 }
 
-function verifySubmit({ result = {} }) {
+function verifySubmit({ result = {}, observation = {}, command = {} }) {
   const submitResult = submitResultFromToolResult(result);
   if (!submitResult) {
     return {
@@ -146,6 +173,22 @@ function verifySubmit({ result = {} }) {
       ok: false,
       reason: submitResult.error || "The form submit did not complete.",
       expected: "successful submit",
+    };
+  }
+  if (looksLikeLoginSubmitFailed(observation)) {
+    return {
+      ok: false,
+      reason: "The form was submitted, but the page is still showing the login form with validation/error text.",
+      expected: "successful login or a non-login post-submit page",
+      nextSafeAction: "Check the credentials and whether this browser/IP is allowed to log in, then retry the login.",
+    };
+  }
+  if (commandIncludesSecretField(command) && looksLikeLoginPage(observation) && hasPasswordField(observation)) {
+    return {
+      ok: false,
+      reason: "The form was submitted, but the browser is still on the login form.",
+      expected: "successful login, access-denied page, or another non-login post-submit page",
+      nextSafeAction: "Check whether the login request was accepted, whether credentials are correct, and whether this browser/IP is authorized.",
     };
   }
   return { ok: true };
@@ -187,7 +230,7 @@ export function verifyBrowserResult({
   if (watcher.intent === "navigate") checks.push(verifyNavigation({ command, observation }));
   if (watcher.intent === "observe") checks.push(verifyFocusedObservation({ watcher, command, result, observation }));
   if (watcher.intent === "fill_form" || watcher.intent === "fill_and_submit") checks.push(verifyFill({ result, command }));
-  if (watcher.intent === "submit_form" || watcher.intent === "fill_and_submit") checks.push(verifySubmit({ result }));
+  if (watcher.intent === "submit_form" || watcher.intent === "fill_and_submit") checks.push(verifySubmit({ result, observation, command }));
 
   const failed = checks.find((check) => !check.ok);
   if (failed) {
@@ -198,9 +241,9 @@ export function verifyBrowserResult({
       reason: failed.reason || "Browser result did not satisfy the requested intent.",
       blockedReason: "verification_failed",
       expected: failed.expected || "",
-      nextSafeAction: failed.needsUser
+      nextSafeAction: failed.nextSafeAction || (failed.needsUser
         ? "Clarify the missing field or target."
-        : "Try again with the runtime browser engine available, or ask for a different observable target.",
+        : "Try again with the runtime browser engine available, or ask for a different observable target."),
     };
   }
 
