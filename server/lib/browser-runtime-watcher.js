@@ -528,7 +528,7 @@ export function watchBrowserInstruction(args = {}) {
   }
 
   if (
-    /\b(what|which|show|list|tell me|visible|available|present)\b.*\b(button|buttons|link|links|clickable|elements|actions|forms|inputs|fields|menu|menus|option|options|nav|navigation)\b/i.test(raw) ||
+    /\b(what|which|show|list|tell me|visible|available|present|is there|are there)\b.*\b(button|buttons|link|links|clickable|element|elements|action|actions|form|forms|input|inputs|field|fields|menu|menus|option|options|nav|navigation)\b/i.test(raw) ||
     /\b(menu|menus|option|options|nav|navigation)\b.*\b(present|visible|available|there|on this page|on the page)\b/i.test(raw) ||
     /\b(observe|inspect|read|snapshot|current page)\b/i.test(raw)
   ) {

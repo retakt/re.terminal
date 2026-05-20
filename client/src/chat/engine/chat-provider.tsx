@@ -500,6 +500,14 @@ function formatBrowserAgentDirectResponse(payload: any) {
     lines.push("**browser status/engine:** " + [status, engine].filter(Boolean).join(" — "));
   }
 
+  if (payload?.watcher?.intent || payload?.watcher?.expectedTool) {
+    lines.push("**agent decision:** " + [
+      payload?.watcher?.intent ? "intent " + cleanOneLine(payload.watcher.intent, 80) : "",
+      payload?.watcher?.expectedTool ? "tool " + cleanOneLine(payload.watcher.expectedTool, 120) : "",
+      payload?.watcher?.reason ? cleanOneLine(payload.watcher.reason, 220) : "",
+    ].filter(Boolean).join(" — "));
+  }
+
   if (summary) {
     lines.push("");
     lines.push("**what happened:** " + summary);
@@ -547,6 +555,23 @@ function formatBrowserAgentDirectResponse(payload: any) {
   if (payload?.blockedReason || payload?.error) {
     lines.push("");
     lines.push("**blocked/error:** " + cleanOneLine(payload.blockedReason || payload.error, 700));
+  }
+
+  if (payload?.diagnostics?.diagnosis) {
+    const evidence = Array.isArray(payload.diagnostics.evidence) ? payload.diagnostics.evidence : [];
+    const fixes = Array.isArray(payload.diagnostics.suggestedFixes) ? payload.diagnostics.suggestedFixes : [];
+    lines.push("");
+    lines.push("**diagnosis:** " + cleanOneLine(payload.diagnostics.diagnosis, 700));
+    if (evidence.length) {
+      lines.push("**evidence:** " + evidence.map((item: any) => cleanOneLine(item, 220)).filter(Boolean).slice(0, 4).join(" | "));
+    }
+    if (fixes.length) {
+      lines.push("");
+      lines.push("**suggested fixes:**");
+      fixes.slice(0, 4).forEach((item: any, index: number) => {
+        lines.push(String(index + 1) + ". " + cleanOneLine(item, 260));
+      });
+    }
   }
 
   if (!observation && (payload?.lastFailedObservation || payload?.engineFailures)) {
@@ -633,6 +658,16 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
   const browserTarget = extractBrowserTarget(text);
 
   if (mode === "browser" && !explicitWebIntent) {
+    if (/\b(diagnose|diagnosis|debug|why did|why is|error|failed|failure|not working)\b/i.test(lower) && /\b(browser|browser agent|lightpanda|cdp|static_fetch|form|click|fill|submit|menu)\b/i.test(lower)) {
+      const diagnostic = make("mcp__browser_agent__diagnose", {
+        sessionId,
+        instruction: text.trim(),
+        currentUrl,
+        error: text.trim(),
+      });
+      if (diagnostic) return diagnostic;
+    }
+
     const agent = make("mcp__browser_agent__run", {
       sessionId,
       instruction: text.trim(),
@@ -1408,13 +1443,14 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
         const toolErrors = toolResults.filter((tr) => tr.error);
         if (toolErrors.length > 0) {
           const responseText = [
-            "I could not complete this because a required tool failed.",
+            "I could not complete this because a required MCP tool failed.",
             "",
             ...toolErrors.flatMap((tr) => [
               `tool: ${tr.name}`,
               `error: ${String(tr.result).replace(/^Error:\s*/i, "")}`,
               "",
             ]),
+            "If this is a browser-agent failure after the backend is reachable, run `browser agent status` or `browser_agent.diagnose` with the error text.",
           ].join("\n").trim();
           syncRunFromTools("failed");
           setActivityStatus("idle");
