@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clipboard, ExternalLink, FileJson, FolderOpen, Search, ShieldCheck, Stethoscope, TerminalSquare } from "lucide-react";
-import { listExtensionCatalog, type ExtensionCatalogItem } from "@/chat/api/mcp";
+import {
+  Clipboard,
+  ExternalLink,
+  FileJson,
+  Puzzle,
+  Search,
+  ShieldCheck,
+  TerminalSquare,
+} from "lucide-react";
+import {
+  listBrowserExtensions,
+  listExtensionCatalog,
+  type BrowserExtension,
+  type ExtensionCatalogItem,
+} from "@/chat/api/mcp";
 
-const FILTERS = ["all", "mcp", "tools", "browser", "high risk", "enabled", "disabled"] as const;
+const FILTERS = ["all", "enabled", "site skills", "catalog", "risky"] as const;
 type CatalogFilter = typeof FILTERS[number];
 
 function shortUrl(url: string) {
@@ -18,31 +31,65 @@ function itemEnabled(item: ExtensionCatalogItem) {
   return item.target.toLowerCase() === "mcp" || item.type.toLowerCase() === "mcp";
 }
 
+function riskClass(risk: string) {
+  return `extension-risk extension-risk--${risk || "low"}`;
+}
+
 export function ExtensionsShell() {
-  const [items, setItems] = useState<ExtensionCatalogItem[]>([]);
+  const [extensions, setExtensions] = useState<BrowserExtension[]>([]);
+  const [catalogItems, setCatalogItems] = useState<ExtensionCatalogItem[]>([]);
   const [filter, setFilter] = useState<CatalogFilter>("all");
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
 
+  const refresh = async () => {
+    const [dynamicExtensions, staticCatalog] = await Promise.all([
+      listBrowserExtensions(),
+      listExtensionCatalog(),
+    ]);
+
+    setExtensions(dynamicExtensions);
+    setCatalogItems(staticCatalog);
+  };
+
   useEffect(() => {
-    void listExtensionCatalog().then(setItems);
+    void refresh();
   }, []);
 
-  const filteredItems = useMemo(() => {
+  const filteredExtensions = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return items.filter((item) => {
-      const haystack = `${item.name} ${item.type} ${item.target} ${item.risk} ${item.source} ${item.description}`.toLowerCase();
+
+    return extensions.filter((extension) => {
+      const haystack = [
+        extension.id,
+        extension.name,
+        extension.type,
+        extension.source,
+        extension.domains.join(" "),
+        extension.permissions.join(" "),
+        extension.dangerousActions.join(" "),
+        extension.actions.map((action) => action.label).join(" "),
+      ].join(" ").toLowerCase();
+
       if (needle && !haystack.includes(needle)) return false;
-      if (filter === "all") return true;
-      if (filter === "mcp") return item.type.toLowerCase().includes("mcp") || item.target.toLowerCase() === "mcp";
-      if (filter === "tools") return item.type.toLowerCase().includes("tool") || item.type.toLowerCase().includes("function");
-      if (filter === "browser") return item.type.toLowerCase().includes("browser");
-      if (filter === "high risk") return item.risk.toLowerCase() === "high";
-      if (filter === "enabled") return itemEnabled(item);
-      if (filter === "disabled") return !itemEnabled(item);
+      if (filter === "enabled") return extension.enabled;
+      if (filter === "site skills") return extension.type === "site_skill_extension";
+      if (filter === "risky") return extension.dangerousActions.length > 0;
+      if (filter === "catalog") return false;
       return true;
     });
-  }, [filter, items, query]);
+  }, [extensions, filter, query]);
+
+  const filteredCatalog = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+
+    return catalogItems.filter((item) => {
+      const haystack = `${item.name} ${item.type} ${item.target} ${item.risk} ${item.source} ${item.description}`.toLowerCase();
+      if (needle && !haystack.includes(needle)) return false;
+      if (filter === "catalog" || filter === "all") return true;
+      return false;
+    });
+  }, [catalogItems, filter, query]);
 
   const copyText = async (text: string, label = "copied") => {
     await navigator.clipboard?.writeText(text);
@@ -55,10 +102,14 @@ export function ExtensionsShell() {
       <main className="tool-compact-body extension-page__body extension-catalog">
         <section className="tool-compact-card tool-compact-card--wide">
           <div className="tool-card-title">
-            <FileJson size={14} />
-            <h2>catalog</h2>
+            <Puzzle size={14} />
+            <h2>enabled extensions</h2>
             {notice && <span className="tool-card-title__note">{notice}</span>}
+            <button type="button" className="catalog-filter-chip" onClick={() => void refresh()}>
+              refresh
+            </button>
           </div>
+
           <div className="catalog-filter-bar">
             <div className="catalog-filter-chips">
               {FILTERS.map((entry) => (
@@ -72,73 +123,149 @@ export function ExtensionsShell() {
                 </button>
               ))}
             </div>
+
             <label className="catalog-search">
               <Search size={12} />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="search catalog"
+                placeholder="search extensions"
               />
             </label>
           </div>
+
           <div className="extension-catalog-grid">
-            {filteredItems.map((item) => (
-              <article key={`${item.type}-${item.name}`} className="extension-catalog-card">
+            {filteredExtensions.map((extension) => (
+              <article key={extension.id} className="extension-catalog-card">
                 <header>
-                  <strong>{item.name}</strong>
-                  <span className={`extension-risk extension-risk--${item.risk}`}>{item.risk}</span>
+                  <strong>{extension.name}</strong>
+                  <span className={riskClass(extension.dangerousActions.length ? "medium" : "low")}>
+                    {extension.enabled ? "enabled" : "disabled"}
+                  </span>
                 </header>
-                <p>{item.description}</p>
+
+                <p>{extension.description || `${extension.type} from ${extension.source || "site skill"}`}</p>
+
                 <dl>
                   <div>
-                    <dt>type</dt>
-                    <dd>{item.type}</dd>
+                    <dt>id</dt>
+                    <dd>{extension.id}</dd>
                   </div>
                   <div>
-                    <dt>belongs</dt>
-                    <dd>{item.target}</dd>
+                    <dt>domains</dt>
+                    <dd>{extension.domains.join(", ") || "none"}</dd>
+                  </div>
+                  <div>
+                    <dt>pages</dt>
+                    <dd>{extension.pages.join(", ") || "none"}</dd>
+                  </div>
+                  <div>
+                    <dt>permissions</dt>
+                    <dd>{extension.permissions.join(", ") || "none"}</dd>
                   </div>
                 </dl>
-                <div className="catalog-url-row">
-                  <a href={item.source} target="_blank" rel="noreferrer" title={item.source}>
-                    <ExternalLink size={11} />
-                    {shortUrl(item.source)}
-                  </a>
-                  <button type="button" onClick={() => void copyText(item.source, "url copied")} title="Copy URL">
-                    <Clipboard size={11} />
-                  </button>
-                </div>
+
                 <div className="catalog-card-actions">
-                  <a href={item.source} target="_blank" rel="noreferrer">
-                    <ExternalLink size={11} />
-                    docs
-                  </a>
-                  <button type="button" onClick={() => void copyText(JSON.stringify(item, null, 2), "config copied")}>
+                  <button type="button" onClick={() => void copyText(JSON.stringify(extension, null, 2), "extension copied")}>
                     <Clipboard size={11} />
                     copy
                   </button>
-                  <button type="button" onClick={() => setNotice("test placeholder")}>
-                    <Stethoscope size={11} />
-                    test
-                  </button>
-                  <button type="button" onClick={() => setNotice(`${item.type} / ${item.target} / ${item.risk}`)}>
+                  <button type="button" onClick={() => void copyText(extension.actions.map((action) => action.label).join("\n"), "actions copied")}>
                     <TerminalSquare size={11} />
-                    inspect
+                    actions
                   </button>
+                </div>
+
+                <div className="tool-compact-note">
+                  <ShieldCheck size={13} />
+                  <span>
+                    {extension.dangerousActions.length
+                      ? `confirmation required for: ${extension.dangerousActions.join(", ")}`
+                      : "no risky actions marked"}
+                  </span>
+                </div>
+
+                <div className="extension-action-list">
+                  {extension.actions.map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      className="catalog-filter-chip"
+                      title={action.id}
+                      onClick={() => void copyText(
+                        JSON.stringify({
+                          name: "mcp__extensions__plan_action",
+                          args: {
+                            extensionId: extension.id,
+                            label: action.label,
+                          },
+                        }, null, 2),
+                        "plan copied"
+                      )}
+                    >
+                      {action.label}
+                      {action.requiresConfirmation ? " · confirm" : ""}
+                    </button>
+                  ))}
                 </div>
               </article>
             ))}
+
+            {filteredExtensions.length === 0 && filter !== "catalog" && (
+              <article className="extension-catalog-card">
+                <header>
+                  <strong>no enabled extensions found</strong>
+                  <span className="extension-risk extension-risk--medium">empty</span>
+                </header>
+                <p>Check that /api/extensions returns your site-skill extensions.</p>
+              </article>
+            )}
           </div>
         </section>
 
-        <section className="tool-compact-note">
-          <ShieldCheck size={14} />
-          <span>catalog only: OpenWebUI functions and browser bridges are not executed in v1.</span>
-        </section>
+        {(filter === "all" || filter === "catalog") && (
+          <section className="tool-compact-card tool-compact-card--wide">
+            <div className="tool-card-title">
+              <FileJson size={14} />
+              <h2>catalog</h2>
+            </div>
+
+            <div className="extension-catalog-grid">
+              {filteredCatalog.map((item) => (
+                <article key={`${item.type}-${item.name}`} className="extension-catalog-card">
+                  <header>
+                    <strong>{item.name}</strong>
+                    <span className={`extension-risk extension-risk--${item.risk}`}>{item.risk}</span>
+                  </header>
+                  <p>{item.description}</p>
+                  <dl>
+                    <div>
+                      <dt>type</dt>
+                      <dd>{item.type}</dd>
+                    </div>
+                    <div>
+                      <dt>belongs</dt>
+                      <dd>{item.target}</dd>
+                    </div>
+                  </dl>
+                  <div className="catalog-url-row">
+                    <a href={item.source} target="_blank" rel="noreferrer" title={item.source}>
+                      <ExternalLink size={11} />
+                      {shortUrl(item.source)}
+                    </a>
+                    <button type="button" onClick={() => void copyText(item.source, "url copied")} title="Copy URL">
+                      <Clipboard size={11} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="tool-compact-note">
-          <FolderOpen size={14} />
-          <span>MCP servers stay on the MCP page; extension import comes after the tool gateway is stable.</span>
+          <ShieldCheck size={14} />
+          <span>Extension actions are planned through MCP first. Risky actions require explicit confirmation.</span>
         </section>
       </main>
     </div>
