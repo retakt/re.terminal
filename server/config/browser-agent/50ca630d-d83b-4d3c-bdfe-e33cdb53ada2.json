@@ -1,0 +1,178 @@
+{
+  "sessionId": "50ca630d-d83b-4d3c-bdfe-e33cdb53ada2",
+  "mode": "browser",
+  "currentUrl": "https://retakt.cc",
+  "currentTitle": "re.Takt",
+  "currentExtensionId": "",
+  "currentPageKey": "re_takt",
+  "lastObservation": {
+    "url": "https://retakt.cc",
+    "title": "re.Takt",
+    "textPreview": "Skip to main content re . Takt 再生 Stash and everything! Launching soon... \" The only truth is music. \" — Jack Kerouac Latest Tools Soon™ BG Remover YT Download IG Saver Hugging Face Reddit Sampletter Face Swap AI Tools © 2026 re.Takt - currently trying About NSFW © 2026 re.Takt - currently trying About NSFW",
+    "isLoginPage": false,
+    "forms": [],
+    "buttons": [
+      {
+        "text": "Toggle navigation menu",
+        "selector": "button[aria-label='Toggle navigation menu']",
+        "tag": "button",
+        "type": "button"
+      },
+      {
+        "text": "Search (⌘K)",
+        "selector": "button[aria-label='Search (⌘K)']",
+        "tag": "button",
+        "type": ""
+      },
+      {
+        "text": "Open account menu",
+        "selector": "#base-ui-_r_l_",
+        "tag": "button",
+        "type": "button"
+      },
+      {
+        "text": "Next quote",
+        "selector": "button[aria-label='Next quote']",
+        "tag": "button",
+        "type": "button"
+      }
+    ],
+    "links": [
+      {
+        "text": "Skip to main content Skip to main content",
+        "href": "https://retakt.cc#main-content",
+        "selector": "a[href='#main-content']"
+      },
+      {
+        "text": "re.Takt再生 re.Takt再生 re.Takt — homepage",
+        "href": "https://retakt.cc/",
+        "selector": "a[aria-label='re.Takt — homepage']"
+      },
+      {
+        "text": "YT Download YT Download YT Download",
+        "href": "https://yt.retakt.cc",
+        "selector": "a[title='YT Download']"
+      },
+      {
+        "text": "About About",
+        "href": "https://retakt.cc/about",
+        "selector": "a[href='/about']"
+      },
+      {
+        "text": "NSFW NSFW",
+        "href": "https://chat.retakt.cc",
+        "selector": "a[href='https://chat.retakt.cc']"
+      },
+      {
+        "text": "About About",
+        "href": "https://retakt.cc/about",
+        "selector": "a[href='/about']"
+      },
+      {
+        "text": "NSFW NSFW",
+        "href": "https://chat.retakt.cc",
+        "selector": "a[href='https://chat.retakt.cc']"
+      }
+    ],
+    "inputs": [],
+    "interactiveElements": [
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "Skip to main content Skip to main content",
+        "selector": "a[href='#main-content']",
+        "href": "https://retakt.cc#main-content",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "re.Takt再生 re.Takt再生 re.Takt — homepage",
+        "selector": "a[aria-label='re.Takt — homepage']",
+        "href": "https://retakt.cc/",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "YT Download YT Download YT Download",
+        "selector": "a[title='YT Download']",
+        "href": "https://yt.retakt.cc",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "About About",
+        "selector": "a[href='/about']",
+        "href": "https://retakt.cc/about",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "NSFW NSFW",
+        "selector": "a[href='https://chat.retakt.cc']",
+        "href": "https://chat.retakt.cc",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "About About",
+        "selector": "a[href='/about']",
+        "href": "https://retakt.cc/about",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "NSFW NSFW",
+        "selector": "a[href='https://chat.retakt.cc']",
+        "href": "https://chat.retakt.cc",
+        "type": ""
+      },
+      {
+        "role": "button",
+        "tag": "button",
+        "text": "Toggle navigation menu",
+        "selector": "button[aria-label='Toggle navigation menu']",
+        "href": "",
+        "type": "button"
+      },
+      {
+        "role": "button",
+        "tag": "button",
+        "text": "Search (⌘K)",
+        "selector": "button[aria-label='Search (⌘K)']",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "button",
+        "tag": "button",
+        "text": "Open account menu",
+        "selector": "#base-ui-_r_l_",
+        "href": "",
+        "type": "button"
+      },
+      {
+        "role": "button",
+        "tag": "button",
+        "text": "Next quote",
+        "selector": "button[aria-label='Next quote']",
+        "href": "",
+        "type": "button"
+      }
+    ]
+  },
+  "pendingInstruction": "",
+  "pendingAction": null,
+  "visited": [
+    "https://retakt.cc"
+  ],
+  "learnedAliases": [],
+  "lastToolResults": [],
+  "failureCount": 0,
+  "updatedAt": "2026-05-20T10:35:34.396Z"
+}
