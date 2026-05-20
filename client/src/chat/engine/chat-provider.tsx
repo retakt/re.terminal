@@ -465,6 +465,9 @@ function formatBrowserAgentDirectResponse(payload: any) {
   const currentUrl = cleanOneLine(payload?.currentUrl || observation?.url || "unknown", 260);
   const currentTitle = cleanOneLine(payload?.currentTitle || observation?.title || "untitled", 180);
   const summary = cleanOneLine(payload?.summary || "", 700);
+  const status = cleanOneLine(payload?.status || "", 80);
+  const engine = cleanOneLine(payload?.engine || observation?.engine || "", 80);
+  const observationFailed = !observation && /failed|needs_engine_fallback/i.test(status || payload?.blockedReason || payload?.error || "");
 
   const forms = Array.isArray(observation?.forms) ? observation.forms : [];
   const buttons = [
@@ -486,15 +489,26 @@ function formatBrowserAgentDirectResponse(payload: any) {
 
   const lines: string[] = [];
   lines.push("**current url/title:** " + currentUrl + " — " + currentTitle);
+  if (status || engine) {
+    lines.push("**browser status/engine:** " + [status, engine].filter(Boolean).join(" — "));
+  }
 
   if (summary) {
     lines.push("");
     lines.push("**what happened:** " + summary);
   }
 
-  if (payload?.blockedReason) {
+  if (payload?.blockedReason || payload?.error) {
     lines.push("");
-    lines.push("**blocked:** " + cleanOneLine(payload.blockedReason, 700));
+    lines.push("**blocked/error:** " + cleanOneLine(payload.blockedReason || payload.error, 700));
+  }
+
+  if (!observation && (payload?.lastFailedObservation || payload?.engineFailures)) {
+    const failed = payload.lastFailedObservation;
+    const failedEngine = cleanOneLine(failed?.engine || Object.keys(payload.engineFailures || {}).slice(-1)[0] || "", 80);
+    const failedError = cleanOneLine(failed?.error || payload?.blockedReason || payload?.error || "browser observation failed", 700);
+    lines.push("");
+    lines.push("**observation failure:** " + [failedEngine, failedError].filter(Boolean).join(" — "));
   }
 
   if (observation?.textPreview || observation?.text) {
@@ -535,7 +549,11 @@ function formatBrowserAgentDirectResponse(payload: any) {
   lines.push("");
   lines.push("**possible next actions:**");
 
-  if (safeAgentActions.length) {
+  if (observationFailed) {
+    lines.push("1. start or check Lightpanda CDP/native MCP on the server");
+    lines.push("2. set BROWSER_AGENT_ENGINE_PRIORITY=lightpanda_cdp,static_fetch for a VPS without Chrome");
+    lines.push("3. try the URL again after the browser engine is healthy");
+  } else if (safeAgentActions.length) {
     safeAgentActions.forEach((label: string, index: number) => {
       lines.push(String(index + 1) + ". " + label);
     });

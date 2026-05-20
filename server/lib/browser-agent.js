@@ -2,12 +2,14 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
-  lightpandaClickBySelector,
-  lightpandaClickByText,
-  lightpandaFindInteractiveElements,
-  lightpandaSnapshotCurrent,
-  lightpandaWaitForSelector,
-} from "./lightpanda-client.js";
+  browserClickByHref,
+  browserClickBySelector,
+  browserClickByText,
+  browserHealth,
+  browserNavigate,
+  browserObserve,
+  isValidObservation,
+} from "./browser-engine-manager.js";
 import {
   getExtension,
   getExtensionSkill,
@@ -96,6 +98,10 @@ function defaultState(sessionId = DEFAULT_SESSION_ID) {
     currentExtensionId: "",
     currentPageKey: "",
     lastObservation: null,
+    lastValidObservation: null,
+    lastFailedObservation: null,
+    activeEngine: "",
+    engineFailures: {},
     pendingInstruction: "",
     pendingAction: null,
     visited: [],
@@ -128,7 +134,7 @@ function sanitizeLoadedState(state) {
       currentExtensionId: "",
       currentPageKey: "",
       pendingAction: null,
-      lastObservation: null,
+      lastObservation: isValidObservation(state?.lastValidObservation) ? state.lastValidObservation : null,
       lastToolResults: [],
       failureCount: 0,
     };
@@ -142,7 +148,7 @@ function sanitizeLoadedState(state) {
       currentExtensionId: "",
       currentPageKey: "",
       pendingAction: null,
-      lastObservation: null,
+      lastObservation: isValidObservation(state?.lastValidObservation) ? state.lastValidObservation : null,
       lastToolResults: [],
       failureCount: 0,
     };
@@ -393,7 +399,7 @@ function pageKeyForObservation(skill = null, observation = {}) {
 }
 
 function observationFromPageResult(result = {}) {
-  const page = result?.page || {};
+  const page = result?.observation || result?.page || {};
   const observation = {
     ok: Boolean(result?.ok),
     url: page.url || "",
@@ -405,6 +411,11 @@ function observationFromPageResult(result = {}) {
     forms: Array.isArray(page.forms) ? page.forms.slice(0, 20) : [],
     interactiveElements: Array.isArray(page.interactiveElements) ? page.interactiveElements.slice(0, 140) : [],
     stats: page.stats || {},
+    requestedUrl: page.requestedUrl || result?.requestedUrl || "",
+    engine: page.engine || result?.engine || "",
+    error: page.error || result?.error || "",
+    snapshotError: page.snapshotError || result?.snapshotError || "",
+    extractionErrors: page.extractionErrors || result?.extractionErrors || [],
   };
   observation.isLoginPage = isLoginObservation(observation);
   return observation;
@@ -412,16 +423,36 @@ function observationFromPageResult(result = {}) {
 
 async function observePage(args = {}, state = defaultState()) {
   const explicitUrl = explicitNavigationUrlFromArgs(args);
-  const currentUrl = normalizeUrlInput(args.currentUrl || state.currentUrl || "");
+  const currentUrl = normalizeUrlInput(args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "");
 
-  const result = await lightpandaSnapshotCurrent({
-    ...(explicitUrl
-      ? { url: explicitUrl, navigate: true }
-      : { currentUrl }),
-    waitMs: args.waitMs || "900",
-  });
+  const result = explicitUrl
+    ? await browserNavigate({
+        ...args,
+        url: explicitUrl,
+        waitMs: args.waitMs || "900",
+      })
+    : await browserObserve({
+        ...args,
+        currentUrl,
+        lastValidObservation: state.lastValidObservation,
+        state,
+        waitMs: args.waitMs || "900",
+      });
 
   const observation = observationFromPageResult(result);
+  if (!result?.ok || !isValidObservation(observation)) {
+    return {
+      ok: false,
+      status: result?.status || "failed",
+      observation,
+      extension: null,
+      pageKey: "",
+      raw: result,
+      error: result?.error || observation.error || observation.snapshotError || "Browser observation failed.",
+      previousCurrentUrl: state.currentUrl || state.lastValidObservation?.url || "",
+    };
+  }
+
   const useExtensions = boolArg(args.useExtensions, true);
   const matched = !useExtensions
     ? null
@@ -435,6 +466,7 @@ async function observePage(args = {}, state = defaultState()) {
 
   return {
     ok: true,
+    status: "success",
     observation,
     extension: matched,
     pageKey,
@@ -555,6 +587,7 @@ function classifyInstruction(instruction = "") {
   }
 
   if (extractUrl(instruction) && /\b(open|go|visit|navigate|load|observe|inspect|read|view)\b/.test(lower)) return "navigate";
+  if (/\b(read|view|open|go to|visit)\s+(?:the\s+)?(?:about|contact|pricing|blog|docs|home|login|sign in)(?:\s+page)?\b/.test(lower)) return "execute_action";
   if (/\b(show|list|what actions|available actions|known actions|extension actions|site actions)\b/.test(lower)) return "show_actions";
   if (/\b(execute|click|clicking|press|tap|select|choose|open|go to|navigate to|perform|run)\b/.test(lower) || /\btry\s+clicking\b/.test(lower)) return "execute_action";
   if (/\b(plan|can you|find|where|how)\b/.test(lower)) return "plan_action";
@@ -568,6 +601,9 @@ function compactObservation(observation = {}) {
     url: observation.url || "",
     title: observation.title || "",
     textPreview: safeText(observation.textPreview || "", 700),
+    engine: observation.engine || "",
+    requestedUrl: observation.requestedUrl || "",
+    error: observation.error || observation.snapshotError || "",
     isLoginPage: Boolean(observation.isLoginPage),
     forms: (observation.forms || []).map((form) => ({
       index: form.index,
@@ -624,20 +660,53 @@ function safePossibleNextActions(extension = null, skill = null) {
     .map(safeActionSummary);
 }
 
+function recordFailedObservation(state, observation = {}, details = {}) {
+  const engine = observation.engine || details.engine || "unknown";
+  const engineFailures = {
+    ...(state.engineFailures && typeof state.engineFailures === "object" && !Array.isArray(state.engineFailures)
+      ? state.engineFailures
+      : {}),
+    [engine]: {
+      at: nowIso(),
+      error: details.error || observation.error || observation.snapshotError || "Invalid browser observation.",
+      requestedUrl: observation.requestedUrl || details.requestedUrl || "",
+    },
+  };
+
+  return saveState({
+    ...state,
+    lastFailedObservation: {
+      ...compactObservation(observation),
+      at: nowIso(),
+      previousCurrentUrl: state.currentUrl || state.lastValidObservation?.url || "",
+    },
+    engineFailures,
+    failureCount: Number(state.failureCount || 0) + 1,
+  });
+}
+
 function updateStateFromObservation(state, observation, extension, pageKey) {
+  if (!isValidObservation(observation)) {
+    return recordFailedObservation(state, observation);
+  }
+
   const visited = Array.from(new Set([
     ...(Array.isArray(state.visited) ? state.visited : []),
     observation.url || "",
   ].filter(Boolean))).slice(-40);
+  const compact = compactObservation(observation);
 
   return saveState({
     ...state,
-    currentUrl: isHttpUrl(observation.url) ? observation.url : "",
+    currentUrl: observation.url,
     currentTitle: observation.title || "",
-    currentExtensionId: isHttpUrl(observation.url) ? (extension?.id || "") : "",
-    currentPageKey: isHttpUrl(observation.url) ? (pageKey || "") : "",
-    lastObservation: isHttpUrl(observation.url) ? compactObservation(observation) : null,
+    currentExtensionId: extension?.id || "",
+    currentPageKey: pageKey || "",
+    lastObservation: compact,
+    lastValidObservation: compact,
+    activeEngine: observation.engine || state.activeEngine || "",
     visited,
+    failureCount: 0,
   });
 }
 
@@ -657,17 +726,24 @@ function responseBase({
   blockedReason = "",
   learned = null,
 } = {}) {
+  const observationIsValid = observation && isValidObservation(observation);
   return {
     ok,
     status,
     instruction,
-    currentUrl: observation?.url || state?.currentUrl || "",
-    currentTitle: observation?.title || state?.currentTitle || "",
-    extensionId: extension?.id || state?.currentExtensionId || "",
-    pageKey: pageKey || state?.currentPageKey || "",
+    currentUrl: observationIsValid ? observation.url : state?.currentUrl || state?.lastValidObservation?.url || "",
+    currentTitle: observationIsValid ? observation.title || state?.currentTitle || "" : state?.currentTitle || state?.lastValidObservation?.title || "",
+    extensionId: observationIsValid ? (extension?.id || state?.currentExtensionId || "") : state?.currentExtensionId || "",
+    pageKey: observationIsValid ? (pageKey || state?.currentPageKey || "") : state?.currentPageKey || "",
+    engine: observationIsValid
+      ? (observation.engine || state?.activeEngine || "")
+      : state?.lastFailedObservation?.engine || state?.activeEngine || "",
+    state,
     steps,
     summary,
-    whatFound: whatFound || (observation ? compactObservation(observation) : null),
+    whatFound: whatFound || (observationIsValid ? compactObservation(observation) : null),
+    lastFailedObservation: state?.lastFailedObservation || null,
+    engineFailures: state?.engineFailures || {},
     possibleNextActions,
     requiresUser,
     blockedReason,
@@ -720,6 +796,36 @@ async function showActions(args = {}, state = loadState(args.sessionId)) {
 async function observe(args = {}) {
   const state = loadState(args.sessionId);
   const observationResult = await observePage(args, state);
+
+  if (!observationResult.ok) {
+    const failedState = recordFailedObservation(state, observationResult.observation, {
+      error: observationResult.error,
+      requestedUrl: observationResult.observation?.requestedUrl,
+      engine: observationResult.observation?.engine,
+    });
+
+    return responseBase({
+      ok: false,
+      status: observationResult.status || "failed",
+      instruction: args.instruction || "observe",
+      state: failedState,
+      observation: null,
+      steps: observationResult.raw?.steps || [
+        {
+          type: "observe",
+          tool: "browserObserve",
+          ok: false,
+          error: observationResult.error,
+          previousCurrentUrl: observationResult.previousCurrentUrl,
+        },
+      ],
+      summary: `Browser observation failed and state was not updated. Previous valid URL: ${observationResult.previousCurrentUrl || "none"}.`,
+      possibleNextActions: [],
+      requiresUser: true,
+      blockedReason: observationResult.error || "observation_failed",
+    });
+  }
+
   const updated = updateStateFromObservation(
     state,
     observationResult.observation,
@@ -735,12 +841,13 @@ async function observe(args = {}) {
     observation: observationResult.observation,
     extension: observationResult.extension,
     pageKey: observationResult.pageKey,
-    steps: [
+    steps: observationResult.raw?.steps || [
       {
         type: "observe",
-        tool: "lightpandaSnapshotCurrent",
+        tool: "browserObserve",
+        engine: observationResult.observation.engine || "",
         input: {
-          currentUrl: explicitNavigationUrlFromArgs(args) || args.currentUrl || state.currentUrl || "",
+          currentUrl: explicitNavigationUrlFromArgs(args) || args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
           useExtensions: boolArg(args.useExtensions, true),
         },
         ok: true,
@@ -748,7 +855,7 @@ async function observe(args = {}) {
       },
     ],
     summary: observationResult.observation.url
-      ? `Observed ${observationResult.observation.url}.`
+      ? `Observed ${observationResult.observation.url} with ${observationResult.observation.engine || "browser engine"}.`
       : "Observed the current browser page.",
     possibleNextActions: safePossibleNextActions(observationResult.extension, skill),
     requiresUser: true,
@@ -829,7 +936,60 @@ function extractGenericClickTarget(instruction = "") {
 }
 
 async function executeGenericVisibleAction(args = {}, state = defaultState(), steps = [], existingObservationResult = null) {
-  const observationResult = existingObservationResult || await observePage({ ...args, useExtensions: false }, state);
+  const effectiveCurrentUrl = normalizeUrlInput(
+    explicitNavigationUrlFromArgs(args) ||
+    args.currentUrl ||
+    state.currentUrl ||
+    state.lastValidObservation?.url ||
+    ""
+  );
+
+  if (!effectiveCurrentUrl) {
+    return responseBase({
+      ok: false,
+      status: "needs_user",
+      instruction: args.instruction || "",
+      state,
+      steps,
+      summary: "No valid current page is loaded.",
+      possibleNextActions: [],
+      requiresUser: true,
+      blockedReason: "no_valid_current_page",
+    });
+  }
+
+  const observationResult = existingObservationResult?.ok
+    ? existingObservationResult
+    : await observePage({ ...args, currentUrl: effectiveCurrentUrl, useExtensions: false }, state);
+
+  if (!observationResult.ok || !isValidObservation(observationResult.observation)) {
+    const failedState = recordFailedObservation(state, observationResult.observation, {
+      error: observationResult.error,
+      requestedUrl: effectiveCurrentUrl,
+    });
+
+    return responseBase({
+      ok: false,
+      status: "failed",
+      instruction: args.instruction || "",
+      state: failedState,
+      observation: null,
+      steps: [
+        ...steps,
+        ...(observationResult.raw?.steps || [{
+          type: "observe",
+          tool: "browserObserve",
+          ok: false,
+          error: observationResult.error,
+        }]),
+      ],
+      summary: "Could not observe the current page, so I did not click anything or change browser state.",
+      possibleNextActions: [],
+      requiresUser: true,
+      blockedReason: observationResult.error || "observation_failed",
+    });
+  }
+
   const observation = observationResult.observation;
   const pageKey = pageKeyForObservation(null, observation);
   const updated = updateStateFromObservation(state, observation, null, pageKey);
@@ -837,9 +997,10 @@ async function executeGenericVisibleAction(args = {}, state = defaultState(), st
   if (!existingObservationResult) {
     steps.push({
       type: "observe",
-      tool: "lightpandaSnapshotCurrent",
+      tool: "browserObserve",
+      engine: observation.engine || "",
       input: {
-        currentUrl: explicitNavigationUrlFromArgs(args) || args.currentUrl || state.currentUrl || "",
+        currentUrl: effectiveCurrentUrl,
         useExtensions: false,
       },
       ok: true,
@@ -865,29 +1026,38 @@ async function executeGenericVisibleAction(args = {}, state = defaultState(), st
     });
   }
 
-  const clickResult = await lightpandaClickByText({
-    url: observation.url || state.currentUrl || "",
+  const clickResult = await browserClickByText({
+    currentUrl: observation.url || effectiveCurrentUrl,
     text: targetText,
+    observation,
+    state: updated,
     waitMs: args.waitMs || "1200",
   });
 
-  const clicked = Boolean(clickResult?.ok && clickResult?.clicked);
+  const clicked = Boolean(clickResult?.ok && clickResult?.status === "success");
 
   steps.push({
     type: "action",
-    tool: "lightpandaClickByText",
+    tool: clickResult?.matchedElement?.href ? "browserClickByHref" : "browserClickByText",
+    engine: clickResult?.engine || "",
     input: {
-      url: observation.url || state.currentUrl || "",
+      url: observation.url || effectiveCurrentUrl,
       text: targetText,
+      href: clickResult?.matchedElement?.href || clickResult?.targetHref || "",
     },
     ok: clicked,
     resultPreview: preview(clickResult, 900),
   });
 
   const postObservation = observationFromPageResult(clickResult || {});
-  const finalObservation = postObservation.url ? postObservation : observation;
+  const finalObservation = isValidObservation(postObservation) ? postObservation : observation;
   const finalPageKey = pageKeyForObservation(null, finalObservation);
-  const finalState = updateStateFromObservation(updated, finalObservation, null, finalPageKey);
+  const finalState = clicked
+    ? updateStateFromObservation(updated, finalObservation, null, finalPageKey)
+    : recordFailedObservation(updated, postObservation, {
+        error: clickResult?.error || clickResult?.blockedReason || "target_not_found",
+        requestedUrl: observation.url || effectiveCurrentUrl,
+      });
 
   return responseBase({
     ok: clicked,
@@ -900,7 +1070,7 @@ async function executeGenericVisibleAction(args = {}, state = defaultState(), st
     steps,
     summary: clicked
       ? "Clicked visible text \"" + targetText + "\" and observed the result."
-      : "I could not find a visible button/link matching \"" + targetText + "\" on the current page.",
+      : "I could not find or click a visible button/link matching \"" + targetText + "\" on the current page.",
     possibleNextActions: [],
     requiresUser: true,
     blockedReason: clicked ? "" : "target_not_found",
@@ -917,11 +1087,39 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
 
   const observationResult = await observePage(args, state);
 
+  if (!observationResult.ok || !isValidObservation(observationResult.observation)) {
+    const failedState = recordFailedObservation(state, observationResult.observation, {
+      error: observationResult.error,
+      requestedUrl: observationResult.observation?.requestedUrl,
+    });
+
+    return responseBase({
+      ok: false,
+      status: observationResult.status || "failed",
+      instruction: args.instruction || "",
+      state: failedState,
+      observation: null,
+      steps: observationResult.raw?.steps || [
+        {
+          type: "observe",
+          tool: "browserObserve",
+          ok: false,
+          error: observationResult.error,
+        },
+      ],
+      summary: "Could not observe the current page, so I did not execute the requested action.",
+      possibleNextActions: [],
+      requiresUser: true,
+      blockedReason: observationResult.error || "observation_failed",
+    });
+  }
+
   steps.push({
     type: "observe",
-    tool: "lightpandaSnapshotCurrent",
+    tool: "browserObserve",
+    engine: observationResult.observation.engine || "",
     input: {
-      currentUrl: explicitNavigationUrlFromArgs(args) || args.currentUrl || state.currentUrl || "",
+      currentUrl: explicitNavigationUrlFromArgs(args) || args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
       useExtensions,
     },
     ok: true,
@@ -941,6 +1139,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
 
   const skill = getExtensionSkill(extension.id);
   const pageKey = pageKeyForObservation(skill, observationResult.observation);
+  const observedState = updateStateFromObservation(state, observationResult.observation, extension, pageKey);
   const actionResolution = resolveInstructionAction({
     instruction: args.instruction || args.label || "",
     extensionId: extension.id,
@@ -965,13 +1164,11 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
     const confirmText = String(args.confirmText || "").trim();
 
     if (!confirm || confirmText !== requiredPhrase) {
-      const updated = updateStateFromObservation(state, observationResult.observation, extension, pageKey);
-
       return responseBase({
         ok: false,
         status: "blocked",
         instruction: args.instruction || "",
-        state: updated,
+        state: observedState,
         observation: observationResult.observation,
         extension,
         pageKey,
@@ -985,13 +1182,11 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
   }
 
   if (observationResult.observation.isLoginPage && action.pageKey && !/login/i.test(action.pageKey)) {
-    const updated = updateStateFromObservation(state, observationResult.observation, extension, pageKey);
-
     return responseBase({
       ok: false,
       status: "needs_user",
       instruction: args.instruction || "",
-      state: updated,
+      state: observedState,
       observation: observationResult.observation,
       extension,
       pageKey,
@@ -1009,79 +1204,66 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
 
   let actionResult = null;
   let clicked = false;
-  const targetUrl = actionTargetUrl(action, skill, state);
+  const targetUrl = actionTargetUrl(action, skill, {
+    ...observedState,
+    currentUrl: observationResult.observation.url || observedState.currentUrl || observedState.lastValidObservation?.url || "",
+  });
 
   if (action.href) {
-    actionResult = await lightpandaSnapshotCurrent({
-      url: action.href,
-      navigate: true,
+    actionResult = await browserClickByHref({
+      currentUrl: observationResult.observation.url || targetUrl,
+      href: action.href,
       waitMs: args.waitMs || "1200",
     });
 
-    clicked = Boolean(actionResult?.ok);
+    clicked = Boolean(actionResult?.ok && actionResult?.status === "success");
 
     steps.push({
       type: "action",
-      tool: "lightpandaSnapshotCurrent",
+      tool: "browserClickByHref",
+      engine: actionResult?.engine || "",
       input: {
-        url: action.href,
-        navigate: true,
+        href: action.href,
       },
       ok: clicked,
       resultPreview: preview(actionResult, 900),
     });
   } else if (action.selector) {
-    const selectorReady = await lightpandaWaitForSelector({
-      url: targetUrl,
+    actionResult = await browserClickBySelector({
+      currentUrl: targetUrl || observationResult.observation.url,
       selector: action.selector,
-      waitMs: args.waitMs || "1800",
+      waitMs: args.waitMs || "1200",
     });
 
+    clicked = Boolean(actionResult?.ok && actionResult?.status === "success");
+
     steps.push({
-      type: "plan",
-      tool: "lightpandaWaitForSelector",
+      type: "action",
+      tool: "browserClickBySelector",
+      engine: actionResult?.engine || "",
       input: {
         url: targetUrl,
         selector: action.selector,
       },
-      ok: Boolean(selectorReady?.ok && selectorReady?.found),
-      resultPreview: preview(selectorReady, 600),
+      ok: clicked,
+      resultPreview: preview(actionResult, 900),
     });
 
-    if (selectorReady?.ok && selectorReady?.found) {
-      actionResult = await lightpandaClickBySelector({
-        url: targetUrl,
-        selector: action.selector,
-        waitMs: args.waitMs || "1200",
-      });
-
-      clicked = Boolean(actionResult?.ok && actionResult?.clicked);
-
-      steps.push({
-        type: "action",
-        tool: "lightpandaClickBySelector",
-        input: {
-          url: targetUrl,
-          selector: action.selector,
-        },
-        ok: clicked,
-        resultPreview: preview(actionResult, 900),
-      });
-    }
-
     if (!clicked) {
-      const byText = await lightpandaClickByText({
-        url: targetUrl,
+      const byText = await browserClickByText({
+        currentUrl: targetUrl || observationResult.observation.url,
         text: action.label,
+        observation: observationResult.observation,
         waitMs: args.waitMs || "1200",
       });
 
-      clicked = Boolean(byText?.ok && byText?.clicked);
+      clicked = Boolean(byText?.ok && byText?.status === "success");
       actionResult = byText;
 
       steps.push({
         type: "retry",
-        tool: "lightpandaClickByText",
+        tool: byText?.matchedElement?.href ? "browserClickByHref" : "browserClickByText",
+        engine: byText?.engine || "",
         input: {
           url: targetUrl,
           text: action.label,
@@ -1091,18 +1273,20 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
       });
     }
   } else {
-    const byText = await lightpandaClickByText({
-      url: targetUrl || observationResult.observation.url,
+    const byText = await browserClickByText({
+      currentUrl: targetUrl || observationResult.observation.url,
       text: action.label,
+      observation: observationResult.observation,
       waitMs: args.waitMs || "1200",
     });
 
-    clicked = Boolean(byText?.ok && byText?.clicked);
+    clicked = Boolean(byText?.ok && byText?.status === "success");
     actionResult = byText;
 
     steps.push({
       type: "action",
-      tool: "lightpandaClickByText",
+      tool: byText?.matchedElement?.href ? "browserClickByHref" : "browserClickByText",
+      engine: byText?.engine || "",
       input: {
         url: targetUrl || observationResult.observation.url,
         text: action.label,
@@ -1113,20 +1297,22 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
   }
 
   const postObservation = observationFromPageResult(actionResult || {});
-  const finalObservation = postObservation.url ? postObservation : observationResult.observation;
+  const finalObservation = isValidObservation(postObservation) ? postObservation : observationResult.observation;
   const finalPageKey = pageKeyForObservation(skill, finalObservation);
-  const updated = updateStateFromObservation(state, finalObservation, extension, finalPageKey);
+  const updated = clicked
+    ? updateStateFromObservation(observedState, finalObservation, extension, finalPageKey)
+    : recordFailedObservation(observedState, postObservation, {
+        error: actionResult?.error || actionResult?.blockedReason || "target_not_clicked",
+        requestedUrl: targetUrl || observationResult.observation.url,
+      });
 
   if (!clicked) {
     return responseBase({
       ok: false,
       status: "failed",
       instruction: args.instruction || "",
-      state: {
-        ...updated,
-        failureCount: Number(updated.failureCount || 0) + 1,
-      },
-      observation: finalObservation,
+      state: updated,
+      observation: null,
       extension,
       pageKey: finalPageKey,
       steps,
@@ -1218,6 +1404,34 @@ async function learn(args = {}) {
   const state = loadState(args.sessionId);
   const observationResult = await observePage(args, state);
   const observation = observationResult.observation;
+
+  if (!observationResult.ok || !isValidObservation(observation)) {
+    const failedState = recordFailedObservation(state, observation, {
+      error: observationResult.error,
+      requestedUrl: observation?.requestedUrl,
+    });
+
+    return responseBase({
+      ok: false,
+      status: observationResult.status || "failed",
+      instruction: args.instruction || "",
+      state: failedState,
+      observation: null,
+      steps: observationResult.raw?.steps || [
+        {
+          type: "observe",
+          tool: "browserObserve",
+          ok: false,
+          error: observationResult.error,
+        },
+      ],
+      summary: "Could not observe a valid page, so I did not learn an action.",
+      possibleNextActions: [],
+      requiresUser: true,
+      blockedReason: observationResult.error || "observation_failed",
+    });
+  }
+
   const extension = extensionFromContext({
     extensionId: args.extensionId,
     observation,
@@ -1357,6 +1571,7 @@ export async function browserAgentStatus(args = {}) {
     sessionId,
     state: loadState(sessionId),
     runtime: browserAgentRuntimeConfig(),
+    browserHealth: await browserHealth({ mode: args.mode || "browser" }),
   };
 }
 
@@ -1381,6 +1596,32 @@ export async function browserAgentRun(args = {}) {
   if (kind === "execute_action") return executeAction(baseArgs, state);
   if (kind === "plan_action") {
     const observationResult = await observePage(baseArgs, state);
+    if (!observationResult.ok || !isValidObservation(observationResult.observation)) {
+      const failedState = recordFailedObservation(state, observationResult.observation, {
+        error: observationResult.error,
+        requestedUrl: observationResult.observation?.requestedUrl,
+      });
+
+      return responseBase({
+        ok: false,
+        status: observationResult.status || "failed",
+        instruction,
+        state: failedState,
+        observation: null,
+        steps: observationResult.raw?.steps || [
+          {
+            type: "observe",
+            tool: "browserObserve",
+            ok: false,
+            error: observationResult.error,
+          },
+        ],
+        summary: "Could not observe the current page, so I could not plan an action.",
+        possibleNextActions: [],
+        requiresUser: true,
+        blockedReason: observationResult.error || "observation_failed",
+      });
+    }
     const extension = extensionFromContext({
       extensionId: args.extensionId,
       observation: observationResult.observation,
@@ -1405,7 +1646,8 @@ export async function browserAgentRun(args = {}) {
       steps: [
         {
           type: "observe",
-          tool: "lightpandaSnapshotCurrent",
+          tool: "browserObserve",
+          engine: observationResult.observation.engine || "",
           ok: true,
           resultPreview: preview(compactObservation(observationResult.observation), 800),
         },

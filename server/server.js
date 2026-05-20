@@ -653,6 +653,24 @@ app.patch("/api/extensions/:id", (req, res) => {
   });
 });
 
+app.post("/api/extensions/:id/enabled", (req, res) => {
+  const enabled = req.body?.enabled !== false;
+  const extension = setExtensionEnabled(req.params.id, enabled);
+
+  if (!extension) {
+    res.status(404).json({
+      ok: false,
+      error: "extension not found",
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    extension,
+  });
+});
+
 app.post("/api/extensions/match", (req, res) => {
   const extension = matchExtensionForUrl(req.body?.url || "");
 
