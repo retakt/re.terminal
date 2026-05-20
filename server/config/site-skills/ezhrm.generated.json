@@ -1,14 +1,14 @@
 {
   "id": "ezhrm",
   "name": "EZHRM Skill",
-  "enabled": true,
+  "enabled": false,
   "version": "0.1.0",
   "source": "ezhrm-skill-recorder",
   "domains": [
     "ezhrmsys.com",
     "www.ezhrmsys.com"
   ],
-  "updatedAt": "2026-05-20T12:02:51.602Z",
+  "updatedAt": "2026-05-20T15:52:42.982Z",
   "rules": [
     "Use only imported EZHRM observations and actions.",
     "Operate round by round.",
@@ -19,7 +19,7 @@
   "pages": {
     "login_page": {
       "key": "login_page",
-      "url": "https://ezhrmsys.com/",
+      "url": "https://ezhrmsys.com",
       "path": "/",
       "title": "Login - HRM",
       "capturedAt": "2026-05-20T07:29:08.823Z",
@@ -140,7 +140,8 @@
         }
       ],
       "links": [],
-      "tables": []
+      "tables": [],
+      "lastObservedAt": "2026-05-20T15:43:12.745Z"
     },
     "attendance_employee": {
       "key": "attendance_employee",
@@ -661,6 +662,26 @@
       "requiresConfirmation": true,
       "observedOnly": true,
       "lastObservedAt": "2026-05-20T07:29:10.248Z"
+    }
+  ],
+  "learnedActions": [
+    {
+      "id": "learned_login_page_fill_form_fields_employee_id_ezgb000121_password_11011011_then_login_or_submit_browser_pag",
+      "label": "fill form fields employee id: ezgb000121 password: 11011011 then login or submit Browser Page: unknown Status: blocked Next tell me what visible / to click ask ",
+      "kind": "button",
+      "domain": "ezhrmsys.com",
+      "pageKey": "login_page",
+      "url": "https://ezhrmsys.com",
+      "title": "Login - HRM",
+      "selector": "",
+      "textPattern": "fill form fields employee id: ezgb000121 password: 11011011 then login or submit Browser Page: unknown Status: blocked Next tell me what visible / to click ask ",
+      "href": "",
+      "requiresConfirmation": true,
+      "source": "browser-agent.learn",
+      "confidence": 0.55,
+      "lastSucceededAt": "2026-05-20T15:43:12.745Z",
+      "successCount": 1,
+      "failureCount": 0
     }
   ]
 }

@@ -1,0 +1,302 @@
+{
+  "sessionId": "a3aeb707-9c6a-494f-b53d-9606b84807c6",
+  "mode": "browser",
+  "currentUrl": "",
+  "currentTitle": "",
+  "currentExtensionId": "",
+  "currentPageKey": "",
+  "lastObservation": null,
+  "lastValidObservation": null,
+  "lastFailedObservation": {
+    "url": "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Faccounts.google.com%2F&dsh=S1981179367%3A1779292400449933&followup=https%3A%2F%2Faccounts.google.com%2F&passive=1209600&flowName=WebLiteSignIn&flowEntry=ServiceLogin&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA",
+    "title": "Sign in - Google Accounts",
+    "textPreview": "Sign in Use your Google Account Email or phone Forgot email? Not your computer? Use a private browsing window to sign in. Learn more about using Guest mode Next Create account Afrikaans azərbaycan bosanski català Čeština Cymraeg Dansk Deutsch eesti English (United Kingdom) English (United States) Español (España) Español (Latinoamérica) euskara Filipino Français (Canada) Français (France) Gaeilge galego Hrvatski Indonesia isiZulu íslenska Italiano Kiswahili latviešu lietuvių magyar Melayu Nederlands norsk o‘zbek polski Português (Brasil) Português (Portugal) română shqip Slovenčina slovenščina srpski (latinica) Suomi Svenska Tiếng Việt Türkçe Ελληνικά беларуская български кыргызча қазақ тілі",
+    "engine": "lightpanda_cdp",
+    "requestedUrl": "https://accounts.google.com/",
+    "error": "",
+    "isLoginPage": true,
+    "forms": [
+      {
+        "index": 0,
+        "action": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=ServiceLogin&flowName=WebLiteSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA",
+        "method": "post",
+        "selector": "",
+        "fields": [
+          {
+            "name": "identifier",
+            "id": "identifierId",
+            "type": "email",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "#identifierId",
+            "secret": false
+          },
+          {
+            "name": "hiddenPassword",
+            "id": "",
+            "type": "password",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "input[name='hiddenPassword']",
+            "secret": true
+          },
+          {
+            "name": "usi",
+            "id": "",
+            "type": "hidden",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "input[name='usi']",
+            "secret": false
+          },
+          {
+            "name": "domain",
+            "id": "",
+            "type": "hidden",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "input[name='domain']",
+            "secret": false
+          },
+          {
+            "name": "region",
+            "id": "",
+            "type": "hidden",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "input[name='region']",
+            "secret": false
+          },
+          {
+            "name": "",
+            "id": "fidoUserHandle",
+            "type": "hidden",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "#fidoUserHandle",
+            "secret": false
+          },
+          {
+            "name": "bgresponse",
+            "id": "bgresponse",
+            "type": "hidden",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "#bgresponse",
+            "secret": false
+          },
+          {
+            "name": "at",
+            "id": "",
+            "type": "hidden",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "input[name='at']",
+            "secret": false
+          }
+        ],
+        "buttons": [
+          {
+            "text": "Next Next action",
+            "type": "",
+            "selector": "#identifierNext"
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "action": "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Faccounts.google.com%2F&dsh=S1981179367%3A1779292400449933&followup=https%3A%2F%2Faccounts.google.com%2F&passive=1209600&flowName=WebLiteSignIn&flowEntry=ServiceLogin&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA",
+        "method": "get",
+        "selector": "",
+        "fields": [
+          {
+            "name": "hl",
+            "id": "",
+            "type": "select",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "select[name='hl']",
+            "secret": false
+          }
+        ],
+        "buttons": []
+      }
+    ],
+    "buttons": [
+      {
+        "text": "Next Next action",
+        "selector": "#identifierNext",
+        "tag": "button",
+        "type": ""
+      }
+    ],
+    "links": [
+      {
+        "text": "Forgot email? Forgot email?",
+        "href": "https://accounts.google.com/signin/usernamerecovery?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=ServiceLogin&flowName=WebLiteSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA",
+        "selector": "a[href='/signin/usernamerecovery?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=ServiceLogin&flowName=WebLiteSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA']"
+      },
+      {
+        "text": "Learn more about using Guest mode Learn more about using Guest mode Learn more about using Guest mode (external, opens in a new window)",
+        "href": "https://support.google.com/accounts?p=signin_privatebrowsing&hl=en-US",
+        "selector": "a[aria-label='Learn more about using Guest mode (external, opens in a new window)']"
+      },
+      {
+        "text": "Create account Create account",
+        "href": "https://accounts.google.com/lifecycle/flows/signup?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=SignUp&flowName=GlifWebSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA",
+        "selector": "a[href='/lifecycle/flows/signup?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=SignUp&flowName=GlifWebSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA']"
+      },
+      {
+        "text": "Help Help",
+        "href": "https://support.google.com/accounts?hl=en-US&p=account_iph",
+        "selector": "a[href='https://support.google.com/accounts?hl=en-US&p=account_iph']"
+      },
+      {
+        "text": "Privacy Privacy",
+        "href": "https://accounts.google.com/TOS?loc=KH&hl=en-US&privacy=true",
+        "selector": "a[href='https://accounts.google.com/TOS?loc=KH&hl=en-US&privacy=true']"
+      },
+      {
+        "text": "Terms Terms",
+        "href": "https://accounts.google.com/TOS?loc=KH&hl=en-US",
+        "selector": "a[href='https://accounts.google.com/TOS?loc=KH&hl=en-US']"
+      }
+    ],
+    "inputs": [
+      {
+        "name": "identifier",
+        "id": "identifierId",
+        "type": "email",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "#identifierId",
+        "secret": false
+      },
+      {
+        "name": "hl",
+        "id": "",
+        "type": "select",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "select[name='hl']",
+        "secret": false
+      }
+    ],
+    "interactiveElements": [
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "Forgot email? Forgot email?",
+        "selector": "a[href='/signin/usernamerecovery?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=ServiceLogin&flowName=WebLiteSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA']",
+        "href": "https://accounts.google.com/signin/usernamerecovery?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=ServiceLogin&flowName=WebLiteSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "Learn more about using Guest mode Learn more about using Guest mode Learn more about using Guest mode (external, opens in a new window)",
+        "selector": "a[aria-label='Learn more about using Guest mode (external, opens in a new window)']",
+        "href": "https://support.google.com/accounts?p=signin_privatebrowsing&hl=en-US",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "Create account Create account",
+        "selector": "a[href='/lifecycle/flows/signup?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=SignUp&flowName=GlifWebSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA']",
+        "href": "https://accounts.google.com/lifecycle/flows/signup?continue=https://accounts.google.com/&dsh=S1981179367:1779292400449933&flowEntry=SignUp&flowName=GlifWebSignIn&followup=https://accounts.google.com/&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "Help Help",
+        "selector": "a[href='https://support.google.com/accounts?hl=en-US&p=account_iph']",
+        "href": "https://support.google.com/accounts?hl=en-US&p=account_iph",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "Privacy Privacy",
+        "selector": "a[href='https://accounts.google.com/TOS?loc=KH&hl=en-US&privacy=true']",
+        "href": "https://accounts.google.com/TOS?loc=KH&hl=en-US&privacy=true",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "a",
+        "text": "Terms Terms",
+        "selector": "a[href='https://accounts.google.com/TOS?loc=KH&hl=en-US']",
+        "href": "https://accounts.google.com/TOS?loc=KH&hl=en-US",
+        "type": ""
+      },
+      {
+        "role": "button",
+        "tag": "button",
+        "text": "Next Next action",
+        "selector": "#identifierNext",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "email",
+        "tag": "input",
+        "text": "Email or phone identifier",
+        "selector": "#identifierId",
+        "href": "",
+        "type": "email"
+      },
+      {
+        "role": "select",
+        "tag": "select",
+        "text": "AfrikaansazərbaycanbosanskicatalàČeštinaCymraegDanskDeutscheestiEnglish (United Kingdom)English (United States)Español (España)Español (Latinoamérica)euskaraFilipinoFrançais (Canad",
+        "selector": "select[name='hl']",
+        "href": "",
+        "type": ""
+      }
+    ],
+    "at": "2026-05-20T15:53:23.754Z",
+    "previousCurrentUrl": ""
+  },
+  "pendingForm": null,
+  "activeEngine": "",
+  "engineFailures": {
+    "static_fetch": {
+      "at": "2026-05-20T15:49:52.094Z",
+      "error": "All configured browser engines failed to produce a valid observation.",
+      "requestedUrl": "https://retakt.cc/login"
+    },
+    "lightpanda_cdp": {
+      "at": "2026-05-20T15:53:23.754Z",
+      "error": "Invalid browser observation.",
+      "requestedUrl": "https://accounts.google.com/"
+    }
+  },
+  "pendingInstruction": "",
+  "pendingAction": null,
+  "lastIntent": "navigate",
+  "lastCommand": {
+    "tool": "browserNavigate",
+    "args": {
+      "url": "https://accounts.google.com/"
+    }
+  },
+  "lastToolResult": {
+    "ok": true,
+    "status": "success",
+    "action": "navigate",
+    "engine": "lightpanda_cdp",
+    "currentUrl": "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Faccounts.google.com%2F&dsh=S1981179367%3A1779292400449933&followup=https%3A%2F%2Faccounts.google.com%2F&passive=1209600&flowName=WebLiteSignIn&flowEntry=ServiceLogin&ifkv=AWa2Patv9zRneLsyQZe1SVp_gr3opyAP-gRBzhCO0DZ1pFE6nU6zQr3RZCvWaONoyXWhmgsXgBNRbA",
+    "currentTitle": "Sign in - Google Accounts",
+    "error": "",
+    "filledFields": [],
+    "missingFields": [],
+    "submitStatus": ""
+  },
+  "visited": [],
+  "learnedAliases": [],
+  "lastToolResults": [],
+  "failureCount": 5,
+  "updatedAt": "2026-05-20T15:53:23.754Z"
+}

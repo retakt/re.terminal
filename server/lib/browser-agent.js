@@ -212,6 +212,13 @@ function safeText(value, limit = 240) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
+function redactInstructionSecrets(value = "") {
+  return String(value || "").replace(
+    /\b(password|pass|pwd|otp|code|pin)\b\s*(?:is\s+|[:=]\s*|\s+)(?:"[^"]*"|'[^']*'|[^\s,;]+)/ig,
+    (match, label) => `${label}: [redacted]`
+  );
+}
+
 function preview(value, limit = 1200) {
   const text = typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
   return text.length > limit ? `${text.slice(0, limit)}\n...[truncated]` : text;
@@ -684,8 +691,9 @@ function compactObservation(observation = {}) {
   };
 }
 
-function safePossibleNextActions(extension = null, skill = null) {
+function safePossibleNextActions(extension = null, skill = null, observation = null) {
   if (!extension || !skill) return [];
+  if (observation?.isLoginPage) return [];
   return actionsForSkill(skill)
     .filter((action) => !isProtectedSuggestion(action))
     .slice(0, 10)
@@ -768,7 +776,7 @@ function responseBase({
   return {
     ok,
     status,
-    instruction,
+    instruction: redactInstructionSecrets(instruction),
     currentUrl: observationIsValid ? observation.url : state?.currentUrl || state?.lastValidObservation?.url || "",
     currentTitle: observationIsValid ? observation.title || state?.currentTitle || "" : state?.currentTitle || state?.lastValidObservation?.title || "",
     extensionId: observationIsValid ? (extension?.id || state?.currentExtensionId || "") : state?.currentExtensionId || "",
@@ -920,19 +928,54 @@ function stepsFromWatcherResult(watcher = {}, result = {}, command = {}) {
   ];
 }
 
-function splitSequentialInstructions(instruction = "") {
-  const raw = String(instruction || "").trim();
-  if (!raw) return [];
+function looksLikeFormSubmitInstruction(value = "") {
+  const raw = String(value || "");
+  return /\b(fill|enter|type)\b[\s\S]*\b(employee\s*id|employee_id|emp\s*id|staff\s*id|user\s*id|username|login\s*id|email|phone|mobile|password|pass|pwd|otp|code|pin|search|query|name|date|amount)\b/i.test(raw) &&
+    /\b(submit|login|log\s*in|sign\s*in)\b/i.test(raw);
+}
 
-  const lineParts = raw
+function looksLikeFormBlockStart(value = "") {
+  const raw = String(value || "");
+  return /\b(fill|enter|type)\b[\s\S]*\b(form|forms|field|fields|details|login)\b/i.test(raw) ||
+    /\b(employee\s*id|employee_id|emp\s*id|staff\s*id|user\s*id|username|login\s*id|email|phone|mobile|password|pass|pwd|otp|code|pin|search|query|name|date|amount)\b\s*(?::|=|\bis\b|\s+)/i.test(raw);
+}
+
+function splitLineParts(instruction = "") {
+  return String(instruction || "")
     .replace(/\r/g, "\n")
     .split(/\n+/)
     .flatMap((line) => line.split(/\s+(?:and\s+then|then)\s+/i))
     .flatMap((line) => line.split(/\s*;\s*/))
     .map((part) => part.replace(/^\s*(?:\d+[\).:-]\s*|[-*]\s*)/, "").trim())
     .filter(Boolean);
+}
+
+function splitSequentialInstructions(instruction = "") {
+  const raw = String(instruction || "").trim();
+  if (!raw) return [];
+
+  if (looksLikeFormSubmitInstruction(raw) && !extractUrl(raw)) return [];
+
+  const lineParts = splitLineParts(raw);
 
   if (lineParts.length < 2) return [];
+
+  const firstFormIndex = lineParts.findIndex((part, index) => {
+    const tail = lineParts.slice(index).join("\n");
+    return looksLikeFormBlockStart(part) && looksLikeFormSubmitInstruction(tail);
+  });
+
+  if (firstFormIndex > 0) {
+    const beforeForm = lineParts.slice(0, firstFormIndex);
+    const formBlock = lineParts.slice(firstFormIndex).join("\n");
+    const beforeActionable = beforeForm.filter((part) =>
+      /\b(navigate|visit|open|go|goto|load|observe|inspect|read|scrape|extract|what|which|show|list|click|press|tap|select|choose)\b/i.test(part) ||
+      extractUrl(part)
+    );
+    if (beforeActionable.length && looksLikeFormSubmitInstruction(formBlock)) {
+      return [...beforeActionable, formBlock];
+    }
+  }
 
   const actionable = lineParts.filter((part) =>
     /\b(navigate|visit|open|go|goto|load|click|press|tap|select|choose|fill|enter|type|submit|login|sign\s*in|observe|inspect|read|scrape|extract|what|which|show|list)\b/i.test(part) ||
@@ -960,7 +1003,7 @@ async function browserAgentRunSequence(args = {}, sequence = []) {
 
     results.push({
       index: index + 1,
-      instruction: stepInstruction,
+      instruction: redactInstructionSecrets(stepInstruction),
       ok: Boolean(stepResult.ok),
       status: stepResult.status || "",
       summary: stepResult.summary || "",
@@ -974,7 +1017,7 @@ async function browserAgentRunSequence(args = {}, sequence = []) {
     if (!stepResult.ok || stepResult.status === "needs_user" || stepResult.status === "blocked") {
       return {
         ...stepResult,
-        instruction: args.instruction || sequence.join(" then "),
+        instruction: redactInstructionSecrets(args.instruction || sequence.join(" then ")),
         status: stepResult.status || "failed",
         summary: `Completed ${index} of ${sequence.length} browser steps. Stopped at step ${index + 1}: ${stepResult.summary || stepResult.blockedReason || "step did not complete"}.`,
         sequence: {
@@ -990,7 +1033,7 @@ async function browserAgentRunSequence(args = {}, sequence = []) {
 
   return {
     ...(last || {}),
-    instruction: args.instruction || sequence.join(" then "),
+    instruction: redactInstructionSecrets(args.instruction || sequence.join(" then ")),
     ok: Boolean(last?.ok),
     status: last?.status || "success",
     summary: `Completed ${sequence.length} of ${sequence.length} browser steps. ${last?.summary || ""}`.trim(),
@@ -1109,7 +1152,7 @@ async function observe(args = {}) {
     summary: observationResult.observation.url
       ? `Observed ${observationResult.observation.url} with ${observationResult.observation.engine || "browser engine"}.`
       : "Observed the current browser page.",
-    possibleNextActions: safePossibleNextActions(observationResult.extension, skill),
+    possibleNextActions: safePossibleNextActions(observationResult.extension, skill, observationResult.observation),
     requiresUser: true,
   });
 }
@@ -1426,7 +1469,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
         pageKey,
         steps,
         summary: "Blocked dangerous action \"" + (action.label || action.id || "action") + "\".",
-        possibleNextActions: safePossibleNextActions(extension, skill),
+        possibleNextActions: safePossibleNextActions(extension, skill, observationResult.observation),
         requiresUser: true,
         blockedReason: "Exact confirmation required: " + requiredPhrase,
       });
@@ -1569,7 +1612,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
       pageKey: finalPageKey,
       steps,
       summary: "I could not execute \"" + (action.label || action.id || "action") + "\". The target was not found or did not click successfully.",
-      possibleNextActions: safePossibleNextActions(extension, skill),
+      possibleNextActions: safePossibleNextActions(extension, skill, finalObservation),
       requiresUser: true,
       blockedReason: "target_not_clicked",
     });
@@ -1585,7 +1628,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
     pageKey: finalPageKey,
     steps,
     summary: "Executed \"" + (action.label || action.id || "action") + "\".",
-    possibleNextActions: safePossibleNextActions(extension, skill),
+    possibleNextActions: safePossibleNextActions(extension, skill, finalObservation),
     requiresUser: true,
   });
 }
@@ -1923,12 +1966,13 @@ export async function browserAgentRun(args = {}) {
   const redactedWatcher = {
     ...watcher,
     command: redactCommand(watcher.command),
+    normalizedInstruction: redactInstructionSecrets(watcher.normalizedInstruction || ""),
   };
 
   if (watcher.needsUser || !watcher.command) {
     const waitingState = saveState({
       ...state,
-      pendingInstruction: instruction,
+      pendingInstruction: redactInstructionSecrets(instruction),
       pendingAction: redactedWatcher,
       lastIntent: watcher.intent || "",
       lastCommand: redactCommand(watcher.command),
@@ -1980,7 +2024,7 @@ export async function browserAgentRun(args = {}) {
     const failedState = result?.status === "needs_user"
       ? saveState({
           ...state,
-          pendingInstruction: instruction,
+          pendingInstruction: redactInstructionSecrets(instruction),
           pendingAction: redactedWatcher,
           lastIntent: watcher.intent,
           lastCommand: redactCommand(command),
@@ -2002,7 +2046,7 @@ export async function browserAgentRun(args = {}) {
       status: result?.status === "needs_user" || verification.needsUser ? "needs_user" : "failed",
       instruction,
       state: failedState,
-      observation: null,
+      observation: isValidObservation(observation) ? observation : null,
       steps: stepsFromWatcherResult(redactedWatcher, result, command),
       summary: result?.status === "needs_user"
         ? (result.error || watcher.reason || "The browser needs more input before acting.")
@@ -2044,10 +2088,11 @@ export async function browserAgentRun(args = {}) {
       compactToolResult(result, command),
     ].slice(-20),
   });
-  const possibleNextActions = extension && skill ? safePossibleNextActions(extension, skill) : [];
+  const possibleNextActions = extension && skill ? safePossibleNextActions(extension, skill, observation) : [];
   const filledFields = filledFieldsFromResult(result, command);
   const missingFields = missingFieldsFromResult(result);
   const submitStatus = submitStatusFromResult(result);
+  const accessDenied = /\baccess denied\b/i.test(`${observation.url || ""} ${observation.title || ""} ${observation.textPreview || ""}`);
 
   return responseBase({
     ok: true,
@@ -2058,7 +2103,9 @@ export async function browserAgentRun(args = {}) {
     extension,
     pageKey,
     steps: stepsFromWatcherResult(redactedWatcher, result, command),
-    summary: watcher.intent === "fill_form"
+    summary: accessDenied
+      ? "Submitted the form, but the site returned Access Denied for this browser/IP/location."
+      : watcher.intent === "fill_form"
       ? "Filled the requested field values without submitting."
       : watcher.intent === "fill_and_submit"
         ? "Filled the requested field values and submitted the form."
@@ -2075,7 +2122,9 @@ export async function browserAgentRun(args = {}) {
     filledFields,
     missingFields,
     submitStatus,
-    nextSafeAction: missingFields.length
+    nextSafeAction: accessDenied
+      ? "Use an authorized network/IP or ask the site admin to whitelist this browser location."
+      : missingFields.length
       ? `Provide a value for ${missingFields[0]}.`
       : possibleNextActions[0]?.label || "Tell me the next visible button/link to click, fields to fill, or page to read.",
   });

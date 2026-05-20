@@ -471,7 +471,7 @@ function formatBrowserAgentDirectResponse(payload: any) {
   const observation = observationFromBrowserAgent(payload);
   const currentUrl = cleanOneLine(payload?.currentUrl || observation?.url || "unknown", 260);
   const currentTitle = cleanOneLine(payload?.currentTitle || observation?.title || "untitled", 180);
-  const summary = cleanOneLine(payload?.summary || "", 700);
+  const summary = cleanOneLine(payload?.summary || "", 360);
   const status = cleanOneLine(payload?.status || "", 80);
   const engine = cleanOneLine(payload?.engine || observation?.engine || "", 80);
   const observationFailed = !observation && /failed|needs_engine_fallback/i.test(status || payload?.blockedReason || payload?.error || "");
@@ -495,31 +495,23 @@ function formatBrowserAgentDirectResponse(payload: any) {
   ];
 
   const lines: string[] = [];
-  lines.push("**current url/title:** " + currentUrl + " — " + currentTitle);
-  if (status || engine) {
-    lines.push("**browser status/engine:** " + [status, engine].filter(Boolean).join(" — "));
-  }
+  const pageLabel = currentTitle && currentTitle !== "untitled" ? currentTitle : currentUrl;
+  const pageText = /^https?:\/\//i.test(currentUrl) ? `[${pageLabel}](${currentUrl})` : pageLabel;
+  const statusText = payload?.ok === false
+    ? (status === "needs_user" ? "needs input" : "blocked")
+    : "done";
 
-  if (payload?.watcher?.intent || payload?.watcher?.expectedTool) {
-    lines.push("**agent decision:** " + [
-      payload?.watcher?.intent ? "intent " + cleanOneLine(payload.watcher.intent, 80) : "",
-      payload?.watcher?.expectedTool ? "tool " + cleanOneLine(payload.watcher.expectedTool, 120) : "",
-      payload?.watcher?.reason ? cleanOneLine(payload.watcher.reason, 220) : "",
-    ].filter(Boolean).join(" — "));
-  }
-
-  if (summary) {
-    lines.push("");
-    lines.push("**what happened:** " + summary);
-  }
+  lines.push("**Browser**");
+  lines.push("- Page: " + pageText);
+  lines.push("- Status: " + statusText + (engine ? " (" + engine + ")" : ""));
+  if (summary) lines.push("- Action: " + summary);
 
   const filledFields = Array.isArray(payload?.filledFields) ? payload.filledFields : [];
   const missingFields = Array.isArray(payload?.missingFields) ? payload.missingFields : [];
   const submitStatus = cleanOneLine(payload?.submitStatus || "", 240);
 
   if (filledFields.length) {
-    lines.push("");
-    lines.push("**filled fields:** " + filledFields
+    lines.push("- Filled: " + filledFields
       .map((field: any) => {
         const label = cleanOneLine(field?.label || field?.key || field?.name || "field", 120);
         const value = field?.secret ? "[redacted]" : cleanOneLine(field?.value || field?.valuePreview || "", 120);
@@ -530,46 +522,42 @@ function formatBrowserAgentDirectResponse(payload: any) {
   }
 
   if (missingFields.length) {
-    lines.push("");
-    lines.push("**missing fields:** " + missingFields.map((field: any) => cleanOneLine(field, 120)).filter(Boolean).join(", "));
+    lines.push("- Missing: " + missingFields.map((field: any) => cleanOneLine(field, 120)).filter(Boolean).join(", "));
   }
 
   if (submitStatus) {
-    lines.push("");
-    lines.push("**submit status:** " + submitStatus);
+    lines.push("- Submit: " + submitStatus);
   }
 
   const sequenceItems = Array.isArray(payload?.sequence?.items) ? payload.sequence.items : [];
   if (sequenceItems.length) {
     lines.push("");
-    lines.push("**step-by-step:**");
-    sequenceItems.forEach((item: any) => {
+    lines.push("**Steps**");
+    sequenceItems.slice(0, 6).forEach((item: any) => {
       const index = cleanOneLine(item?.index || "", 20);
       const marker = item?.ok ? "done" : "stopped";
       const instruction = cleanOneLine(item?.instruction || "", 180);
-      const stepSummary = cleanOneLine(item?.summary || item?.blockedReason || item?.status || "", 240);
-      lines.push(`${index}. ${marker}: ${instruction}${stepSummary ? " — " + stepSummary : ""}`);
+      const stepSummary = cleanOneLine(item?.summary || item?.blockedReason || item?.status || "", 180);
+      lines.push(`${index}. ${marker}: ${instruction}${stepSummary ? " - " + stepSummary : ""}`);
     });
+    if (sequenceItems.length > 6) lines.push(`${sequenceItems.length - 6} more step(s) hidden.`);
   }
 
   if (payload?.blockedReason || payload?.error) {
     lines.push("");
-    lines.push("**blocked/error:** " + cleanOneLine(payload.blockedReason || payload.error, 700));
+    lines.push("**Blocked**");
+    lines.push(cleanOneLine(payload.blockedReason || payload.error, 420));
   }
 
   if (payload?.diagnostics?.diagnosis) {
-    const evidence = Array.isArray(payload.diagnostics.evidence) ? payload.diagnostics.evidence : [];
     const fixes = Array.isArray(payload.diagnostics.suggestedFixes) ? payload.diagnostics.suggestedFixes : [];
     lines.push("");
-    lines.push("**diagnosis:** " + cleanOneLine(payload.diagnostics.diagnosis, 700));
-    if (evidence.length) {
-      lines.push("**evidence:** " + evidence.map((item: any) => cleanOneLine(item, 220)).filter(Boolean).slice(0, 4).join(" | "));
-    }
+    lines.push("**Why**");
+    lines.push(cleanOneLine(payload.diagnostics.diagnosis, 420));
     if (fixes.length) {
-      lines.push("");
-      lines.push("**suggested fixes:**");
-      fixes.slice(0, 4).forEach((item: any, index: number) => {
-        lines.push(String(index + 1) + ". " + cleanOneLine(item, 260));
+      lines.push("**Try**");
+      fixes.slice(0, 2).forEach((item: any, index: number) => {
+        lines.push(String(index + 1) + ". " + cleanOneLine(item, 220));
       });
     }
   }
@@ -577,14 +565,12 @@ function formatBrowserAgentDirectResponse(payload: any) {
   if (!observation && (payload?.lastFailedObservation || payload?.engineFailures)) {
     const failed = payload.lastFailedObservation;
     const failedEngine = cleanOneLine(failed?.engine || Object.keys(payload.engineFailures || {}).slice(-1)[0] || "", 80);
-    const failedError = cleanOneLine(failed?.error || payload?.blockedReason || payload?.error || "browser observation failed", 700);
-    lines.push("");
-    lines.push("**observation failure:** " + [failedEngine, failedError].filter(Boolean).join(" — "));
-  }
-
-  if (observation?.textPreview || observation?.text) {
-    lines.push("");
-    lines.push("**page text preview:** " + cleanOneLine(observation.textPreview || observation.text, 900));
+    const failedError = cleanOneLine(failed?.error || payload?.blockedReason || payload?.error || "browser observation failed", 360);
+    if (!payload?.diagnostics?.diagnosis) {
+      lines.push("");
+      lines.push("**Why**");
+      lines.push([failedEngine, failedError].filter(Boolean).join(" - "));
+    }
   }
 
   const buttonLabels = listObservedLabels(buttons, 10);
@@ -598,16 +584,23 @@ function formatBrowserAgentDirectResponse(payload: any) {
     .filter(Boolean)
     .slice(0, 10);
 
-  lines.push("");
-  lines.push("**forms/buttons/links actually observed on this page:**");
+  const hasObservedControls = Boolean(forms.length || inputLabels.length || buttonLabels.length || linkLabels.length);
+  const previewText = cleanOneLine(observation?.textPreview || observation?.text || "", 280);
 
-  if (forms.length) lines.push("- forms: " + forms.length);
-  if (inputLabels.length) lines.push("- inputs: " + inputLabels.join(", "));
-  if (buttonLabels.length) lines.push("- buttons: " + buttonLabels.join(", "));
-  if (linkLabels.length) lines.push("- links: " + linkLabels.join(", "));
+  if (hasObservedControls || previewText) {
+    lines.push("");
+    lines.push("**On Page**");
+    if (forms.length) lines.push("- Forms: " + forms.length);
+    if (inputLabels.length) lines.push("- Inputs: " + inputLabels.join(", "));
+    if (buttonLabels.length) lines.push("- Buttons: " + buttonLabels.join(", "));
+    if (linkLabels.length) lines.push("- Links: " + linkLabels.join(", "));
+    if (!hasObservedControls && previewText) lines.push("- Text: " + previewText);
+  }
 
-  if (!forms.length && !inputLabels.length && !buttonLabels.length && !linkLabels.length) {
-    lines.push("- none clearly detected");
+  if (!hasObservedControls && !previewText && (status === "failed" || status === "needs_user")) {
+    lines.push("");
+    lines.push("**On Page**");
+    lines.push("- No visible controls were detected.");
   }
 
   const safeAgentActions = Array.isArray(payload?.possibleNextActions) && payload?.extensionId
@@ -617,13 +610,12 @@ function formatBrowserAgentDirectResponse(payload: any) {
         .slice(0, 8)
     : [];
 
-  lines.push("");
-  lines.push("**possible next actions:**");
-
   const nextSafeAction = cleanOneLine(payload?.nextSafeAction || "", 300);
 
+  lines.push("");
+  lines.push("**Next**");
   if (nextSafeAction) {
-    lines.push("1. " + nextSafeAction);
+    lines.push(nextSafeAction);
   } else if (observationFailed) {
     lines.push("1. start or check Lightpanda CDP/native MCP on the server");
     lines.push("2. set BROWSER_AGENT_ENGINE_PRIORITY=lightpanda_cdp,static_fetch for a VPS without Chrome");
@@ -637,13 +629,6 @@ function formatBrowserAgentDirectResponse(payload: any) {
     lines.push("2. ask me to scrape the current page");
     lines.push("3. give me another URL to navigate");
     lines.push("4. tell me what to learn from this page");
-  }
-
-  lines.push("");
-  if (payload?.requiresUser || payload?.status === "needs_user" || payload?.status === "blocked") {
-    lines.push("I need your next instruction before acting again.");
-  } else {
-    lines.push("What would you like to do next?");
   }
 
   return lines.join("\n");
