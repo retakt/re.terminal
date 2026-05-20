@@ -13,7 +13,9 @@ import {
 } from "./memory-client.js";
 import {
   getLightpandaConfig,
+  lightpandaAction,
   lightpandaFetch,
+  lightpandaInstantScrape,
   lightpandaNavigate,
   lightpandaStatus,
   openHeadfulBrowser,
@@ -601,6 +603,40 @@ const builtinServers = [
         execute: (args) => lightpandaFetch(args),
       },
       {
+        name: "lightpanda_action",
+        description: "Guided browser action. Use one action per round: snapshot, fill, click, or submit. For submit with password fields, confirm=true is required.",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string" },
+            action: { type: "string", description: "snapshot | fill | click | submit" },
+            fields: { type: "array", description: "Fields to fill: [{selector,name,id,label,placeholder,type,value}]" },
+            selector: { type: "string" },
+            text: { type: "string" },
+            buttonText: { type: "string" },
+            formSelector: { type: "string" },
+            formIndex: { type: "string" },
+            waitMs: { type: "string" },
+            confirm: { type: "boolean" },
+          },
+        },
+        execute: (args) => lightpandaAction(args),
+      },
+      {
+        name: "instant_scrape",
+        description: "Instant scraper. Visit a URL and extract tables, repeated card/list groups, links, and a text preview. Use in scraper mode.",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string" },
+            waitMs: { type: "string" },
+          },
+        },
+        execute: (args) => lightpandaInstantScrape(args),
+      },
+      {
         name: "browser_open_headful",
         description: "Open a real Chrome window connected to the shared CDP port for user-visible browsing.",
         inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string" } } },
@@ -789,12 +825,13 @@ function containerNameCandidate(text) {
   return "";
 }
 
-function useTools(candidates, reason, risk = "low") {
+function useTools(candidates, reason, risk = "low", confidence = 0.9) {
   return {
     answer_directly: false,
     must_call_tools: true,
     tool_candidates: candidates,
     risk,
+    confidence,
     reason,
   };
 }
@@ -818,104 +855,348 @@ export function routeMcpIntent(text = "", options = {}) {
   const raw = String(text || "");
   const lower = raw.toLowerCase();
   const projectId = String(options.projectId || "default-user");
+  const mode = String(options.mode || "auto").toLowerCase();
   const pathArg = pathCandidate(raw);
+
   const result = {
     answer_directly: true,
     must_call_tools: false,
     tool_candidates: [],
     risk: "low",
+    confidence: 0,
     reason: "direct answer is acceptable",
   };
-  const use = (name, args = {}, reason = "matched fuzzy MCP intent", risk = "low") => useTools([{ name, arguments: args }], reason, risk);
+
+  const use = (name, args = {}, reason = "matched fuzzy MCP intent", risk = "low", confidence = 0.9) =>
+    useTools([{ name, arguments: args }], reason, risk, confidence);
 
   if (isCasualNoTool(raw)) return result;
 
   const browserTarget = extractBrowserTarget(raw);
-  if ((/\b(lightpanda|browser|open page|open url|visit|navigate|extract page|read webpage|webpage|browse)\b/.test(lower) && browserTarget) || /^https?:\/\//i.test(browserTarget)) {
-    return use("mcp__browser__lightpanda_navigate", {
-      url: browserTarget,
-    }, "browser/page navigation requires Lightpanda MCP");
+
+  // ── Browser / Lightpanda routing ────────────────────────────────────────────
+  // Important: status checks do NOT require a URL.
+  if (/\b(lightpanda|light panda|browser|cdp|headless browser|chrome)\b/.test(lower)) {
+    if (/\b(status|health|ready|running|check|up|down|available)\b/.test(lower)) {
+      return use(
+        "mcp__browser__lightpanda_status",
+        {},
+        "Lightpanda/browser status requires browser MCP",
+        "low",
+        0.98
+      );
+    }
+
+    if (browserTarget && /\b(open|visit|navigate|extract|read|browse|page|url|scrape)\b/.test(lower)) {
+      if (mode === "scraper" || /\b(scrape|scraper|extract data|extract table|extract cards)\b/.test(lower)) {
+        return use(
+          "mcp__browser__instant_scrape",
+          { url: browserTarget },
+          "scraper request uses the instant scraper browser tool",
+          "low",
+          0.96
+        );
+      }
+
+      return use(
+        "mcp__browser__lightpanda_navigate",
+        { url: browserTarget },
+        "browser/page navigation requires Lightpanda MCP",
+        "low",
+        0.95
+      );
+    }
   }
 
-  if (/\b(search|look up|lookup|browse|web|google|find latest|latest news|current news|news|right now on the web)\b/.test(lower)) {
-    return use("mcp__web__search", { query: raw.slice(0, 240), limit: "5" }, "explicit current/web request requires web MCP");
+  // Browser/scraper modes: URLs should go to browser tools, not web search.
+  if (browserTarget && mode === "scraper") {
+    return use(
+      "mcp__browser__instant_scrape",
+      { url: browserTarget },
+      "scraper mode uses instant scraper",
+      "low",
+      0.96
+    );
   }
 
+  if (browserTarget && mode === "browser") {
+    return use(
+      "mcp__browser__lightpanda_navigate",
+      { url: browserTarget },
+      "browser mode uses Lightpanda navigation",
+      "low",
+      0.96
+    );
+  }
+
+  // In normal/auto mode, do not use local MCP unless the intent is explicit.
+  // This prevents random MCP calls from ordinary chat.
+  const mcpAllowedMode = mode === "dev" || mode === "browser" || mode === "scraper";
+  const explicitLocalOps =
+    /\b(docker|container|containers|ollama|chat-api|chat api|llm api|monitor|cold start|cold-start|memory|graphiti|falkor|falkordb|repo|repository|git|branch|commit|diff|file|folder|directory|workspace|lightpanda|light panda|browser)\b/.test(lower);
+
+  if (!mcpAllowedMode && !explicitLocalOps) {
+    return result;
+  }
+
+  // ── Web search ──────────────────────────────────────────────────────────────
+  if (/\b(search|look up|lookup|google|find latest|latest news|current news|news|right now on the web)\b/.test(lower)) {
+    return use(
+      "mcp__web__search",
+      { query: raw.slice(0, 240), limit: "5" },
+      "explicit current/web request requires web MCP",
+      "low",
+      0.9
+    );
+  }
+
+  // ── Docker / services ───────────────────────────────────────────────────────
   if (/\b(docker|container|containers|image|images|volume|volumes)\b/.test(lower)) {
     if (/\b(disk|space|usage|size|df|volume|volumes|image|images|storage|full)\b/.test(lower)) {
-      return use("mcp__ops__local_docker_disk_usage", {}, "Docker disk usage requires local Docker MCP");
+      return use(
+        "mcp__ops__local_docker_disk_usage",
+        {},
+        "Docker disk usage requires local Docker MCP",
+        "low",
+        0.95
+      );
     }
+
     if (/\b(ps|list|containers?|running|unhealthy)\b/.test(lower)) {
-      return use("mcp__ops__local_docker_containers", {}, "Docker container status requires local Docker MCP");
+      return use(
+        "mcp__ops__local_docker_containers",
+        {},
+        "Docker container status requires local Docker MCP",
+        "low",
+        0.95
+      );
     }
-    return use("mcp__ops__local_docker_status", {}, "Docker status requires local Docker MCP");
+
+    return use(
+      "mcp__ops__local_docker_status",
+      {},
+      "Docker status requires local Docker MCP",
+      "low",
+      0.92
+    );
   }
 
   if (/\b(worker|service|pm2|process|backend|frontend|api)\b/.test(lower) && /\b(status|logs?|running|health|check|tail)\b/.test(lower)) {
     const name = containerNameCandidate(raw);
+
     if (/\b(log|logs|tail)\b/.test(lower) && name) {
-      return use("mcp__ops__local_docker_logs", { name, tail: "120" }, "named service logs require Docker logs MCP");
+      return use(
+        "mcp__ops__local_docker_logs",
+        { name, tail: "120" },
+        "named service logs require Docker logs MCP",
+        "low",
+        0.92
+      );
     }
-    return use("mcp__ops__local_docker_container_status", name ? { name } : {}, "named service status requires Docker container MCP");
+
+    return use(
+      "mcp__ops__local_docker_container_status",
+      name ? { name } : {},
+      "named service status requires Docker container MCP",
+      "low",
+      0.9
+    );
   }
 
+  // ── Ollama / model API ──────────────────────────────────────────────────────
   if (/\b(ollama|model|models|chat-api|chat api|llm api|api health|api probe)\b/.test(lower)) {
-    if (/\b(model|models|tags|available)\b/.test(lower)) return use("mcp__ops__ollama_models", {}, "Ollama model listing requires Ollama MCP");
-    if (/\b(probe|chat|generate|completion)\b/.test(lower)) return use("mcp__ops__ollama_chat_probe", {}, "Ollama chat probe requires Ollama MCP");
-    return use("mcp__ops__ollama_health", {}, "Ollama health check requires Ollama MCP");
+    if (/\b(model|models|tags|available)\b/.test(lower)) {
+      return use(
+        "mcp__ops__ollama_models",
+        {},
+        "Ollama model listing requires Ollama MCP",
+        "low",
+        0.95
+      );
+    }
+
+    if (/\b(probe|chat|generate|completion)\b/.test(lower)) {
+      return use(
+        "mcp__ops__ollama_chat_probe",
+        {},
+        "Ollama chat probe requires Ollama MCP",
+        "low",
+        0.9
+      );
+    }
+
+    return use(
+      "mcp__ops__ollama_health",
+      {},
+      "Ollama health check requires Ollama MCP",
+      "low",
+      0.92
+    );
   }
 
+  // ── Monitor ─────────────────────────────────────────────────────────────────
   if (/\b(cold start|cold-start|pinger|ping monitor|monitor|health check|health-check)\b/.test(lower)) {
-    if (/\b(log|logs|recent|tail)\b/.test(lower)) return use("mcp__ops__monitor_recent_logs", {}, "monitor logs require monitor MCP");
-    if (/\b(run|check|health)\b/.test(lower)) return use("mcp__ops__monitor_health_check", {}, "monitor health check requires monitor MCP");
-    return use("mcp__ops__monitor_status", {}, "monitor status requires monitor MCP");
+    if (/\b(log|logs|recent|tail)\b/.test(lower)) {
+      return use(
+        "mcp__ops__monitor_recent_logs",
+        {},
+        "monitor logs require monitor MCP",
+        "low",
+        0.92
+      );
+    }
+
+    if (/\b(run|check|health)\b/.test(lower)) {
+      return use(
+        "mcp__ops__monitor_health_check",
+        {},
+        "monitor health check requires monitor MCP",
+        "low",
+        0.9
+      );
+    }
+
+    return use(
+      "mcp__ops__monitor_status",
+      {},
+      "monitor status requires monitor MCP",
+      "low",
+      0.9
+    );
   }
 
   if (/\b(vps|remote server)\b/.test(lower)) {
-    return use("mcp__ops__ollama_health", {}, "VPS agent is disabled; checking configured APIs locally instead", "medium");
+    return use(
+      "mcp__ops__ollama_health",
+      {},
+      "VPS agent is disabled; checking configured APIs locally instead",
+      "medium",
+      0.75
+    );
   }
 
+  // ── File tools ──────────────────────────────────────────────────────────────
   if (/\b(create|write|save|overwrite)\b.*\bfile\b|\bmake\b.*\bfile\b/.test(lower)) {
-    return use("mcp__local__write_text_file", {
-      path: pathArg || "mcp-test.txt",
-      content: options.content || "Created by MCP write_text_file.\n",
-    }, "file creation/write requires the scoped filesystem write tool", "medium");
+    return use(
+      "mcp__local__write_text_file",
+      {
+        path: pathArg || "mcp-test.txt",
+        content: options.content || "Created by MCP write_text_file.\n",
+      },
+      "file creation/write requires the scoped filesystem write tool",
+      "medium",
+      0.9
+    );
   }
 
   if (/\b(edit|change|update|patch|replace)\b.*\bfile\b|\breplace\b/.test(lower)) {
     const replacement = replacementCandidate(raw);
-    return use("mcp__local__replace_in_file", {
-      path: pathArg || "mcp-test.txt",
-      find: options.find || replacement.find,
-      replace: options.replace || replacement.replace,
-    }, "file edits require the scoped filesystem replace tool", "medium");
+
+    return use(
+      "mcp__local__replace_in_file",
+      {
+        path: pathArg || "mcp-test.txt",
+        find: options.find || replacement.find,
+        replace: options.replace || replacement.replace,
+      },
+      "file edits require the scoped filesystem replace tool",
+      "medium",
+      0.9
+    );
   }
 
   if (/\b(read|open|show|cat|view|peek)\b.*\bfile\b/.test(lower)) {
-    return use("mcp__local__read_text_file", { path: pathArg || "" }, "file reads require the scoped filesystem read tool");
+    return use(
+      "mcp__local__read_text_file",
+      { path: pathArg || "" },
+      "file reads require the scoped filesystem read tool",
+      "low",
+      0.9
+    );
   }
 
   if (/\b(list|show|open)\b.*\b(files|folder|directory|workspace)\b/.test(lower)) {
-    return use("mcp__local__list_directory", { path: pathArg || "." }, "directory listing requires the scoped filesystem list tool");
+    return use(
+      "mcp__local__list_directory",
+      { path: pathArg || "." },
+      "directory listing requires the scoped filesystem list tool",
+      "low",
+      0.9
+    );
   }
 
   if (/\b(find|search)\b.*\b(file|folder|directory)\b/.test(lower)) {
-    return use("mcp__local__search_files", { query: firstQuoted(raw) || raw.slice(0, 80), path: "." }, "file discovery requires the scoped filesystem search tool");
+    return use(
+      "mcp__local__search_files",
+      { query: firstQuoted(raw) || raw.slice(0, 80), path: "." },
+      "file discovery requires the scoped filesystem search tool",
+      "low",
+      0.9
+    );
   }
 
-  if (/\b(repo|git|commit|diff|branch|status)\b/.test(lower)) {
-    if (/\b(diff|changed|changes)\b/.test(lower)) return use("mcp__git__diff_summary", {}, "repo change questions require git diff");
-    if (/\b(commit|history|log)\b/.test(lower)) return use("mcp__git__recent_commits", { limit: "8" }, "repo history questions require git log");
-    return use("mcp__git__status", {}, "repo status questions require git status");
+  // ── Git routing ─────────────────────────────────────────────────────────────
+  // Important: plain "status" must NOT trigger git.
+  if (/\b(repo|repository|git|commit|diff|branch)\b/.test(lower)) {
+    if (/\b(diff|changed|changes)\b/.test(lower)) {
+      return use(
+        "mcp__git__diff_summary",
+        {},
+        "repo change questions require git diff",
+        "low",
+        0.95
+      );
+    }
+
+    if (/\b(commit|history|log)\b/.test(lower)) {
+      return use(
+        "mcp__git__recent_commits",
+        { limit: "8" },
+        "repo history questions require git log",
+        "low",
+        0.95
+      );
+    }
+
+    return use(
+      "mcp__git__status",
+      {},
+      "repo status questions require git status",
+      "low",
+      0.92
+    );
   }
 
+  // ── Memory ──────────────────────────────────────────────────────────────────
   if (/\b(memory|remembered|knowledge graph|graphiti|falkor|falkordb)\b/.test(lower)) {
-    if (/\b(graph|nodes?|edges?|falkor|falkordb)\b/.test(lower)) return use("mcp__memory__graph_snapshot", { projectId }, "memory graph questions require graph snapshot");
-    return use("mcp__memory__search", { projectId, query: raw.slice(0, 240) }, "memory questions require memory search");
+    if (/\b(graph|nodes?|edges?|falkor|falkordb)\b/.test(lower)) {
+      return use(
+        "mcp__memory__graph_snapshot",
+        { projectId },
+        "memory graph questions require graph snapshot",
+        "low",
+        0.9
+      );
+    }
+
+    return use(
+      "mcp__memory__search",
+      { projectId, query: raw.slice(0, 240) },
+      "memory questions require memory search",
+      "low",
+      0.9
+    );
   }
 
-  if (/\b(search|look up|lookup|browse|web|google|find latest|latest|current|today|news|right now)\b/.test(lower)) {
-    return use("mcp__web__search", { query: raw.slice(0, 240), limit: "5" }, "current information requires web search");
+  // ── Current information fallback ────────────────────────────────────────────
+  if (/\b(search|look up|lookup|latest|current|today|news|right now)\b/.test(lower)) {
+    return use(
+      "mcp__web__search",
+      { query: raw.slice(0, 240), limit: "5" },
+      "current information requires web search",
+      "low",
+      0.85
+    );
   }
 
   return result;
@@ -924,9 +1205,11 @@ export function routeMcpIntent(text = "", options = {}) {
 export async function callMcpTool(name, args = {}) {
   const match = String(name || "").match(/^mcp__([^_]+)__(.+)$/);
   if (!match) throw new Error(`invalid MCP tool name: ${name}`);
+
   const [, serverId, toolName] = match;
   const server = builtinServers.find((entry) => entry.id === serverId);
   if (!server || !isServerEnabled(server)) throw new Error(`MCP server not enabled: ${serverId}`);
+
   const tool = server.tools.find((entry) => entry.name === toolName);
   if (!tool) throw new Error(`MCP tool not found: ${name}`);
 
@@ -941,6 +1224,7 @@ export async function callMcpTool(name, args = {}) {
     durationMs: 0,
     result: "",
   };
+
   callLog.push(entry);
 
   try {
@@ -965,21 +1249,29 @@ export async function callMcpTool(name, args = {}) {
 
 async function measureTool(name, args = {}) {
   const startedAt = Date.now();
+
   try {
     const match = String(name || "").match(/^mcp__([^_]+)__(.+)$/);
     if (!match) throw new Error(`invalid MCP tool name: ${name}`);
+
     const [, serverId, toolName] = match;
     const server = builtinServers.find((entry) => entry.id === serverId);
     if (!server || !isServerEnabled(server)) throw new Error(`MCP server not enabled: ${serverId}`);
+
     const tool = server.tools.find((entry) => entry.name === toolName);
     if (!tool) throw new Error(`MCP tool not found: ${name}`);
+
     const result = await tool.execute(args || {});
     const durationMs = Date.now() - startedAt;
     serverResponseMs.set(server.id, durationMs);
+
     let parsedResult = result;
     if (typeof result === "string" && /^[\s\r\n]*[{[]/.test(result)) {
-      try { parsedResult = JSON.parse(result); } catch {}
+      try {
+        parsedResult = JSON.parse(result);
+      } catch {}
     }
+
     if (parsedResult && typeof parsedResult === "object" && parsedResult.ok === false) {
       serverHealthOk.set(server.id, false);
       return {
@@ -990,6 +1282,7 @@ async function measureTool(name, args = {}) {
         preview: safeText(result, 700),
       };
     }
+
     serverHealthOk.set(server.id, true);
     return {
       ok: true,
@@ -1000,6 +1293,7 @@ async function measureTool(name, args = {}) {
   } catch (err) {
     const match = String(name || "").match(/^mcp__([^_]+)__/);
     if (match) serverHealthOk.set(match[1], false);
+
     return {
       ok: false,
       tool: name,
@@ -1011,6 +1305,7 @@ async function measureTool(name, args = {}) {
 
 export async function getServiceStatus() {
   const startedAt = Date.now();
+
   const [memory, ollama, docker, browser, monitor, git, web] = await Promise.all([
     measureTool("mcp__memory__status"),
     measureTool("mcp__ops__ollama_health"),
@@ -1019,15 +1314,21 @@ export async function getServiceStatus() {
     measureTool("mcp__ops__monitor_status"),
     findGitRoot()
       ? measureTool("mcp__git__status")
-      : Promise.resolve({ ok: true, skipped: true, tool: "mcp__git__status", durationMs: 0, preview: "git repository unavailable" }),
+      : Promise.resolve({
+          ok: true,
+          skipped: true,
+          tool: "mcp__git__status",
+          durationMs: 0,
+          preview: "git repository unavailable",
+        }),
     configuredSearxngBase()
       ? measureTool("mcp__web__search", { query: "health check", limit: "1" })
       : Promise.resolve({
-        ok: false,
-        tool: "mcp__web__search",
-        durationMs: 0,
-        error: "SearXNG is not configured",
-      }),
+          ok: false,
+          tool: "mcp__web__search",
+          durationMs: 0,
+          error: "SearXNG is not configured",
+        }),
   ]);
 
   serverHealthOk.set("memory", Boolean(memory.ok));
@@ -1040,7 +1341,11 @@ export async function getServiceStatus() {
   return {
     ok: true,
     durationMs: Date.now() - startedAt,
-    backend: { ok: true, port: Number(process.env.PORT || 3003), durationMs: 0 },
+    backend: {
+      ok: true,
+      port: Number(process.env.PORT || 3003),
+      durationMs: 0,
+    },
     lightpanda: {
       ...browser,
       config: getLightpandaConfig(),
@@ -1058,4 +1363,9 @@ export async function getServiceStatus() {
   };
 }
 
-export { lightpandaNavigate, lightpandaStatus, openHeadfulBrowser, getLightpandaConfig };
+export {
+  lightpandaNavigate,
+  lightpandaStatus,
+  openHeadfulBrowser,
+  getLightpandaConfig,
+};

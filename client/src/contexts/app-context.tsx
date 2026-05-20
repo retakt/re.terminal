@@ -6,6 +6,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getBaseName, getViewerKind, type ProgramKind } from "@/lib/file-routing";
+import { generateUUID } from "@/chat/engine/config";
 
 export type PageType =
   | "terminal"
@@ -60,6 +61,7 @@ export interface DocPage extends ViewerPageBase {
 
 export interface ProgramPage extends PageMeta {
   type: ProgramKind;
+  sessionId?: string; // Unique session ID for isolated chat memories
 }
 
 export type Page = TerminalPage | FilesPage | EditorPage | ImagePage | PdfPage | SpreadsheetPage | DocPage | ProgramPage;
@@ -284,6 +286,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const openProgram = useCallback((kind: ProgramKind, title?: string) => {
     setPages(prev => {
+      // Allow multiple chat tabs, each with a unique session/memory
+      if (kind === "chat") {
+        const chatCount = prev.filter(p => p.type === "chat").length;
+        const sessionId = generateUUID();
+        const page: ProgramPage = {
+          id: uid(),
+          type: kind,
+          sessionId,
+          title: title || `ai chat ${chatCount + 1}`,
+        };
+        setActivePageId(page.id);
+        return [...prev, page];
+      }
+
       const existing = prev.find(p => p.type === kind);
       if (existing) {
         setActivePageId(existing.id);

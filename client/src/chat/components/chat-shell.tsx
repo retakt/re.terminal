@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightOpenIcon, PanelRightCloseIcon, Brain, SlidersHorizontalIcon, PencilIcon } from "lucide-react";
+import { PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightOpenIcon, PanelRightCloseIcon, Brain, SlidersHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -65,10 +65,11 @@ function ChatToolbar({
   showPanelToggle: boolean;
   showContextToggle: boolean;
 }) {
-  const { sessionId, chatMode, runtimeContext } = useChatContext();
-  const { pages, activePageId, renamePage } = useApp();
+  const { sessionId: activeSessionId, chatMode, runtimeContext, clearChatHistory } = useChatContext();
+  const { pages, activePageId, openProgram, renamePage } = useApp();
   const activePage = pages.find(page => page.id === activePageId);
   const sessionTitle = activePage?.title || "ai chat";
+  const sessionId = (activePage as any)?.sessionId || activeSessionId;
   const contextActive = Boolean(runtimeContext.notes.trim() || runtimeContext.skills.trim());
   const renameSessionTitle = () => {
     if (!activePageId) return;
@@ -102,6 +103,14 @@ function ChatToolbar({
           <span>{sessionTitle}</span>
           <PencilIcon className="size-3" />
         </button>
+        <button
+          type="button"
+          className="chat-tool-button size-7 rounded-sm text-muted-foreground hover:text-primary transition-colors"
+          onClick={() => openProgram("chat")}
+          title="Create new chat session"
+        >
+          <span className="text-lg leading-none">+</span>
+        </button>
         <span className="font-mono text-[10px] text-muted-foreground/50">
           {sessionId.slice(0, 8)}
         </span>
@@ -109,6 +118,17 @@ function ChatToolbar({
         {contextActive && <span className="chat-mode-pill chat-mode-pill--context">notes</span>}
       </div>
       <div className="flex items-center gap-1.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="chat-tool-button size-8 rounded-sm text-muted-foreground"
+          onClick={() => {
+            if (window.confirm("Flush this session's history and memory? This cannot be undone.")) clearChatHistory();
+          }}
+          title="Flush this session's history and memory"
+        >
+          <Trash2Icon className="size-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -400,8 +420,13 @@ function ChatLayout({ isActive }: { isActive: boolean }) {
 // ── Chat shell (entry point) ──────────────────────────────────────────────────
 
 export function ChatShell({ isActive = true }: { isActive?: boolean }) {
+  const { pages, activePageId } = useApp();
+  const activePage = pages.find(p => p.id === activePageId);
+  const initialSessionId = (activePage as any)?.sessionId;
+  const sessionName = activePage?.title;
+
   return (
-    <ChatProvider>
+    <ChatProvider initialSessionId={initialSessionId} sessionName={sessionName}>
       <ChatLayout isActive={isActive} />
     </ChatProvider>
   );

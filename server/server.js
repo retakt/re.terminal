@@ -189,6 +189,7 @@ async function extractDurableMemories({ projectId, model, userMessage, assistant
   const prompt = [
     "Extract only durable, useful long-term memories from this chat turn.",
     "Save preferences, stable user/project facts, recurring constraints, decisions, errors and fixes.",
+    "CRITICAL: If a binary required a specific path (e.g., `./binary` instead of global), a specific flag, or had a unique local error/fix, save it as a 'fix' or 'preference'. This helps avoid repeating the same pathing/subcommand mistakes.",
     "Do not save one-off questions, greetings, filler, or facts that are likely temporary.",
     "Do not save that the user asked a question or discussed a topic.",
     "Return strict JSON only: {\"memories\":[{\"subject\":\"...\",\"predicate\":\"...\",\"object\":\"...\",\"summary\":\"...\",\"confidence\":0.0}]}",
@@ -447,6 +448,8 @@ app.post("/api/browser/open-headful", async (req, res) => {
 app.post("/api/mcp/route", (req, res) => {
   res.json(routeMcpIntent(req.body?.text || "", {
     projectId: req.body?.projectId || req.body?.userId,
+    mode: req.body?.mode,
+    currentUrl: req.body?.currentUrl,
     content: req.body?.content,
     find: req.body?.find,
     replace: req.body?.replace,

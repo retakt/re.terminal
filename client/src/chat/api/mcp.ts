@@ -46,9 +46,9 @@ export interface McpRoute {
   must_call_tools: boolean;
   tool_candidates: Array<{ name: string; arguments: Record<string, unknown> }>;
   risk: "low" | "medium" | "high" | string;
+  confidence?: number;
   reason: string;
 }
-
 async function getJson<T>(url: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(url);
@@ -92,12 +92,16 @@ export async function callMcpTool(name: string, args: Record<string, unknown>): 
   return typeof data.result === "string" ? data.result : JSON.stringify(data.result, null, 2);
 }
 
-export async function routeMcpIntent(text: string, projectId: string): Promise<McpRoute | null> {
+export async function routeMcpIntent(
+  text: string,
+  projectId: string,
+  options: { mode?: string; currentUrl?: string } = {},
+): Promise<McpRoute | null> {
   try {
     const response = await fetch("/api/mcp/route", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, projectId }),
+      body: JSON.stringify({ text, projectId, ...options }),
     });
     if (!response.ok) return null;
     return response.json();
@@ -105,7 +109,6 @@ export async function routeMcpIntent(text: string, projectId: string): Promise<M
     return null;
   }
 }
-
 export async function listExtensionCatalog(): Promise<ExtensionCatalogItem[]> {
   const data = await getJson<{ items: ExtensionCatalogItem[] }>("/api/extensions/catalog", { items: [] });
   return data.items ?? [];

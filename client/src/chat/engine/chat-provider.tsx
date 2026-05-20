@@ -16,6 +16,8 @@ import {
   getMalaysiaTime,
   SYSTEM_PROMPT,
   DEV_SYSTEM_PROMPT,
+  BROWSER_SYSTEM_PROMPT,
+  SCRAPER_SYSTEM_PROMPT,
   DEFAULT_OPTIONS,
   shouldAutoThink,
   shouldEscalateToFullThink,
@@ -261,7 +263,9 @@ function loadSessionOptions(): SessionOptions {
 function loadChatMode(): ChatMode {
   const storage = safeLocalStorage();
   const value = storage?.getItem(CHAT_MODE_KEY);
-  return value === "dev" || value === "think" || value === "nothink" || value === "auto" ? value : "auto";
+  return value === "dev" || value === "think" || value === "nothink" || value === "auto" || value === "browser" || value === "scraper"
+  ? value
+  : "auto";
 }
 
 function loadRuntimeContext(sessionId: string): RuntimeContext {
@@ -468,6 +472,37 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
   return null;
 }
 
+  function modeAllowsMcp(mode: ChatMode) {
+    return mode === "dev" || mode === "browser" || mode === "scraper";
+  }
+
+  function isToolAllowedInMode(name: string, mode: ChatMode, allowWebTools: boolean) {
+    const isMcp = name.startsWith("mcp__");
+    const isBrowser = name.startsWith("mcp__browser__");
+    const isWeb = name === "search_web" || name.startsWith("mcp__web__");
+
+    if (mode === "browser") {
+      return isBrowser;
+    }
+
+    if (mode === "scraper") {
+      return name === "mcp__browser__instant_scrape"
+        || name === "mcp__browser__lightpanda_action"
+        || name === "mcp__browser__lightpanda_navigate"
+        || name === "mcp__browser__lightpanda_extract";
+    }
+
+    if (mode === "dev") {
+      if (isWeb && !allowWebTools) return false;
+      return true;
+    }
+
+    // Normal modes: no MCP. This prevents random MCP calls.
+    if (isMcp) return false;
+    if (isWeb) return allowWebTools;
+    return true;
+  }
+
 function parseRouterJson(content = "") {
   const trimmed = content.trim();
   if (!trimmed) return null;
@@ -530,7 +565,7 @@ function memorySummaryForLog(memory: any) {
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-export function ChatProvider({ children, initialSessionId }: { children: ReactNode; initialSessionId?: string }) {
+export function ChatProvider({ children, initialSessionId, sessionName }: { children: ReactNode; initialSessionId?: string; sessionName?: string }) {
   const [sessionId] = useState(() => loadOrCreateSessionId(initialSessionId));
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const [models, setModels] = useState<string[]>([]);
@@ -668,6 +703,35 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
     setRuntimeContext(next);
     runtimeContextRef.current = next;
     saveRuntimeContext(sessionId, next);
+  }, [sessionId]);
+
+  const [flushKey, setFlushKey] = useState(0);
+
+  const clearChatHistory = useCallback(() => {
+    const storage = safeLocalStorage();
+    if (!storage) return;
+    
+    // Clear current session specific data (history, logs, context)
+    storage.removeItem(historyKey(sessionId));
+    storage.removeItem(toolLogsKey(sessionId));
+    storage.removeItem(runLogsKey(sessionId));
+    storage.removeItem(reasoningLogsKey(sessionId));
+    storage.removeItem(runtimeContextKey(sessionId));
+    
+    // Clear in-memory refs for this session
+    toolLogsRef.current = [];
+    runLogsRef.current = [];
+    reasoningLogsRef.current = [];
+    
+    // Clear runtime context for this session
+    const next = { notes: "", skills: "" };
+    setRuntimeContext(next);
+    runtimeContextRef.current = next;
+    saveRuntimeContext(sessionId, next);
+    
+    // Force remount of the runtime to load the now-empty history from storage
+    // This clears the UI messages without reloading the entire page/app
+    setFlushKey(k => k + 1);
   }, [sessionId]);
 
   useEffect(() => {
@@ -865,8 +929,14 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
       const webSearchEnabled = webSearchEnabledRef.current;
 
       // ── System prompt ───────────────────────────────────────────────────────
-      const basePrompt = mode === "dev" ? DEV_SYSTEM_PROMPT : SYSTEM_PROMPT;
-      const systemPromptContent = basePrompt.replace("{MALAYSIA_TIME}", getMalaysiaTime())
+      const basePrompt =
+  mode === "dev" ? DEV_SYSTEM_PROMPT :
+  mode === "browser" ? BROWSER_SYSTEM_PROMPT :
+  mode === "scraper" ? SCRAPER_SYSTEM_PROMPT :
+  SYSTEM_PROMPT;
+      const systemPromptContent = 
+        (sessionName ? `Current Session Topic: "${sessionName}". \n` : "") +
+        basePrompt.replace("{MALAYSIA_TIME}", getMalaysiaTime())
         + runtimeContextPrompt(runtime, mode)
         + memoryContext
         + (webSearchEnabled ? "" : "\n\nWeb search is currently DISABLED by the user. Do NOT attempt to use search_web or any search tool. Answer only from your training data.");
@@ -874,14 +944,20 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
       const systemMessage: OllamaMessage = { role: "system", content: systemPromptContent };
 
       // Filter tools
-      const allTools = [...TOOLS, ...mcpToolsRef.current];
       const explicitWebRequest = /\b(search|look up|lookup|browse|web|google|find latest|latest news|current news|news|right now on the web)\b/i.test(lastText);
       const allowWebTools = webSearchEnabled && (mode !== "dev" || explicitWebRequest);
-      const activeTools = allowWebTools
-        ? allTools
-        : allTools.filter((t) => t.function.name !== "search_web" && !t.function.name.startsWith("mcp__web__"));
+          
+      const allTools = [
+        ...TOOLS,
+        ...(modeAllowsMcp(mode) ? mcpToolsRef.current : []),
+      ];
+      
+      const activeTools = allTools.filter((tool) =>
+        isToolAllowedInMode(tool.function.name, mode, allowWebTools)
+      );
+      
       const activeToolNames = new Set(activeTools.map((tool) => tool.function.name));
-
+      const mcpEnabledForMode = modeAllowsMcp(mode);
       // ── Tool detection ──────────────────────────────────────────────────────
       const factcheckHint = allowWebTools && shouldTriggerFactcheck(lastText)
         ? " [Note: this query may involve current or time-sensitive information — consider using search_web to verify]"
@@ -890,10 +966,10 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
       let toolCalls: Array<{ function: { name: string; arguments: Record<string, string> } }> | undefined;
       const allowToolRouting = !isCasualNoTool(lastText);
 
-      if (allowToolRouting) {
+      if (allowToolRouting && mcpEnabledForMode) {
         setActivityStatus("choosing-tool");
         try {
-          const fuzzy = await routeMcpIntent(lastText, sessionId);
+          const fuzzy = await routeMcpIntent(lastText, sessionId, { mode });
           const fuzzyCandidates = Array.isArray(fuzzy?.tool_candidates) ? fuzzy.tool_candidates : [];
           const fuzzyCalls = fuzzyCandidates
             .filter((candidate: any) => activeToolNames.has(candidate?.name))
@@ -904,9 +980,10 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
                 arguments: asToolArgs(candidate.arguments),
               },
             }));
-          if (fuzzy?.must_call_tools && fuzzyCalls.length > 0) {
-            toolCalls = fuzzyCalls;
-          }
+      const fuzzyConfidence = Number(fuzzy?.confidence ?? 1);
+      if (fuzzy?.must_call_tools && fuzzyCalls.length > 0 && fuzzyConfidence >= 0.85) {
+        toolCalls = fuzzyCalls;
+      }
         } catch (err) {
           console.warn("Fuzzy MCP router failed:", err);
         }
@@ -982,8 +1059,8 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
         }
       }
 
-      if (allowToolRouting && (!toolCalls || toolCalls.length === 0)) {
-        const forcedMcp = forcedMcpTool(lastText, sessionId, activeTools);
+        if (allowToolRouting && mcpEnabledForMode && (!toolCalls || toolCalls.length === 0)) {
+          const forcedMcp = forcedMcpTool(lastText, sessionId, activeTools);
         if (forcedMcp) {
           toolCalls = [{ function: { name: forcedMcp.name, arguments: forcedMcp.args } }];
         }
@@ -995,7 +1072,9 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
           toolCalls = [{ function: { name: forced.name, arguments: forced.args } }];
         }
       }
-
+      if ((mode === "browser" || mode === "scraper") && toolCalls && toolCalls.length > 1) {
+        toolCalls = [toolCalls[0]];
+      }
       // ── Execute tools ───────────────────────────────────────────────────────
       let finalMessages: OllamaMessage[] = [systemMessage, ...apiMessages];
 
@@ -1218,6 +1297,7 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
         persistToolLogs,
         persistRunLogs,
         clearActivity,
+        clearChatHistory,
         chatMode,
         setChatMode,
         selectedModel,
@@ -1233,7 +1313,7 @@ export function ChatProvider({ children, initialSessionId }: { children: ReactNo
         clearRuntimeContext,
       }}
     >
-      <AssistantRuntimeProvider runtime={runtime}>
+      <AssistantRuntimeProvider key={flushKey} runtime={runtime}>
         {children}
       </AssistantRuntimeProvider>
     </ChatContext.Provider>
