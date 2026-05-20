@@ -1,8 +1,11 @@
 import {
   lightpandaClickBySelector,
   lightpandaClickByText,
+  lightpandaFillAndSubmit,
+  lightpandaFillFields,
   lightpandaSnapshotCurrent,
   lightpandaStatus,
+  lightpandaSubmitForm,
 } from "./lightpanda-client.js";
 
 const DEFAULT_CDP_URL = "ws://127.0.0.1:9222";
@@ -107,8 +110,9 @@ function configuredEnginePriority(mode = "browser") {
     ];
   } else {
     defaults = [
-      ...(chromeCdpConfigured() ? ["chrome_cdp"] : []),
+      ...(nativeEnabled ? ["lightpanda_native_mcp"] : []),
       "lightpanda_cdp",
+      ...(chromeCdpConfigured() ? ["chrome_cdp"] : []),
       "static_fetch",
     ];
   }
@@ -855,6 +859,132 @@ export async function browserClickByText(args = {}) {
       ...(clicked.steps || []),
     ],
   };
+}
+
+function redactedActionFields(fields = []) {
+  return (Array.isArray(fields) ? fields : []).map((field) => {
+    const label = safeText(field?.label || field?.name || field?.id || field?.selector || "", 180);
+    const secret = Boolean(field?.secret) || /\b(password|pass|pwd|otp|code|pin)\b/i.test(label);
+    return {
+      ...field,
+      secret,
+      value: secret ? "[redacted]" : field?.value,
+    };
+  });
+}
+
+async function formActionWithCdpEngines(action, args = {}) {
+  const currentUrl = validCurrentUrl(args);
+  const requestedUrl = currentUrl;
+  const attempts = [];
+  const priority = (args.enginePriority || configuredEnginePriority(args.mode || "browser"))
+    .filter((engine) => engine === "lightpanda_cdp" || engine === "chrome_cdp");
+
+  if (!currentUrl) {
+    return failedResponse(action, attempts, {
+      status: "needs_user",
+      error: "No valid current page is loaded.",
+    });
+  }
+
+  for (const engine of priority) {
+    let result;
+    try {
+      const health = await cdpEngineHealth(engine);
+      if (!health.ok) {
+        result = {
+          ok: false,
+          status: "engine_unavailable",
+          engine,
+          requestedUrl,
+          error: health.mismatch || health.error || "CDP engine is unavailable.",
+          observation: emptyObservation({ engine, requestedUrl, error: health.error || health.mismatch || "" }),
+        };
+      } else {
+        const helperArgs = {
+          ...args,
+          currentUrl,
+          cdpUrl: cdpUrlForEngine(engine),
+          engineName: engine,
+        };
+        const raw = action === "browserFillFields"
+          ? await lightpandaFillFields(helperArgs)
+          : action === "browserSubmitForm"
+            ? await lightpandaSubmitForm(helperArgs)
+            : await lightpandaFillAndSubmit(helperArgs);
+        const observation = normalizeObservation(raw, { engine, requestedUrl });
+        result = {
+          ok: Boolean(raw?.ok),
+          status: raw?.ok ? "success" : "failed",
+          engine,
+          requestedUrl,
+          raw,
+          observation,
+          actionResult: raw?.actionResult || null,
+          error: raw?.error || raw?.actionResult?.error || observation.error || observation.snapshotError || "",
+        };
+      }
+    } catch (err) {
+      result = {
+        ok: false,
+        status: "engine_error",
+        engine,
+        requestedUrl,
+        error: err instanceof Error ? err.message : String(err),
+        observation: emptyObservation({ engine, requestedUrl, error: err instanceof Error ? err.message : String(err) }),
+      };
+    }
+
+    const valid = isValidObservation(result.observation);
+    attempts.push(attemptFromResult(engine, result, valid));
+    if (result.ok && valid) {
+      return successResponse(action, result, attempts, {
+        actionResult: result.actionResult,
+        filledFields: redactedActionFields(args.fields || []),
+      });
+    }
+  }
+
+  return failedResponse(action, attempts, {
+    requestedUrl,
+    error: "No CDP browser engine completed the form action and produced a valid observation.",
+  });
+}
+
+export async function browserFillFields(args = {}) {
+  if (!Array.isArray(args.fields) || args.fields.length === 0) {
+    return failedResponse("browserFillFields", [], {
+      status: "needs_user",
+      error: "At least one field is required.",
+    });
+  }
+  return formActionWithCdpEngines("browserFillFields", args);
+}
+
+export async function browserSubmitForm(args = {}) {
+  if (args.explicitSubmit !== true && args.confirm !== true) {
+    return failedResponse("browserSubmitForm", [], {
+      status: "needs_user",
+      error: "Explicit submit intent is required.",
+    });
+  }
+  return formActionWithCdpEngines("browserSubmitForm", args);
+}
+
+export async function browserFillAndSubmit(args = {}) {
+  if (!Array.isArray(args.fields) || args.fields.length === 0) {
+    return failedResponse("browserFillAndSubmit", [], {
+      status: "needs_user",
+      error: "At least one field is required.",
+    });
+  }
+  if (args.explicitSubmit !== true && args.confirm !== true) {
+    return failedResponse("browserFillAndSubmit", [], {
+      status: "needs_user",
+      error: "Explicit submit intent is required.",
+    });
+  }
+  return formActionWithCdpEngines("browserFillAndSubmit", args);
 }
 
 export async function browserInteractiveElements(args = {}) {

@@ -819,6 +819,7 @@ function normalizeActionFields(fields) {
       placeholder: String(field?.placeholder || ""),
       type: String(field?.type || ""),
       value: String(field?.value ?? ""),
+      secret: Boolean(field?.secret),
     }));
   }
 
@@ -826,6 +827,7 @@ function normalizeActionFields(fields) {
     return Object.entries(fields).map(([name, value]) => ({
       name,
       value: String(value ?? ""),
+      secret: /password|pass|pwd|otp|code|pin/i.test(name),
     }));
   }
 
@@ -834,7 +836,7 @@ function normalizeActionFields(fields) {
 
 function hasPasswordField(fields) {
   return normalizeActionFields(fields).some((field) =>
-    /password/i.test(`${field.type} ${field.name} ${field.id} ${field.selector} ${field.label} ${field.placeholder}`)
+    field.secret || /password/i.test(`${field.type} ${field.name} ${field.id} ${field.selector} ${field.label} ${field.placeholder}`)
   );
 }
 
@@ -916,11 +918,12 @@ async function fillPageFields(session, sid, fields) {
       el.dispatchEvent(new Event("change", { bubbles: true }));
 
       const type = String(el.getAttribute("type") || el.tagName.toLowerCase()).toLowerCase();
+      const secret = type === "password" || Boolean(field.secret) || /\\b(password|pass|pwd|otp|code|pin)\\b/i.test(String(field.label || field.name || field.id || ""));
       filled.push({
         key: field.selector || field.name || field.id || field.label || field.placeholder || "field",
         type,
-        redacted: type === "password",
-        valuePreview: type === "password" ? "[redacted]" : String(value).slice(0, 80),
+        redacted: secret,
+        valuePreview: secret ? "[redacted]" : String(value).slice(0, 80),
       });
     }
 
@@ -1059,6 +1062,18 @@ async function submitPageForm(session, sid, args = {}) {
   return evaluated?.result?.value || { ok: false, error: "submit failed" };
 }
 
+async function snapshotAfterCurrentPageAction(session, sid) {
+  let page;
+  let snapshotError = "";
+  try {
+    page = await evaluateSemanticSnapshot(session, sid);
+  } catch (err) {
+    snapshotError = err instanceof Error ? err.message : String(err);
+    page = await evaluateBasicSnapshot(session, sid);
+  }
+  return { page, snapshotError };
+}
+
 export async function lightpandaAction(args = {}) {
   const url = normalizeUrl(args.url || args.currentUrl || "");
   const action = String(args.action || "snapshot").toLowerCase();
@@ -1106,6 +1121,118 @@ export async function lightpandaAction(args = {}) {
       page,
     };
   }, { timeoutMs: args.timeoutMs || DEFAULT_TIMEOUT_MS, cdpUrl: args.cdpUrl, engineName: args.engineName });
+}
+
+export async function lightpandaFillFields(args = {}) {
+  const requestedUrl = normalizeOptionalUrl(args.url || args.currentUrl || "");
+
+  return withCurrentPage(async (session, sid, target) => {
+    const fillResult = await fillPageFields(session, sid, args.fields || args.field || []);
+    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid);
+
+    return {
+      ok: Boolean(fillResult?.ok),
+      action: "fill",
+      requestedUrl,
+      target: {
+        targetId: target.targetId,
+        created: target.created,
+        selectedUrl: target.selectedUrl,
+        requestedUrl: target.requestedUrl,
+      },
+      actionResult: fillResult,
+      snapshotError,
+      page,
+    };
+  }, {
+    ...args,
+    currentUrl: requestedUrl,
+    navigate: false,
+  });
+}
+
+export async function lightpandaSubmitForm(args = {}) {
+  const requestedUrl = normalizeOptionalUrl(args.url || args.currentUrl || "");
+
+  if (hasPasswordField(args.fields) && args.confirm !== true && args.explicitSubmit !== true) {
+    return {
+      ok: false,
+      engine: browserEngine(args),
+      action: "submit",
+      requestedUrl,
+      error: "Refusing to submit a form containing a password field without explicit submit intent.",
+      nextRequired: "Ask the user to explicitly submit the form.",
+    };
+  }
+
+  return withCurrentPage(async (session, sid, target) => {
+    const submitResult = await submitPageForm(session, sid, args);
+    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid);
+
+    return {
+      ok: Boolean(submitResult?.ok),
+      action: "submit",
+      requestedUrl,
+      target: {
+        targetId: target.targetId,
+        created: target.created,
+        selectedUrl: target.selectedUrl,
+        requestedUrl: target.requestedUrl,
+      },
+      actionResult: { ok: Boolean(submitResult?.ok), action: "submit", submitResult },
+      snapshotError,
+      page,
+    };
+  }, {
+    ...args,
+    currentUrl: requestedUrl,
+    navigate: false,
+  });
+}
+
+export async function lightpandaFillAndSubmit(args = {}) {
+  const requestedUrl = normalizeOptionalUrl(args.url || args.currentUrl || "");
+
+  if (hasPasswordField(args.fields) && args.explicitSubmit !== true && args.confirm !== true) {
+    return {
+      ok: false,
+      engine: browserEngine(args),
+      action: "fill_and_submit",
+      requestedUrl,
+      error: "Refusing to submit a password form without explicit submit intent.",
+      nextRequired: "Ask the user to explicitly submit the form.",
+    };
+  }
+
+  return withCurrentPage(async (session, sid, target) => {
+    const fillResult = await fillPageFields(session, sid, args.fields || args.field || []);
+    const submitResult = await submitPageForm(session, sid, args);
+    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid);
+
+    return {
+      ok: Boolean(fillResult?.ok && submitResult?.ok),
+      action: "fill_and_submit",
+      requestedUrl,
+      target: {
+        targetId: target.targetId,
+        created: target.created,
+        selectedUrl: target.selectedUrl,
+        requestedUrl: target.requestedUrl,
+      },
+      actionResult: {
+        ok: Boolean(fillResult?.ok && submitResult?.ok),
+        action: "fill_and_submit",
+        fillResult,
+        submitResult,
+      },
+      snapshotError,
+      page,
+    };
+  }, {
+    ...args,
+    currentUrl: requestedUrl,
+    navigate: false,
+  });
 }
 
 export async function lightpandaSnapshotCurrent(args = {}) {

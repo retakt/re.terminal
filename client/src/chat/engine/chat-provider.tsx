@@ -390,6 +390,13 @@ function runtimeContextPrompt(context: RuntimeContext, mode: ChatMode) {
   ].filter(Boolean).join("\n\n");
 }
 
+function browserCurrentUrlFromRuntime(context: RuntimeContext) {
+  const haystack = `${context.notes || ""}\n${context.skills || ""}`;
+  const labeled = haystack.match(/\b(?:currentUrl|current url|browser url|current browser)\s*[:=]\s*(https?:\/\/[^\s"'<>]+)/i)?.[1];
+  if (labeled) return labeled.replace(/[.,;]+$/, "");
+  return "";
+}
+
 function extractBrowserTarget(text: string) {
   const url = text.match(/https?:\/\/[^\s)]+/i)?.[0];
   if (url) return url.replace(/[.,;]+$/, "");
@@ -498,6 +505,32 @@ function formatBrowserAgentDirectResponse(payload: any) {
     lines.push("**what happened:** " + summary);
   }
 
+  const filledFields = Array.isArray(payload?.filledFields) ? payload.filledFields : [];
+  const missingFields = Array.isArray(payload?.missingFields) ? payload.missingFields : [];
+  const submitStatus = cleanOneLine(payload?.submitStatus || "", 240);
+
+  if (filledFields.length) {
+    lines.push("");
+    lines.push("**filled fields:** " + filledFields
+      .map((field: any) => {
+        const label = cleanOneLine(field?.label || field?.key || field?.name || "field", 120);
+        const value = field?.secret ? "[redacted]" : cleanOneLine(field?.value || field?.valuePreview || "", 120);
+        return value ? label + "=" + value : label;
+      })
+      .filter(Boolean)
+      .join(", "));
+  }
+
+  if (missingFields.length) {
+    lines.push("");
+    lines.push("**missing fields:** " + missingFields.map((field: any) => cleanOneLine(field, 120)).filter(Boolean).join(", "));
+  }
+
+  if (submitStatus) {
+    lines.push("");
+    lines.push("**submit status:** " + submitStatus);
+  }
+
   if (payload?.blockedReason || payload?.error) {
     lines.push("");
     lines.push("**blocked/error:** " + cleanOneLine(payload.blockedReason || payload.error, 700));
@@ -549,7 +582,11 @@ function formatBrowserAgentDirectResponse(payload: any) {
   lines.push("");
   lines.push("**possible next actions:**");
 
-  if (observationFailed) {
+  const nextSafeAction = cleanOneLine(payload?.nextSafeAction || "", 300);
+
+  if (nextSafeAction) {
+    lines.push("1. " + nextSafeAction);
+  } else if (observationFailed) {
     lines.push("1. start or check Lightpanda CDP/native MCP on the server");
     lines.push("2. set BROWSER_AGENT_ENGINE_PRIORITY=lightpanda_cdp,static_fetch for a VPS without Chrome");
     lines.push("3. try the URL again after the browser engine is healthy");
@@ -574,7 +611,7 @@ function formatBrowserAgentDirectResponse(payload: any) {
   return lines.join("\n");
 }
 
-function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool[], mode: ChatMode) {
+function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool[], mode: ChatMode, currentUrl = "") {
   const lower = text.toLowerCase();
   const hasTool = (name: string) => enabledTools.some((tool) => tool.function.name === name);
   const make = (name: string, args: Record<string, string> = {}) => hasTool(name) ? { name, args } : null;
@@ -586,6 +623,7 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
     const agent = make("mcp__browser_agent__run", {
       sessionId,
       instruction: text.trim(),
+      currentUrl,
     });
     if (agent) return agent;
   }
@@ -600,6 +638,7 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
     const agent = make("mcp__browser_agent__run", {
       sessionId,
       instruction: text.trim(),
+      currentUrl,
     });
     if (agent) return agent;
 
@@ -672,12 +711,11 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
   function isToolAllowedInMode(name: string, mode: ChatMode, allowWebTools: boolean) {
     const isMcp = name.startsWith("mcp__");
     const isBrowserAgent = name.startsWith("mcp__browser_agent__");
-    const isBrowser = name.startsWith("mcp__browser__");
     const isExtension = name.startsWith("mcp__extensions__");
     const isWeb = name === "search_web" || name.startsWith("mcp__web__");
 
     if (mode === "browser") {
-      return isBrowserAgent || isBrowser || isExtension;
+      return isBrowserAgent || isExtension || name === "mcp__browser__lightpanda_status";
     }
     if (mode === "scraper") {
       return name === "mcp__browser__instant_scrape"
@@ -1114,6 +1152,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       const { think: _think, browserUseExtensions: _browserUseExtensions, ...inferenceOptions } = sessionOptionsRef.current;
       const mode = promptMode;
       const runtime = runtimeContextRef.current;
+      const browserCurrentUrl = browserCurrentUrlFromRuntime(runtime);
       const browserUseExtensions = sessionOptionsRef.current.browserUseExtensions !== false;
 
       // ── Determine think mode ────────────────────────────────────────────────
@@ -1172,7 +1211,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       if (allowToolRouting && mcpEnabledForMode) {
         setActivityStatus("choosing-tool");
         try {
-          const fuzzy = await routeMcpIntent(lastText, sessionId, { mode });
+          const fuzzy = await routeMcpIntent(lastText, sessionId, { mode, currentUrl: browserCurrentUrl });
           const fuzzyCandidates = Array.isArray(fuzzy?.tool_candidates) ? fuzzy.tool_candidates : [];
           const fuzzyCalls = fuzzyCandidates
             .filter((candidate: any) => activeToolNames.has(candidate?.name))
@@ -1263,7 +1302,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       }
 
         if (allowToolRouting && mcpEnabledForMode && (!toolCalls || toolCalls.length === 0)) {
-          const forcedMcp = forcedMcpTool(lastText, sessionId, activeTools, mode);
+          const forcedMcp = forcedMcpTool(lastText, sessionId, activeTools, mode, browserCurrentUrl);
         if (forcedMcp) {
           toolCalls = [{ function: { name: forcedMcp.name, arguments: forcedMcp.args } }];
         }
@@ -1283,6 +1322,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
                 arguments: {
                   ...asToolArgs(call.function.arguments),
                   useExtensions: String(browserUseExtensions),
+                  currentUrl: asToolArgs(call.function.arguments).currentUrl || browserCurrentUrl,
                 },
               },
             }
