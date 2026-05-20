@@ -1,7 +1,7 @@
 // Slash command parser
 
 import type { ChatMode, SessionOptions } from "../types";
-import { BALANCED_OPTIONS, DEV_OPTIONS, FULL_THINK_OPTIONS, NO_THINK_OPTIONS } from "./config";
+import { BALANCED_OPTIONS, DEV_OPTIONS, FULL_THINK_OPTIONS, NO_THINK_OPTIONS, SCRAPER_OPTIONS, BROWSER_OPTIONS } from "./config";
 
 export interface SlashResult {
   isCommand: true;
@@ -24,6 +24,20 @@ export function parseSlashCommand(text: string): SlashResult | null {
         response: "Dev/Ops mode enabled. MCP-first, concise, raw tool errors shown directly.",
         modeOverride: "dev",
         optionOverrides: { ...DEV_OPTIONS },
+      };
+    case "browser":
+      return {
+        isCommand: true,
+        response: "Guided Browser mode enabled. I will use one browser action per round, summarize what I found, then ask what to do next.",
+        modeOverride: "browser",
+        optionOverrides: { ...BROWSER_OPTIONS },
+      };
+    case "scraper":
+      return {
+        isCommand: true,
+        response: "Instant Scraper mode enabled. I will scrape one page per round, show tables/cards/links found, then ask what to extract next.",
+        modeOverride: "scraper",
+        optionOverrides: { ...SCRAPER_OPTIONS },
       };
     case "think":
       return {
@@ -87,6 +101,8 @@ export function parseSlashCommand(text: string): SlashResult | null {
         response: [
           "**commands:**",
           "- `/dev` - Dev/Ops mode: MCP-first, concise, raw errors",
+          "- `/browser` - guided browser mode: visit/fill/click one step at a time",
+          "- `/scraper` - instant scraper mode: extract tables/cards/links round by round",
           "- `/think` - force full reasoning mode",
           "- `/nothink` - fastest replies, no forced reasoning",
           "- `/auto` - normal assistant mode",

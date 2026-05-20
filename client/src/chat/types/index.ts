@@ -52,7 +52,7 @@ export type ChatActivityStatus =
   | "crafting"
   | "saving-memory";
 
-export type ChatMode = "auto" | "think" | "nothink" | "dev";
+export type ChatMode = "auto" | "think" | "nothink" | "dev" | "scraper" | "browser";
 
 export interface SessionOptions {
   think: boolean;
@@ -90,4 +90,5 @@ export interface ChatContextValue {
   runtimeContext: RuntimeContext;
   updateRuntimeContext: (updates: Partial<RuntimeContext>) => void;
   clearRuntimeContext: () => void;
+  clearChatHistory: () => void;
 }
