@@ -5,11 +5,18 @@ import {
   browserClickByHref,
   browserClickBySelector,
   browserClickByText,
+  browserFillAndSubmit,
+  browserFillFields,
   browserHealth,
   browserNavigate,
   browserObserve,
+  browserSubmitForm,
   isValidObservation,
 } from "./browser-engine-manager.js";
+import {
+  redactCommand,
+  watchBrowserInstruction,
+} from "./browser-runtime-watcher.js";
 import {
   getExtension,
   getExtensionSkill,
@@ -100,10 +107,14 @@ function defaultState(sessionId = DEFAULT_SESSION_ID) {
     lastObservation: null,
     lastValidObservation: null,
     lastFailedObservation: null,
+    pendingForm: null,
     activeEngine: "",
     engineFailures: {},
     pendingInstruction: "",
     pendingAction: null,
+    lastIntent: "",
+    lastCommand: null,
+    lastToolResult: null,
     visited: [],
     learnedAliases: [],
     lastToolResults: [],
@@ -123,6 +134,24 @@ function readJson(filePath) {
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n", "utf8");
+}
+
+function redactPersistedValue(value, pathParts = []) {
+  if (Array.isArray(value)) return value.map((entry, index) => redactPersistedValue(entry, [...pathParts, String(index)]));
+  if (!value || typeof value !== "object") {
+    const keyPath = pathParts.join(".");
+    return /\b(password|pass|pwd|otp|code|pin|secret)\b/i.test(keyPath) && typeof value === "string"
+      ? "[redacted]"
+      : value;
+  }
+
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => {
+    const nextPath = [...pathParts, key];
+    const secretKey = /\b(password|pass|pwd|otp|code|pin|secret)\b/i.test(nextPath.join("."));
+    if (secretKey && typeof entry === "string") return [key, "[redacted]"];
+    if (key === "value" && value.secret === true) return [key, "[redacted]"];
+    return [key, redactPersistedValue(entry, nextPath)];
+  }));
 }
 
 function sanitizeLoadedState(state) {
@@ -172,8 +201,9 @@ function saveState(state) {
     ...(state || {}),
     updatedAt: nowIso(),
   };
-  writeJson(statePath(next.sessionId), next);
-  return next;
+  const redacted = redactPersistedValue(next);
+  writeJson(statePath(next.sessionId), redacted);
+  return redacted;
 }
 
 function safeText(value, limit = 240) {
@@ -725,6 +755,11 @@ function responseBase({
   requiresUser = false,
   blockedReason = "",
   learned = null,
+  watcher = null,
+  filledFields = [],
+  missingFields = [],
+  submitStatus = "",
+  nextSafeAction = "",
 } = {}) {
   const observationIsValid = observation && isValidObservation(observation);
   return {
@@ -748,7 +783,137 @@ function responseBase({
     requiresUser,
     blockedReason,
     learned,
+    watcher,
+    filledFields,
+    missingFields,
+    submitStatus,
+    nextSafeAction,
   };
+}
+
+function redactedFields(fields = []) {
+  return (Array.isArray(fields) ? fields : []).map((field) => {
+    const label = field.label || field.name || field.id || field.selector || "field";
+    const secret = Boolean(field.secret) || /\b(password|pass|pwd|otp|code|pin)\b/i.test(String(label));
+    return {
+      ...field,
+      label,
+      secret,
+      value: secret ? "[redacted]" : field.value,
+    };
+  });
+}
+
+function actionResultFromToolResult(result = {}) {
+  return result?.actionResult || result?.raw?.actionResult || null;
+}
+
+function filledFieldsFromResult(result = {}, command = {}) {
+  const actionResult = actionResultFromToolResult(result);
+  const filled = actionResult?.filled || actionResult?.fillResult?.filled || [];
+  if (Array.isArray(filled) && filled.length) {
+    return filled.map((field) => ({
+      label: field.key || field.label || "field",
+      type: field.type || "",
+      value: field.redacted ? "[redacted]" : field.valuePreview || "",
+      secret: Boolean(field.redacted),
+    }));
+  }
+  return redactedFields(command?.args?.fields || []);
+}
+
+function missingFieldsFromResult(result = {}) {
+  const actionResult = actionResultFromToolResult(result);
+  const missing = actionResult?.missing || actionResult?.fillResult?.missing || [];
+  return Array.isArray(missing)
+    ? missing.map((field) => safeText(field.key || field.label || field.name || field.selector || "field", 120)).filter(Boolean)
+    : [];
+}
+
+function submitStatusFromResult(result = {}) {
+  const actionResult = actionResultFromToolResult(result);
+  const submit = actionResult?.submitResult || (actionResult?.action === "submit" ? actionResult : null);
+  if (!submit) return "";
+  if (submit.ok) return submit.submitted ? `submitted via ${submit.submitted}` : "submitted";
+  return submit.error || "submit failed";
+}
+
+function pendingFormFromResult(result = {}, previousPending = null) {
+  const missing = missingFieldsFromResult(result);
+  if (!missing.length) return null;
+  return {
+    expectedField: missing[0],
+    expectedFields: missing,
+    missingFields: missing,
+    lastPrompt: `Missing field: ${missing[0]}`,
+    createdAt: nowIso(),
+  };
+}
+
+function compactToolResult(result = {}, command = {}) {
+  return {
+    ok: Boolean(result?.ok),
+    status: result?.status || "",
+    action: result?.action || command?.tool || "",
+    engine: result?.engine || "",
+    currentUrl: result?.currentUrl || result?.observation?.url || "",
+    currentTitle: result?.currentTitle || result?.observation?.title || "",
+    error: result?.error || "",
+    filledFields: filledFieldsFromResult(result, command),
+    missingFields: missingFieldsFromResult(result),
+    submitStatus: submitStatusFromResult(result),
+  };
+}
+
+async function executeWatcherCommand(command = {}, args = {}, state = defaultState()) {
+  const tool = command?.tool || "";
+  const commandArgs = {
+    ...(command?.args || {}),
+    sessionId: state.sessionId || args.sessionId,
+    instruction: args.instruction || "",
+    useExtensions: boolArg(args.useExtensions, true),
+    ...(args.extensionId ? { extensionId: args.extensionId } : {}),
+  };
+
+  if (tool === "browserNavigate") return browserNavigate(commandArgs);
+  if (tool === "browserObserve") return browserObserve({ ...commandArgs, lastValidObservation: state.lastValidObservation, state });
+  if (tool === "browserClickByText") {
+    return browserClickByText({
+      ...commandArgs,
+      observation: isValidObservation(state.lastValidObservation) ? state.lastValidObservation : null,
+      state,
+      waitMs: args.waitMs || "1200",
+    });
+  }
+  if (tool === "browserFillFields") return browserFillFields(commandArgs);
+  if (tool === "browserSubmitForm") return browserSubmitForm(commandArgs);
+  if (tool === "browserFillAndSubmit") return browserFillAndSubmit(commandArgs);
+  if (tool === "browserScrape") return browserObserve({ ...commandArgs, lastValidObservation: state.lastValidObservation, state });
+  if (tool === "browserLearn") return learn({ ...args, ...commandArgs });
+  if (tool === "browserShowActions") return showActions({ ...args, ...commandArgs }, state);
+  if (tool === "browserReset") return browserAgentReset({ ...args, sessionId: state.sessionId });
+  if (tool === "browserStatus") return browserAgentStatus({ ...args, sessionId: state.sessionId });
+  return browserObserve({ ...commandArgs, lastValidObservation: state.lastValidObservation, state });
+}
+
+function stepsFromWatcherResult(watcher = {}, result = {}, command = {}) {
+  const steps = Array.isArray(result?.steps) ? result.steps : [];
+  return [
+    {
+      type: "watch",
+      tool: "watchBrowserInstruction",
+      ok: Boolean(watcher.ok && !watcher.needsUser),
+      intent: watcher.intent,
+      confidence: watcher.confidence,
+      risk: watcher.risk,
+      resultPreview: preview({
+        intent: watcher.intent,
+        reason: watcher.reason,
+        command: redactCommand(command),
+      }, 900),
+    },
+    ...steps,
+  ];
 }
 
 async function showActions(args = {}, state = loadState(args.sessionId)) {
@@ -1579,7 +1744,6 @@ export async function browserAgentRun(args = {}) {
   const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
   const state = loadState(sessionId);
   const instruction = String(args.instruction || "").trim();
-  const kind = classifyInstruction(instruction);
 
   const baseArgs = {
     ...args,
@@ -1587,83 +1751,159 @@ export async function browserAgentRun(args = {}) {
     instruction,
   };
 
-  if (kind === "reset") return browserAgentReset(baseArgs);
-  if (kind === "status") return browserAgentStatus(baseArgs);
-  if (kind === "learn") return learn(baseArgs);
-  if (kind === "navigate") return navigate(baseArgs);
-  if (kind === "observe") return observe(baseArgs);
-  if (kind === "show_actions") return showActions(baseArgs, state);
-  if (kind === "execute_action") return executeAction(baseArgs, state);
-  if (kind === "plan_action") {
-    const observationResult = await observePage(baseArgs, state);
-    if (!observationResult.ok || !isValidObservation(observationResult.observation)) {
-      const failedState = recordFailedObservation(state, observationResult.observation, {
-        error: observationResult.error,
-        requestedUrl: observationResult.observation?.requestedUrl,
-      });
+  const watcher = watchBrowserInstruction({
+    sessionId,
+    rawUserMessage: instruction,
+    currentState: state,
+    lastValidObservation: state.lastValidObservation,
+    lastFailedObservation: state.lastFailedObservation,
+    currentUrl: args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
+    currentTitle: args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "",
+    confirm: args.confirm === true || String(args.confirm || "").toLowerCase() === "true",
+  });
 
-      return responseBase({
-        ok: false,
-        status: observationResult.status || "failed",
-        instruction,
-        state: failedState,
-        observation: null,
-        steps: observationResult.raw?.steps || [
-          {
-            type: "observe",
-            tool: "browserObserve",
-            ok: false,
-            error: observationResult.error,
-          },
-        ],
-        summary: "Could not observe the current page, so I could not plan an action.",
-        possibleNextActions: [],
-        requiresUser: true,
-        blockedReason: observationResult.error || "observation_failed",
-      });
-    }
-    const extension = extensionFromContext({
-      extensionId: args.extensionId,
-      observation: observationResult.observation,
-      state,
-      instruction,
-    }) || observationResult.extension;
-    const skill = extension ? getExtensionSkill(extension.id) : null;
-    const pageKey = pageKeyForObservation(skill, observationResult.observation);
-    const updated = updateStateFromObservation(state, observationResult.observation, extension, pageKey);
-    const actionResolution = extension
-      ? resolveInstructionAction({ instruction, extensionId: extension.id })
-      : { ok: false, reason: "No active extension matched this page or instruction." };
+  const redactedWatcher = {
+    ...watcher,
+    command: redactCommand(watcher.command),
+  };
+
+  if (watcher.needsUser || !watcher.command) {
+    const waitingState = saveState({
+      ...state,
+      pendingInstruction: instruction,
+      pendingAction: redactedWatcher,
+      lastIntent: watcher.intent || "",
+      lastCommand: redactCommand(watcher.command),
+    });
 
     return responseBase({
-      ok: Boolean(actionResolution.ok),
-      status: actionResolution.ok ? "success" : "needs_user",
+      ok: false,
+      status: "needs_user",
       instruction,
-      state: updated,
-      observation: observationResult.observation,
-      extension,
-      pageKey,
-      steps: [
-        {
-          type: "observe",
-          tool: "browserObserve",
-          engine: observationResult.observation.engine || "",
-          ok: true,
-          resultPreview: preview(compactObservation(observationResult.observation), 800),
-        },
-        {
-          type: "plan",
-          ok: Boolean(actionResolution.ok),
-          resultPreview: preview(actionResolution, 900),
-        },
-      ],
-      summary: actionResolution.ok
-        ? `Planned "${actionResolution.action.label}".`
-        : actionResolution.reason || "Could not plan an action.",
-      possibleNextActions: extension && skill ? safePossibleNextActions(extension, skill) : [],
+      state: waitingState,
+      steps: stepsFromWatcherResult(redactedWatcher, {}, watcher.command),
+      summary: watcher.reason || "I need clarification before acting in the browser.",
       requiresUser: true,
+      blockedReason: watcher.reason || "needs_user",
+      watcher: redactedWatcher,
+      nextSafeAction: watcher.reason || "Navigate to a URL or clarify the target field/action.",
     });
   }
 
-  return observe(baseArgs);
+  const command = watcher.command;
+  const result = await executeWatcherCommand(command, baseArgs, state);
+
+  if (result?.state && ["browserLearn", "browserShowActions", "browserReset", "browserStatus"].includes(command.tool)) {
+    return {
+      ...result,
+      watcher: redactedWatcher,
+      steps: stepsFromWatcherResult(redactedWatcher, result, command),
+    };
+  }
+
+  const observation = observationFromPageResult(result || {});
+  const validObservation = isValidObservation(observation);
+
+  if (!result?.ok || !validObservation) {
+    const failedState = result?.status === "needs_user"
+      ? saveState({
+          ...state,
+          pendingInstruction: instruction,
+          pendingAction: redactedWatcher,
+          lastIntent: watcher.intent,
+          lastCommand: redactCommand(command),
+          lastToolResult: compactToolResult(result, command),
+        })
+      : recordFailedObservation({
+          ...state,
+          lastIntent: watcher.intent,
+          lastCommand: redactCommand(command),
+          lastToolResult: compactToolResult(result, command),
+        }, observation, {
+          error: result?.error || observation.error || observation.snapshotError,
+          requestedUrl: observation.requestedUrl || command.args?.currentUrl || command.args?.url || "",
+          engine: observation.engine || result?.engine,
+        });
+
+    return responseBase({
+      ok: false,
+      status: result?.status === "needs_user" ? "needs_user" : "failed",
+      instruction,
+      state: failedState,
+      observation: null,
+      steps: stepsFromWatcherResult(redactedWatcher, result, command),
+      summary: result?.status === "needs_user"
+        ? (result.error || watcher.reason || "The browser needs more input before acting.")
+        : `Browser action failed or produced an invalid observation. Previous valid URL: ${state.currentUrl || state.lastValidObservation?.url || "none"}.`,
+      possibleNextActions: [],
+      requiresUser: true,
+      blockedReason: result?.error || observation.error || observation.snapshotError || "observation_failed",
+      watcher: redactedWatcher,
+      filledFields: filledFieldsFromResult(result, command),
+      missingFields: missingFieldsFromResult(result),
+      submitStatus: submitStatusFromResult(result),
+      nextSafeAction: "Retry the action, clarify the target, or navigate to a valid URL.",
+    });
+  }
+
+  const extension = boolArg(args.useExtensions, true)
+    ? extensionFromContext({
+        extensionId: args.extensionId,
+        observation,
+        state,
+        instruction,
+      })
+    : null;
+  const skill = extension ? getExtensionSkill(extension.id) : null;
+  const pageKey = pageKeyForObservation(skill, observation);
+  const updatedFromObservation = updateStateFromObservation(state, observation, extension, pageKey);
+  const pendingForm = pendingFormFromResult(result, state.pendingForm);
+  const updated = saveState({
+    ...updatedFromObservation,
+    pendingForm,
+    pendingInstruction: "",
+    pendingAction: null,
+    lastIntent: watcher.intent,
+    lastCommand: redactCommand(command),
+    lastToolResult: compactToolResult(result, command),
+    lastToolResults: [
+      ...(Array.isArray(updatedFromObservation.lastToolResults) ? updatedFromObservation.lastToolResults : []),
+      compactToolResult(result, command),
+    ].slice(-20),
+  });
+  const possibleNextActions = extension && skill ? safePossibleNextActions(extension, skill) : [];
+  const filledFields = filledFieldsFromResult(result, command);
+  const missingFields = missingFieldsFromResult(result);
+  const submitStatus = submitStatusFromResult(result);
+
+  return responseBase({
+    ok: true,
+    status: "success",
+    instruction,
+    state: updated,
+    observation,
+    extension,
+    pageKey,
+    steps: stepsFromWatcherResult(redactedWatcher, result, command),
+    summary: watcher.intent === "fill_form"
+      ? "Filled the requested field values without submitting."
+      : watcher.intent === "fill_and_submit"
+        ? "Filled the requested field values and submitted the form."
+        : watcher.intent === "submit_form"
+          ? "Submitted the current form."
+          : watcher.intent === "click_or_open"
+            ? `Clicked/opened "${command.args?.text || "the requested target"}" and observed the result.`
+            : watcher.intent === "navigate"
+              ? `Navigated to ${observation.url}.`
+              : `Observed ${observation.url}.`,
+    possibleNextActions,
+    requiresUser: true,
+    watcher: redactedWatcher,
+    filledFields,
+    missingFields,
+    submitStatus,
+    nextSafeAction: missingFields.length
+      ? `Provide a value for ${missingFields[0]}.`
+      : possibleNextActions[0]?.label || "Tell me the next visible button/link to click, fields to fill, or page to read.",
+  });
 }
