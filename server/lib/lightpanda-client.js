@@ -59,6 +59,47 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+
+function pageCompatibilityScript() {
+  return [
+    '(function(){',
+    '  function patchContext(ctx){',
+    '    if (!ctx || typeof ctx !== "object") ctx = {};',
+    '    if (typeof ctx.measureText !== "function") {',
+    '      ctx.measureText = function(text){',
+    '        var value = String(text == null ? "" : text);',
+    '        var width = Math.max(0, value.length * 7);',
+    '        return { width: width, actualBoundingBoxLeft: 0, actualBoundingBoxRight: width, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 3, fontBoundingBoxAscent: 10, fontBoundingBoxDescent: 3 };',
+    '      };',
+    '    }',
+    '    var noopNames = ["save","restore","scale","rotate","translate","transform","setTransform","resetTransform","clearRect","fillRect","strokeRect","beginPath","closePath","moveTo","lineTo","bezierCurveTo","quadraticCurveTo","arc","arcTo","ellipse","rect","fill","stroke","clip","fillText","strokeText","drawImage","putImageData","createImageData","getImageData"];',
+    '    for (var i=0;i<noopNames.length;i++){ if (typeof ctx[noopNames[i]] !== "function") ctx[noopNames[i]] = function(){}; }',
+    '    if (typeof ctx.createLinearGradient !== "function") ctx.createLinearGradient = function(){ return { addColorStop:function(){} }; };',
+    '    if (typeof ctx.createRadialGradient !== "function") ctx.createRadialGradient = function(){ return { addColorStop:function(){} }; };',
+    '    if (typeof ctx.createPattern !== "function") ctx.createPattern = function(){ return {}; };',
+    '    return ctx;',
+    '  }',
+    '  if (typeof HTMLCanvasElement !== "undefined") {',
+    '    var proto = HTMLCanvasElement.prototype;',
+    '    var originalGetContext = proto.getContext;',
+    '    proto.getContext = function(type){',
+    '      var ctx = null;',
+    '      if (typeof originalGetContext === "function") {',
+    '        try { ctx = originalGetContext.apply(this, arguments); } catch(e) { ctx = null; }',
+    '      }',
+    '      if (!ctx && String(type || "").toLowerCase().indexOf("2d") !== -1) ctx = {};',
+    '      return patchContext(ctx);',
+    '    };',
+    '  }',
+    '})();'
+  ].join('\n');
+}
+
+async function installPageCompatibility(session, sid = '') {
+  const source = pageCompatibilityScript();
+  await session.call('Page.addScriptToEvaluateOnNewDocument', { source }, DEFAULT_TIMEOUT_MS, sid).catch(() => null);
+  await session.call('Runtime.evaluate', { expression: source, returnByValue: true, awaitPromise: true }, DEFAULT_TIMEOUT_MS, sid).catch(() => null);
+}
 class CdpSession {
   constructor(url, timeoutMs = DEFAULT_TIMEOUT_MS) {
     this.url = url;
@@ -213,6 +254,7 @@ export async function lightpandaNavigate(args = {}) {
     const sid = attached?.sessionId || "";
     await session.call("Page.enable", {}, DEFAULT_TIMEOUT_MS, sid);
     await session.call("Runtime.enable", {}, DEFAULT_TIMEOUT_MS, sid);
+  await installPageCompatibility(session, sid);
     await session.call("Page.navigate", { url }, DEFAULT_TIMEOUT_MS, sid);
     await Promise.race([session.waitForEvent("Page.loadEventFired", 8000), wait(waitMs)]);
     await wait(waitMs);
@@ -584,6 +626,7 @@ async function openPageTarget(session, url, waitMs) {
 
   await session.call("Page.enable", {}, DEFAULT_TIMEOUT_MS, sid);
   await session.call("Runtime.enable", {}, DEFAULT_TIMEOUT_MS, sid);
+  await installPageCompatibility(session, sid);
   await session.call("Page.navigate", { url }, DEFAULT_TIMEOUT_MS, sid);
   await Promise.race([session.waitForEvent("Page.loadEventFired", 8000), wait(waitMs)]);
   await wait(waitMs);
@@ -631,6 +674,7 @@ async function attachToCurrentPageTarget(session, args = {}) {
 
   await session.call("Page.enable", {}, DEFAULT_TIMEOUT_MS, sid);
   await session.call("Runtime.enable", {}, DEFAULT_TIMEOUT_MS, sid);
+  await installPageCompatibility(session, sid);
 
   if ((created && requestedUrl) || shouldNavigate) {
     await session.call("Page.navigate", { url: requestedUrl }, DEFAULT_TIMEOUT_MS, sid);
