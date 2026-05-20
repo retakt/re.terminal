@@ -329,6 +329,25 @@ function attemptFromResult(engine, result = {}, valid = false) {
   };
 }
 
+function observationSatisfiesRequestedFocus(observation = {}, args = {}) {
+  const focus = normalizeQuery(args.focus || "");
+  if (!focus || focus === "page") return true;
+
+  const links = Array.isArray(observation.links) ? observation.links.length : 0;
+  const buttons = Array.isArray(observation.buttons) ? observation.buttons.length : 0;
+  const forms = Array.isArray(observation.forms) ? observation.forms.length : 0;
+  const inputs = Array.isArray(observation.inputs) ? observation.inputs.length : 0;
+  const interactive = Array.isArray(observation.interactiveElements) ? observation.interactiveElements.length : 0;
+
+  if (focus === "links") return links > 0 || interactive > 0;
+  if (focus === "forms") return forms > 0 || inputs > 0;
+  if (focus === "actions" || focus === "menu" || focus === "menus") {
+    return links > 0 || buttons > 0 || interactive > 0;
+  }
+
+  return true;
+}
+
 function successResponse(action, result, attempts, extra = {}) {
   const observation = result.observation;
   return {
@@ -555,7 +574,7 @@ async function observeAcrossEngines(action, args = {}) {
       };
     }
 
-    const valid = isValidObservation(result.observation);
+    const valid = isValidObservation(result.observation) && observationSatisfiesRequestedFocus(result.observation, args);
     attempts.push(attemptFromResult(engine, result, valid));
     if (result.ok && valid) return successResponse(action, result, attempts);
   }
@@ -563,7 +582,9 @@ async function observeAcrossEngines(action, args = {}) {
   return failedResponse(action, attempts, {
     requestedUrl,
     status: "failed",
-    error: "All configured browser engines failed to produce a valid observation.",
+    error: args.focus && normalizeQuery(args.focus) !== "page"
+      ? `All configured browser engines failed to produce visible ${args.focus} data. Static HTML fallback is not enough for this runtime browser question.`
+      : "All configured browser engines failed to produce a valid observation.",
   });
 }
 

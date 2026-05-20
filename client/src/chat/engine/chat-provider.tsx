@@ -531,6 +531,19 @@ function formatBrowserAgentDirectResponse(payload: any) {
     lines.push("**submit status:** " + submitStatus);
   }
 
+  const sequenceItems = Array.isArray(payload?.sequence?.items) ? payload.sequence.items : [];
+  if (sequenceItems.length) {
+    lines.push("");
+    lines.push("**step-by-step:**");
+    sequenceItems.forEach((item: any) => {
+      const index = cleanOneLine(item?.index || "", 20);
+      const marker = item?.ok ? "done" : "stopped";
+      const instruction = cleanOneLine(item?.instruction || "", 180);
+      const stepSummary = cleanOneLine(item?.summary || item?.blockedReason || item?.status || "", 240);
+      lines.push(`${index}. ${marker}: ${instruction}${stepSummary ? " — " + stepSummary : ""}`);
+    });
+  }
+
   if (payload?.blockedReason || payload?.error) {
     lines.push("");
     lines.push("**blocked/error:** " + cleanOneLine(payload.blockedReason || payload.error, 700));

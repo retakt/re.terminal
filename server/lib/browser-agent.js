@@ -17,6 +17,7 @@ import {
   redactCommand,
   watchBrowserInstruction,
 } from "./browser-runtime-watcher.js";
+import { verifyBrowserResult } from "./browser-result-verifier.js";
 import {
   getExtension,
   getExtensionSkill,
@@ -916,6 +917,89 @@ function stepsFromWatcherResult(watcher = {}, result = {}, command = {}) {
   ];
 }
 
+function splitSequentialInstructions(instruction = "") {
+  const raw = String(instruction || "").trim();
+  if (!raw) return [];
+
+  const lineParts = raw
+    .replace(/\r/g, "\n")
+    .split(/\n+/)
+    .flatMap((line) => line.split(/\s+(?:and\s+then|then)\s+/i))
+    .flatMap((line) => line.split(/\s*;\s*/))
+    .map((part) => part.replace(/^\s*(?:\d+[\).:-]\s*|[-*]\s*)/, "").trim())
+    .filter(Boolean);
+
+  if (lineParts.length < 2) return [];
+
+  const actionable = lineParts.filter((part) =>
+    /\b(navigate|visit|open|go|goto|load|click|press|tap|select|choose|fill|enter|type|submit|login|sign\s*in|observe|inspect|read|scrape|extract|what|which|show|list)\b/i.test(part) ||
+    extractUrl(part)
+  );
+
+  return actionable.length >= 2 ? lineParts : [];
+}
+
+async function browserAgentRunSequence(args = {}, sequence = []) {
+  const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
+  const results = [];
+  let currentUrl = args.currentUrl || "";
+  let last = null;
+
+  for (let index = 0; index < sequence.length; index += 1) {
+    const stepInstruction = sequence[index];
+    const stepResult = await browserAgentRun({
+      ...args,
+      sessionId,
+      instruction: stepInstruction,
+      currentUrl,
+      _skipSequence: true,
+    });
+
+    results.push({
+      index: index + 1,
+      instruction: stepInstruction,
+      ok: Boolean(stepResult.ok),
+      status: stepResult.status || "",
+      summary: stepResult.summary || "",
+      currentUrl: stepResult.currentUrl || "",
+      blockedReason: stepResult.blockedReason || "",
+    });
+
+    last = stepResult;
+    currentUrl = stepResult.currentUrl || stepResult.state?.currentUrl || stepResult.state?.lastValidObservation?.url || currentUrl;
+
+    if (!stepResult.ok || stepResult.status === "needs_user" || stepResult.status === "blocked") {
+      return {
+        ...stepResult,
+        instruction: args.instruction || sequence.join(" then "),
+        status: stepResult.status || "failed",
+        summary: `Completed ${index} of ${sequence.length} browser steps. Stopped at step ${index + 1}: ${stepResult.summary || stepResult.blockedReason || "step did not complete"}.`,
+        sequence: {
+          completed: index,
+          total: sequence.length,
+          stoppedAt: index + 1,
+          items: results,
+        },
+        nextSafeAction: stepResult.nextSafeAction || "Clarify or retry the stopped step.",
+      };
+    }
+  }
+
+  return {
+    ...(last || {}),
+    instruction: args.instruction || sequence.join(" then "),
+    ok: Boolean(last?.ok),
+    status: last?.status || "success",
+    summary: `Completed ${sequence.length} of ${sequence.length} browser steps. ${last?.summary || ""}`.trim(),
+    sequence: {
+      completed: sequence.length,
+      total: sequence.length,
+      stoppedAt: null,
+      items: results,
+    },
+  };
+}
+
 async function showActions(args = {}, state = loadState(args.sessionId)) {
   const useExtensions = boolArg(args.useExtensions, true);
   const extension = useExtensions
@@ -1751,6 +1835,11 @@ export async function browserAgentRun(args = {}) {
     instruction,
   };
 
+  const sequence = args._skipSequence ? [] : splitSequentialInstructions(instruction);
+  if (sequence.length > 1) {
+    return browserAgentRunSequence(baseArgs, sequence);
+  }
+
   const watcher = watchBrowserInstruction({
     sessionId,
     rawUserMessage: instruction,
@@ -1802,9 +1891,15 @@ export async function browserAgentRun(args = {}) {
   }
 
   const observation = observationFromPageResult(result || {});
-  const validObservation = isValidObservation(observation);
+  const verification = verifyBrowserResult({
+    watcher,
+    command,
+    result,
+    observation,
+    previousState: state,
+  });
 
-  if (!result?.ok || !validObservation) {
+  if (!verification.ok) {
     const failedState = result?.status === "needs_user"
       ? saveState({
           ...state,
@@ -1827,22 +1922,22 @@ export async function browserAgentRun(args = {}) {
 
     return responseBase({
       ok: false,
-      status: result?.status === "needs_user" ? "needs_user" : "failed",
+      status: result?.status === "needs_user" || verification.needsUser ? "needs_user" : "failed",
       instruction,
       state: failedState,
       observation: null,
       steps: stepsFromWatcherResult(redactedWatcher, result, command),
       summary: result?.status === "needs_user"
         ? (result.error || watcher.reason || "The browser needs more input before acting.")
-        : `Browser action failed or produced an invalid observation. Previous valid URL: ${state.currentUrl || state.lastValidObservation?.url || "none"}.`,
+        : `${verification.reason || "Browser action failed verification."} Previous valid URL: ${state.currentUrl || state.lastValidObservation?.url || "none"}.`,
       possibleNextActions: [],
       requiresUser: true,
-      blockedReason: result?.error || observation.error || observation.snapshotError || "observation_failed",
+      blockedReason: verification.blockedReason || result?.error || observation.error || observation.snapshotError || "observation_failed",
       watcher: redactedWatcher,
       filledFields: filledFieldsFromResult(result, command),
       missingFields: missingFieldsFromResult(result),
       submitStatus: submitStatusFromResult(result),
-      nextSafeAction: "Retry the action, clarify the target, or navigate to a valid URL.",
+      nextSafeAction: verification.nextSafeAction || "Retry the action, clarify the target, or navigate to a valid URL.",
     });
   }
 
