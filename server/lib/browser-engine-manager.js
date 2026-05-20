@@ -480,6 +480,96 @@ function extractStaticLinks(html = "", baseUrl = "") {
   return uniqueEntries(links).slice(0, 160);
 }
 
+function decodeAttr(value = "") {
+  return decodeHtml(String(value || "").replace(/^["']|["']$/g, ""));
+}
+
+function parseHtmlAttrs(attrs = "") {
+  const parsed = {};
+  const attrRe = /\b([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/g;
+  let match;
+  while ((match = attrRe.exec(attrs))) {
+    parsed[match[1].toLowerCase()] = decodeAttr(match[2]);
+  }
+  return parsed;
+}
+
+function selectorForStaticField(tag = "input", attrs = {}) {
+  if (attrs.id) return `#${attrs.id}`;
+  if (attrs.name) return `${tag}[name='${String(attrs.name).replace(/'/g, "\\'")}']`;
+  return "";
+}
+
+function extractStaticFields(html = "") {
+  const fields = [];
+  const fieldRe = /<(input|textarea|select)\b([^>]*)>/gi;
+  let match;
+
+  while ((match = fieldRe.exec(html)) && fields.length < 120) {
+    const tag = String(match[1] || "input").toLowerCase();
+    const attrs = parseHtmlAttrs(match[2] || "");
+    const type = attrs.type || tag;
+    if (/^(hidden|submit|button|reset|image)$/i.test(type)) continue;
+    fields.push({
+      index: fields.length,
+      name: attrs.name || "",
+      id: attrs.id || "",
+      type,
+      placeholder: attrs.placeholder || "",
+      ariaLabel: attrs["aria-label"] || attrs.title || "",
+      required: /\brequired\b/i.test(match[2] || ""),
+      selector: selectorForStaticField(tag, attrs),
+      secret: /password/i.test(type),
+      source: "static_html",
+    });
+  }
+
+  return uniqueEntries(fields, (field) => field.selector || field.name || field.id || field.placeholder || field.type).slice(0, 120);
+}
+
+function extractStaticButtons(html = "") {
+  const buttons = [];
+  const buttonRe = /<button\b([^>]*)>([\s\S]*?)<\/button>|<input\b([^>]*\btype\s*=\s*["']?(?:submit|button|reset)["']?[^>]*)>/gi;
+  let match;
+
+  while ((match = buttonRe.exec(html)) && buttons.length < 80) {
+    const attrs = parseHtmlAttrs(match[1] || match[3] || "");
+    const text = stripHtml(match[2] || "") || attrs.value || attrs["aria-label"] || attrs.title || attrs.name || "";
+    buttons.push({
+      index: buttons.length,
+      text: safeText(text, 180),
+      selector: attrs.id ? `#${attrs.id}` : attrs.name ? `button[name='${String(attrs.name).replace(/'/g, "\\'")}']` : "",
+      tag: match[3] ? "input" : "button",
+      type: attrs.type || (match[3] ? "submit" : "button"),
+      source: "static_html",
+    });
+  }
+
+  return buttons.filter((button) => button.text || button.selector).slice(0, 80);
+}
+
+function extractStaticForms(html = "", baseUrl = "") {
+  const forms = [];
+  const formRe = /<form\b([^>]*)>([\s\S]*?)<\/form>/gi;
+  let match;
+
+  while ((match = formRe.exec(html)) && forms.length < 30) {
+    const attrs = parseHtmlAttrs(match[1] || "");
+    const body = match[2] || "";
+    forms.push({
+      index: forms.length,
+      action: absoluteUrl(attrs.action || "", baseUrl),
+      method: attrs.method || "get",
+      selector: attrs.id ? `#${attrs.id}` : attrs.name ? `form[name='${String(attrs.name).replace(/'/g, "\\'")}']` : "",
+      fields: extractStaticFields(body).slice(0, 80),
+      buttons: extractStaticButtons(body).slice(0, 20),
+      source: "static_html",
+    });
+  }
+
+  return forms;
+}
+
 async function observeWithStaticFetch(args = {}) {
   const requestedUrl = normalizeUrlInput(args.url || args.currentUrl || "");
   if (!requestedUrl) {
@@ -505,6 +595,17 @@ async function observeWithStaticFetch(args = {}) {
   const finalUrl = response.url || requestedUrl;
   const title = decodeHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
   const links = extractStaticLinks(html, finalUrl);
+  const forms = extractStaticForms(html, finalUrl);
+  const pageInputs = extractStaticFields(html);
+  const formInputKeys = new Set(forms.flatMap((form) => form.fields || []).map((field) => field.selector || field.name || field.id).filter(Boolean));
+  const inputs = [
+    ...forms.flatMap((form) => form.fields || []),
+    ...pageInputs.filter((field) => {
+      const key = field.selector || field.name || field.id;
+      return !key || !formInputKeys.has(key);
+    }),
+  ].slice(0, 120);
+  const buttons = extractStaticButtons(html);
   const textPreview = stripHtml(html).slice(0, 5000);
   const observation = normalizeObservation({
     ok: response.ok,
@@ -515,9 +616,14 @@ async function observeWithStaticFetch(args = {}) {
       title,
       textPreview,
       links,
-      buttons: [],
-      forms: [],
-      interactiveElements: links,
+      buttons,
+      inputs,
+      forms,
+      interactiveElements: [
+        ...links,
+        ...buttons.map((button) => ({ ...button, role: "button" })),
+        ...inputs.map((input) => ({ ...input, role: input.type || "input", tag: "input" })),
+      ],
       stats: { status: response.status, contentType: response.headers.get("content-type") || "" },
     },
   }, { engine: "static_fetch", requestedUrl });

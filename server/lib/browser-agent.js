@@ -18,6 +18,7 @@ import {
   watchBrowserInstruction,
 } from "./browser-runtime-watcher.js";
 import { verifyBrowserResult } from "./browser-result-verifier.js";
+import { adviseBrowserFailure } from "./browser-error-advisor.js";
 import {
   getExtension,
   getExtensionSkill,
@@ -761,6 +762,7 @@ function responseBase({
   missingFields = [],
   submitStatus = "",
   nextSafeAction = "",
+  diagnostics = null,
 } = {}) {
   const observationIsValid = observation && isValidObservation(observation);
   return {
@@ -789,6 +791,7 @@ function responseBase({
     missingFields,
     submitStatus,
     nextSafeAction,
+    diagnostics,
   };
 }
 
@@ -820,7 +823,7 @@ function filledFieldsFromResult(result = {}, command = {}) {
       secret: Boolean(field.redacted),
     }));
   }
-  return redactedFields(command?.args?.fields || []);
+  return result?.ok ? redactedFields(command?.args?.fields || []) : [];
 }
 
 function missingFieldsFromResult(result = {}) {
@@ -1824,6 +1827,72 @@ export async function browserAgentStatus(args = {}) {
   };
 }
 
+export async function browserAgentDiagnose(args = {}) {
+  const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
+  const state = loadState(sessionId);
+  const instruction = String(args.instruction || state.pendingInstruction || "").trim();
+  const browserResult = typeof args.browserResult === "string"
+    ? (() => {
+        try { return JSON.parse(args.browserResult); } catch { return { ok: false, error: args.browserResult }; }
+      })()
+    : args.browserResult && typeof args.browserResult === "object"
+      ? args.browserResult
+      : null;
+  const error = String(args.error || browserResult?.error || browserResult?.blockedReason || "").trim();
+  const watcher = browserResult?.watcher || (instruction
+    ? watchBrowserInstruction({
+        sessionId,
+        rawUserMessage: instruction,
+        currentState: state,
+        lastValidObservation: state.lastValidObservation,
+        lastFailedObservation: state.lastFailedObservation,
+        currentUrl: args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
+      })
+    : {});
+  const command = browserResult?.watcher?.command || browserResult?.lastCommand || watcher?.command || {};
+  const observation = browserResult?.whatFound || browserResult?.observation || state.lastFailedObservation || state.lastValidObservation || {};
+  const result = browserResult || {
+    ok: false,
+    status: "failed",
+    error,
+    engine: observation?.engine || state.activeEngine || "",
+    observation,
+  };
+  const diagnostics = adviseBrowserFailure({
+    watcher,
+    command,
+    result,
+    observation,
+    state,
+    verification: result?.verification || null,
+  });
+
+  return {
+    ok: true,
+    status: "success",
+    sessionId,
+    instruction,
+    currentUrl: state.currentUrl || state.lastValidObservation?.url || "",
+    currentTitle: state.currentTitle || state.lastValidObservation?.title || "",
+    diagnostics: diagnostics || {
+      diagnosis: error ? "No specific browser-agent diagnosis matched this error." : "No browser error was provided to diagnose.",
+      evidence: [error].filter(Boolean),
+      suggestedFixes: [
+        "Ask `browser agent status` to inspect current state and engine health.",
+        "Retry after confirming the backend and CDP browser engine are running.",
+      ],
+      engineFailures: state.engineFailures || {},
+    },
+    state: {
+      currentUrl: state.currentUrl || "",
+      currentTitle: state.currentTitle || "",
+      activeEngine: state.activeEngine || "",
+      engineFailures: state.engineFailures || {},
+      lastFailedObservation: state.lastFailedObservation || null,
+    },
+  };
+}
+
 export async function browserAgentRun(args = {}) {
   const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
   const state = loadState(sessionId);
@@ -1900,6 +1969,14 @@ export async function browserAgentRun(args = {}) {
   });
 
   if (!verification.ok) {
+    const diagnostics = adviseBrowserFailure({
+      watcher,
+      command,
+      result,
+      observation,
+      state,
+      verification,
+    });
     const failedState = result?.status === "needs_user"
       ? saveState({
           ...state,
@@ -1938,6 +2015,7 @@ export async function browserAgentRun(args = {}) {
       missingFields: missingFieldsFromResult(result),
       submitStatus: submitStatusFromResult(result),
       nextSafeAction: verification.nextSafeAction || "Retry the action, clarify the target, or navigate to a valid URL.",
+      diagnostics,
     });
   }
 

@@ -22,6 +22,7 @@ import {
 } from "./lightpanda-client.js";
 import {
   browserAgentLearn,
+  browserAgentDiagnose,
   browserAgentObserve,
   browserAgentReset,
   browserAgentRun,
@@ -606,6 +607,10 @@ async function browserAgentStatusTool(args = {}) {
   return safeText(await browserAgentStatus(args), 20000);
 }
 
+async function browserAgentDiagnoseTool(args = {}) {
+  return safeText(await browserAgentDiagnose(args), 20000);
+}
+
 const builtinServers = [
   {
     id: "local",
@@ -837,6 +842,21 @@ const builtinServers = [
           },
         },
         execute: browserAgentStatusTool,
+      },
+      {
+        name: "diagnose",
+        description: "Diagnose a browser-agent failure using persisted browser state, tool result JSON, and error text. Use this for browser errors, CDP failures, static_fetch limitations, and backend/proxy failures.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string" },
+            instruction: { type: "string" },
+            currentUrl: { type: "string" },
+            error: { type: "string" },
+            browserResult: { type: "string" },
+          },
+        },
+        execute: browserAgentDiagnoseTool,
       },
     ],
   },
@@ -1239,6 +1259,21 @@ export function routeMcpIntent(text = "", options = {}) {
   const namedExtensionId = mentionedExtensionId(raw);
 
   if (mode === "browser") {
+    if (/\b(diagnose|diagnosis|debug|why did|why is|error|failed|failure|not working)\b/i.test(lower) && /\b(browser|browser agent|lightpanda|cdp|static_fetch|form|click|fill|submit|menu)\b/i.test(lower)) {
+      return use(
+        "mcp__browser_agent__diagnose",
+        {
+          sessionId: projectId,
+          instruction: raw,
+          currentUrl: options.currentUrl || "",
+          error: raw,
+        },
+        "browser mode diagnostics should use the browser-agent diagnostic MCP tool",
+        "low",
+        0.97
+      );
+    }
+
     if (/\b(browser agent status|agent status)\b/i.test(lower)) {
       return use(
         "mcp__browser_agent__status",
