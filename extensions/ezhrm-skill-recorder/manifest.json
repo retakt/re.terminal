@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "EZHRM Skill Recorder for Re.Term",
+  "version": "0.1.0",
+  "description": "EZHRM-only page inspector that exports visible forms, fields, buttons, links, and tables as site-skill JSON.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://ezhrmsys.com/*",
+    "https://*.ezhrmsys.com/*",
+    "http://localhost:3003/*"
+  ],
+  "action": {
+    "default_title": "EZHRM Skill Recorder",
+    "default_popup": "ezhrm-popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ezhrmsys.com/*",
+        "https://*.ezhrmsys.com/*"
+      ],
+      "js": [
+        "ezhrm-content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

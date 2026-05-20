@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>EZHRM Skill Recorder</title>
+    <style>
+      body {
+        width: 340px;
+        margin: 0;
+        padding: 16px;
+        background: #0b0f14;
+        color: white;
+        font-family: Arial, sans-serif;
+      }
+
+      h1 {
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+
+      p {
+        color: #aeb8c8;
+        font-size: 13px;
+      }
+
+      button {
+        width: 100%;
+        padding: 10px;
+        margin-top: 8px;
+        border-radius: 8px;
+        border: 1px solid #2d5ca8;
+        background: #1c3d73;
+        color: white;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #111827;
+        border: 1px solid #293445;
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 12px;
+        max-height: 220px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>EZHRM Skill Recorder</h1>
+    <p>Export what the current EZHRM page really shows.</p>
+
+    <button id="inspect">Inspect current page</button>
+    <button id="copy" disabled>Copy JSON</button>
+    <button id="download" disabled>Download JSON</button>
+    <button id="send" disabled>Send to Re.Term</button>
+
+    <pre id="status">Open an EZHRM page, then click inspect.</pre>
+
+    <script src="ezhrm-popup.js"></script>
+  </body>
+</html>
