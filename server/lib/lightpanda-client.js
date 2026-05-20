@@ -37,6 +37,19 @@ function normalizeUrl(input = "") {
   return `https://${raw}`;
 }
 
+function isLikelyBrowserUrl(input = "") {
+  const raw = String(input || "").trim();
+  if (!raw) return false;
+  if (/^https?:\/\//i.test(raw)) return true;
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(raw)) return false;
+  return /^(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[/:?#][^\s]*)?$/i.test(raw);
+}
+
+function normalizeOptionalUrl(input = "") {
+  const raw = String(input || "").trim();
+  return isLikelyBrowserUrl(raw) ? normalizeUrl(raw) : "";
+}
+
 function safeText(value, limit = 16000) {
   const text = typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
   return text.length > limit ? `${text.slice(0, limit)}\n...[truncated]` : text;
@@ -379,6 +392,190 @@ async function evaluateBrowserSnapshot(session, sid) {
   return evaluated?.result?.value || {};
 }
 
+function semanticSnapshotExpression() {
+  return `(() => {
+    const pick = (value, limit = 180) => String(value || "").replace(/\\s+/g, " ").trim().slice(0, limit);
+    const quote = (value) => String(value || "").replace(/\\\\/g, "\\\\\\\\").replace(/'/g, "\\\\'");
+    const cssEscape = (value) => globalThis.CSS && typeof CSS.escape === "function"
+      ? CSS.escape(String(value || ""))
+      : String(value || "").replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
+    const absoluteUrl = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      try { return new URL(raw, location.href).href; } catch { return raw; }
+    };
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const stableSelector = (el) => {
+      if (!el || !el.tagName) return "";
+      const tag = el.tagName.toLowerCase();
+      const id = el.getAttribute("id");
+      if (id) return "#" + cssEscape(id);
+      for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name", "title"]) {
+        const value = el.getAttribute(attr);
+        if (value) return tag + "[" + attr + "='" + quote(value) + "']";
+      }
+      if (tag === "a") {
+        const href = el.getAttribute("href");
+        if (href && !/^javascript:/i.test(href)) return "a[href='" + quote(href) + "']";
+      }
+      return "";
+    };
+    const roleFor = (el) => {
+      const explicit = el.getAttribute("role");
+      if (explicit) return explicit;
+      const tag = el.tagName.toLowerCase();
+      if (tag === "a") return "link";
+      if (tag === "button") return "button";
+      if (tag === "input") return el.getAttribute("type") || "input";
+      if (tag === "select") return "select";
+      if (tag === "textarea") return "textbox";
+      return tag;
+    };
+    const labelFor = (el) => {
+      if (!el) return "";
+      const id = el.getAttribute("id");
+      const labels = [];
+      if (id) {
+        const explicit = document.querySelector("label[for='" + quote(id) + "']");
+        if (explicit) labels.push(explicit.innerText || explicit.textContent || "");
+      }
+      const wrapped = el.closest("label");
+      if (wrapped) labels.push(wrapped.innerText || wrapped.textContent || "");
+      labels.push(
+        el.innerText,
+        el.textContent,
+        el.getAttribute("aria-label"),
+        el.getAttribute("placeholder"),
+        el.getAttribute("title"),
+        el.getAttribute("name"),
+        el.value && /^(button|submit)$/i.test(el.getAttribute("type") || "") ? el.value : ""
+      );
+      return pick(labels.filter(Boolean).join(" "), 180);
+    };
+    const nodeText = (node, limit = 16000) => {
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      const parts = [];
+      let current;
+      while ((current = walker.nextNode()) && parts.length < 2200) {
+        const parent = current.parentElement;
+        if (parent && parent.closest("script, style, noscript, svg, template")) continue;
+        if (parent && parent.getAttribute("aria-hidden") === "true") continue;
+        const text = pick(current.nodeValue, 260);
+        if (text) parts.push(text);
+      }
+      return pick(parts.join(" "), limit);
+    };
+
+    const interactiveElements = Array.from(document.querySelectorAll("a[href], button, input, textarea, select, [role='button'], [role='link']"))
+      .filter(visible)
+      .map((el, index) => {
+        const tag = el.tagName.toLowerCase();
+        const type = el.getAttribute("type") || "";
+        const label = labelFor(el);
+        const selector = stableSelector(el);
+        const href = tag === "a" ? absoluteUrl(el.href || el.getAttribute("href")) : "";
+        return {
+          index,
+          tag,
+          role: roleFor(el),
+          type,
+          text: label,
+          selector,
+          href,
+          id: el.getAttribute("id") || "",
+          name: el.getAttribute("name") || "",
+          ariaLabel: el.getAttribute("aria-label") || "",
+          placeholder: el.getAttribute("placeholder") || "",
+          required: el.hasAttribute("required"),
+          secret: /password/i.test(type),
+        };
+      })
+      .slice(0, 220);
+
+    const links = interactiveElements
+      .filter((entry) => entry.tag === "a" && entry.href)
+      .map((entry) => ({ text: entry.text || entry.href, href: entry.href, selector: entry.selector, index: entry.index }))
+      .slice(0, 160);
+
+    const buttons = interactiveElements
+      .filter((entry) => entry.role === "button" || /^(button|submit)$/i.test(entry.type))
+      .map((entry) => ({ index: entry.index, text: entry.text, selector: entry.selector, tag: entry.tag, type: entry.type, id: entry.id, name: entry.name }))
+      .slice(0, 100);
+
+    const inputs = interactiveElements
+      .filter((entry) => ["input", "textarea", "select"].includes(entry.tag))
+      .map((entry) => ({
+        index: entry.index,
+        tag: entry.tag,
+        type: entry.type || entry.tag,
+        name: entry.name,
+        id: entry.id,
+        placeholder: entry.placeholder,
+        ariaLabel: entry.ariaLabel,
+        required: entry.required,
+        secret: entry.secret,
+        selector: entry.selector,
+      }))
+      .slice(0, 120);
+
+    const forms = Array.from(document.querySelectorAll("form")).slice(0, 30).map((form, index) => ({
+      index,
+      action: form.action || "",
+      method: form.method || "get",
+      selector: stableSelector(form),
+      fields: Array.from(form.querySelectorAll("input, textarea, select")).slice(0, 80).map((field, fieldIndex) => ({
+        index: fieldIndex,
+        name: field.getAttribute("name") || "",
+        id: field.getAttribute("id") || "",
+        type: field.getAttribute("type") || field.tagName.toLowerCase(),
+        placeholder: field.getAttribute("placeholder") || "",
+        ariaLabel: field.getAttribute("aria-label") || "",
+        required: field.hasAttribute("required"),
+        secret: /password/i.test(field.getAttribute("type") || ""),
+        selector: stableSelector(field),
+      })),
+      buttons: Array.from(form.querySelectorAll("button, input[type='submit'], input[type='button']")).slice(0, 30).map((button) => ({
+        text: labelFor(button),
+        type: button.getAttribute("type") || "",
+        selector: stableSelector(button),
+      })),
+    }));
+
+    return {
+      url: location.href,
+      title: document.title || "",
+      text: document.body ? nodeText(document.body, 16000) : "",
+      links,
+      buttons,
+      inputs,
+      forms,
+      interactiveElements,
+      stats: {
+        links: links.length,
+        buttons: buttons.length,
+        inputs: inputs.length,
+        forms: forms.length,
+        scripts: document.scripts.length,
+        images: document.images.length,
+      },
+    };
+  })()`;
+}
+
+async function evaluateSemanticSnapshot(session, sid) {
+  const evaluated = await session.call("Runtime.evaluate", {
+    expression: semanticSnapshotExpression(),
+    returnByValue: true,
+    awaitPromise: true,
+  }, DEFAULT_TIMEOUT_MS, sid);
+
+  return evaluated?.result?.value || {};
+}
+
 async function openPageTarget(session, url, waitMs) {
   const target = await session.call("Target.createTarget", { url: "about:blank" });
   const targetId = target?.targetId;
@@ -392,6 +589,63 @@ async function openPageTarget(session, url, waitMs) {
   await wait(waitMs);
 
   return { targetId, sid };
+}
+
+async function attachToCurrentPageTarget(session, args = {}) {
+  const waitMs = Math.max(150, Math.min(Number(args.waitMs || 900), 8000));
+  const requestedUrl = normalizeOptionalUrl(args.url || args.currentUrl || "");
+  const shouldNavigate = Boolean(args.navigate && requestedUrl);
+  const targets = await session.call("Target.getTargets", {}).catch(() => ({ targetInfos: [] }));
+  const pages = Array.isArray(targets?.targetInfos)
+    ? targets.targetInfos.filter((target) => target.type === "page")
+    : [];
+
+  const normalizedRequested = requestedUrl.toLowerCase().replace(/\/+$/, "");
+  let selected = null;
+
+  if (normalizedRequested) {
+    selected = pages.find((target) =>
+      String(target.url || "").toLowerCase().replace(/\/+$/, "") === normalizedRequested
+    ) || null;
+  }
+
+  if (!selected) {
+    selected = pages.find((target) =>
+      /^https?:\/\//i.test(String(target.url || "")) && !/devtools/i.test(String(target.url || ""))
+    ) || pages.find((target) =>
+      target.url && target.url !== "about:blank" && !/devtools/i.test(String(target.url || ""))
+    ) || pages[0] || null;
+  }
+
+  let targetId = selected?.targetId || "";
+  let created = false;
+
+  if (!targetId) {
+    const target = await session.call("Target.createTarget", { url: requestedUrl || "about:blank" });
+    targetId = target?.targetId || "";
+    created = true;
+  }
+
+  const attached = await session.call("Target.attachToTarget", { targetId, flatten: true });
+  const sid = attached?.sessionId || "";
+
+  await session.call("Page.enable", {}, DEFAULT_TIMEOUT_MS, sid);
+  await session.call("Runtime.enable", {}, DEFAULT_TIMEOUT_MS, sid);
+
+  if ((created && requestedUrl) || shouldNavigate) {
+    await session.call("Page.navigate", { url: requestedUrl }, DEFAULT_TIMEOUT_MS, sid);
+    await Promise.race([session.waitForEvent("Page.loadEventFired", 8000), wait(waitMs)]);
+    await wait(waitMs);
+  }
+
+  return { targetId, sid, created, requestedUrl, selectedUrl: selected?.url || "" };
+}
+
+async function withCurrentPage(fn, args = {}) {
+  return withSession(async (session) => {
+    const target = await attachToCurrentPageTarget(session, args);
+    return fn(session, target.sid, target);
+  }, { timeoutMs: args.timeoutMs || DEFAULT_TIMEOUT_MS });
 }
 
 function normalizeActionFields(fields) {
@@ -691,6 +945,197 @@ export async function lightpandaAction(args = {}) {
       page,
     };
   });
+}
+
+export async function lightpandaSnapshotCurrent(args = {}) {
+  const page = await withCurrentPage(async (session, sid, target) => {
+    const snapshot = await evaluateSemanticSnapshot(session, sid);
+    return {
+      ok: true,
+      action: "snapshot",
+      target: {
+        targetId: target.targetId,
+        created: target.created,
+        selectedUrl: target.selectedUrl,
+        requestedUrl: target.requestedUrl,
+      },
+      page: snapshot,
+    };
+  }, args);
+
+  return page;
+}
+
+export async function lightpandaWaitForSelector(args = {}) {
+  const selector = String(args.selector || "").trim();
+  if (!selector) throw new Error("selector is required");
+  const timeoutMs = Math.max(250, Math.min(Number(args.timeoutMs || args.waitMs || 2500), 12000));
+
+  return withCurrentPage(async (session, sid) => {
+    const expression = `(() => new Promise((resolve) => {
+      const selector = ${JSON.stringify(selector)};
+      const started = Date.now();
+      const timeoutMs = ${JSON.stringify(timeoutMs)};
+      const tick = () => {
+        let el = null;
+        try { el = document.querySelector(selector); } catch (err) {
+          resolve({ ok: false, error: "invalid selector", selector });
+          return;
+        }
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          resolve({ ok: true, selector, visible: rect.width > 0 && rect.height > 0 });
+          return;
+        }
+        if (Date.now() - started >= timeoutMs) {
+          resolve({ ok: false, error: "selector not found", selector });
+          return;
+        }
+        setTimeout(tick, 80);
+      };
+      tick();
+    }))()`;
+
+    const evaluated = await session.call("Runtime.evaluate", {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    }, timeoutMs + 1000, sid);
+
+    return evaluated?.result?.value || { ok: false, error: "selector wait failed", selector };
+  }, args);
+}
+
+export async function lightpandaFindInteractiveElements(args = {}) {
+  const result = await lightpandaSnapshotCurrent(args);
+  return {
+    ok: Boolean(result?.ok),
+    page: {
+      url: result?.page?.url || "",
+      title: result?.page?.title || "",
+    },
+    interactiveElements: result?.page?.interactiveElements || [],
+    buttons: result?.page?.buttons || [],
+    links: result?.page?.links || [],
+    inputs: result?.page?.inputs || [],
+  };
+}
+
+async function clickCurrentPageElement(args = {}) {
+  const payload = {
+    selector: String(args.selector || ""),
+    text: String(args.text || args.buttonText || args.linkText || ""),
+    exact: args.exact === true,
+    afterWaitMs: Math.max(150, Math.min(Number(args.afterWaitMs || 900), 8000)),
+  };
+
+  return withCurrentPage(async (session, sid) => {
+    const expression = `(() => {
+      const payload = ${JSON.stringify(payload)};
+      const pick = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+      const quote = (value) => String(value || "").replace(/\\\\/g, "\\\\\\\\").replace(/'/g, "\\\\'");
+      const cssEscape = (value) => globalThis.CSS && typeof CSS.escape === "function"
+        ? CSS.escape(String(value || ""))
+        : String(value || "").replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
+      const visible = (el) => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+      };
+      const stableSelector = (el) => {
+        if (!el || !el.tagName) return "";
+        const tag = el.tagName.toLowerCase();
+        const id = el.getAttribute("id");
+        if (id) return "#" + cssEscape(id);
+        for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name", "title"]) {
+          const value = el.getAttribute(attr);
+          if (value) return tag + "[" + attr + "='" + quote(value) + "']";
+        }
+        if (tag === "a") {
+          const href = el.getAttribute("href");
+          if (href && !/^javascript:/i.test(href)) return "a[href='" + quote(href) + "']";
+        }
+        return "";
+      };
+      const labelFor = (el) => pick(
+        el.innerText ||
+        el.textContent ||
+        el.getAttribute("aria-label") ||
+        el.getAttribute("title") ||
+        el.getAttribute("placeholder") ||
+        el.value ||
+        el.href ||
+        ""
+      );
+
+      let el = null;
+      if (payload.selector) {
+        try { el = document.querySelector(payload.selector); } catch {}
+      }
+
+      const wanted = pick(payload.text).toLowerCase();
+      const candidates = Array.from(document.querySelectorAll("button, a[href], input[type='submit'], input[type='button'], [role='button'], [role='link']"))
+        .filter(visible);
+
+      if (!el && wanted) {
+        el = candidates.find((candidate) => {
+          const text = labelFor(candidate).toLowerCase();
+          return payload.exact ? text === wanted : text.includes(wanted) || wanted.includes(text);
+        }) || null;
+      }
+
+      if (!el) {
+        return { ok: false, error: "click target not found", target: { selector: payload.selector, text: payload.text } };
+      }
+
+      const label = labelFor(el);
+      const selector = stableSelector(el);
+      const tag = el.tagName.toLowerCase();
+      const href = el.href || "";
+
+      el.scrollIntoView({ block: "center", inline: "center" });
+      el.click();
+
+      return {
+        ok: true,
+        clicked: {
+          text: label.slice(0, 180),
+          selector,
+          tag,
+          href,
+          role: el.getAttribute("role") || (tag === "a" ? "link" : tag === "button" ? "button" : ""),
+        },
+      };
+    })()`;
+
+    const evaluated = await session.call("Runtime.evaluate", {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    }, DEFAULT_TIMEOUT_MS, sid);
+
+    const actionResult = evaluated?.result?.value || { ok: false, error: "click failed" };
+    await Promise.race([session.waitForEvent("Page.loadEventFired", 6000), wait(payload.afterWaitMs)]);
+    await wait(payload.afterWaitMs);
+
+    const page = await evaluateSemanticSnapshot(session, sid);
+    return {
+      ok: Boolean(actionResult?.ok),
+      action: "click",
+      actionResult,
+      page,
+    };
+  }, args);
+}
+
+export async function lightpandaClickBySelector(args = {}) {
+  if (!String(args.selector || "").trim()) throw new Error("selector is required");
+  return clickCurrentPageElement(args);
+}
+
+export async function lightpandaClickByText(args = {}) {
+  if (!String(args.text || args.buttonText || args.linkText || "").trim()) throw new Error("text is required");
+  return clickCurrentPageElement(args);
 }
 
 export async function lightpandaInstantScrape(args = {}) {

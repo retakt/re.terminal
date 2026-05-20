@@ -27,7 +27,7 @@ import {
 } from "./config";
 import { TOOLS } from "../tools/definitions";
 import { executeTool } from "../tools/executor";
-import { ollamaChatNonStream, ollamaChatStream, ollamaListModels, type OllamaMessage, type OllamaTool } from "../api/ollama";
+import { ollamaChatNonStream, ollamaChatStream, ollamaListModels, warmupModels, type OllamaMessage, type OllamaTool } from "../api/ollama";
 import { listMcpToolDefinitions, routeMcpIntent } from "../api/mcp";
 import { extractMemories, saveFact, searchMemory } from "../api/memory";
 import type { AttachedFile, SessionOptions, ToolLog, ChatContextValue, ReasoningLog, ChatActivityStatus, ChatMode, RuntimeContext, AssistantRunLog } from "../types";
@@ -408,45 +408,40 @@ function containerNameCandidate(text: string) {
   return "";
 }
 
-function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool[]) {
+function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool[], mode: ChatMode) {
   const lower = text.toLowerCase();
   const hasTool = (name: string) => enabledTools.some((tool) => tool.function.name === name);
   const make = (name: string, args: Record<string, string> = {}) => hasTool(name) ? { name, args } : null;
   const explicitWebIntent = /\b(search|look up|lookup|web search|google|find latest|latest news|current news|news|right now on the web)\b/.test(lower);
 
   const browserTarget = extractBrowserTarget(text);
-    // Known extension/site-skill actions must route to extensions, not Lightpanda URL extraction.
-  if (/\b(extension|extensions|ezhrm|site skill|site skills|known actions|available actions|hrm|attendance|leave application|leave status|passport request|passport request status|passport request form|salary deduction|manage bank accounts|other leaves application|view deduction details|deduction details)\b/.test(lower)) {
-    const knownLabels: Array<[string, string]> = [
-      ["view deduction details", "View Deduction Details"],
-      ["deduction details", "View Deduction Details"],
-      ["leave application", "Leave Application"],
-      ["leave status", "Leave Status"],
-      ["passport request form", "Passport Request Form"],
-      ["passport request status", "Passport Request Status"],
-      ["salary deduction", "Salary Deduction"],
-      ["manage bank accounts", "Manage Bank Accounts"],
-      ["other leaves application", "Other Leaves Application"],
-      ["login", "Login"],
-      ["sign in", "Login"],
-      ["search", "SEARCH"],
-    ];
 
-    const matched = knownLabels.find(([needle]) => lower.includes(needle));
+  if (mode === "browser" && !explicitWebIntent) {
+    const agent = make("mcp__browser_agent__run", {
+      sessionId,
+      instruction: text.trim(),
+    });
+    if (agent) return agent;
+  }
 
-    if (browserTarget) {
+  const browserishIntent =
+    Boolean(browserTarget) ||
+    /\b(browser|website|webpage|current page|site skill|site skills|extension|extensions|known actions|available actions|button|link)\b/.test(lower) ||
+    /\b(this|that)\s+(button|link|page)\s+(is|opens)\b/.test(lower) ||
+    /\bremember\s+(this|that)\s+(button|link|page|action)\b/.test(lower);
+
+  if (!explicitWebIntent && browserishIntent) {
+    const agent = make("mcp__browser_agent__run", {
+      sessionId,
+      instruction: text.trim(),
+    });
+    if (agent) return agent;
+
+    if (browserTarget && /\b(extension|extensions|site skill|site skills)\b/.test(lower)) {
       return make("mcp__extensions__match_url", { url: browserTarget });
     }
-
-    if (matched) {
-      return make("mcp__extensions__plan_action", {
-        extensionId: "ezhrm",
-        label: matched[1],
-      });
-    }
-
-    return make("mcp__extensions__get", { id: "ezhrm" });
   }
+
   if ((/\b(lightpanda|browser|open page|open url|visit|navigate|extract page|read webpage|webpage|browse)\b/.test(lower) && browserTarget) || /^https?:\/\//i.test(browserTarget)) {
     return make("mcp__browser__lightpanda_navigate", { url: browserTarget });
   }
@@ -510,12 +505,13 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
 
   function isToolAllowedInMode(name: string, mode: ChatMode, allowWebTools: boolean) {
     const isMcp = name.startsWith("mcp__");
+    const isBrowserAgent = name.startsWith("mcp__browser_agent__");
     const isBrowser = name.startsWith("mcp__browser__");
     const isExtension = name.startsWith("mcp__extensions__");
     const isWeb = name === "search_web" || name.startsWith("mcp__web__");
 
     if (mode === "browser") {
-      return isBrowser || isExtension;
+      return isBrowserAgent || isBrowser || isExtension;
     }
     if (mode === "scraper") {
       return name === "mcp__browser__instant_scrape"
@@ -577,7 +573,7 @@ async function routeToolUse(args: {
           "Mandatory tool paths: explicit current web facts/search, memory writes or reads, repo/file questions, local Docker/Ollama/monitor checks, graph/FalkorDB questions.",
           "If a mandatory path applies, set answer_directly false and must_call_tools true.",
           "Only choose tools from the supplied list. Prefer one or two focused tools.",
-          "Known website actions such as EZHRM Leave Status, View Deduction Details, Passport Request Status, Salary Deduction, or Manage Bank Accounts must use mcp__extensions__plan_action first. Do not send action labels as browser URLs.",
+          "In browser mode, website actions and learned site-skill actions must use mcp__browser_agent__run when available. Do not send action labels as browser URLs.",
         ].join("\n"),
       },
       {
@@ -820,6 +816,12 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
         return;
       }
 
+      const promptMode = chatModeRef.current;
+      void warmupModels({
+        model: currentModel,
+        includeBrowserAgent: promptMode === "browser",
+      }).catch((err) => console.warn("Model warmup failed:", err));
+
       const runId = generateUUID();
       const runStartedAt = Date.now();
       appendRunLog({
@@ -943,9 +945,10 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       // Clear attachment immediately
       setAttachedFile(null);
 
-      const { think: _think, ...inferenceOptions } = sessionOptionsRef.current;
-      const mode = chatModeRef.current;
+      const { think: _think, browserUseExtensions: _browserUseExtensions, ...inferenceOptions } = sessionOptionsRef.current;
+      const mode = promptMode;
       const runtime = runtimeContextRef.current;
+      const browserUseExtensions = sessionOptionsRef.current.browserUseExtensions !== false;
 
       // ── Determine think mode ────────────────────────────────────────────────
       let think: boolean;
@@ -986,7 +989,8 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       ];
       
       const activeTools = allTools.filter((tool) =>
-        isToolAllowedInMode(tool.function.name, mode, allowWebTools)
+        isToolAllowedInMode(tool.function.name, mode, allowWebTools) &&
+        (mode !== "browser" || browserUseExtensions || !tool.function.name.startsWith("mcp__extensions__"))
       );
       
       const activeToolNames = new Set(activeTools.map((tool) => tool.function.name));
@@ -1093,7 +1097,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       }
 
         if (allowToolRouting && mcpEnabledForMode && (!toolCalls || toolCalls.length === 0)) {
-          const forcedMcp = forcedMcpTool(lastText, sessionId, activeTools);
+          const forcedMcp = forcedMcpTool(lastText, sessionId, activeTools, mode);
         if (forcedMcp) {
           toolCalls = [{ function: { name: forcedMcp.name, arguments: forcedMcp.args } }];
         }
@@ -1104,6 +1108,19 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
         if (forced && activeToolNames.has(forced.name)) {
           toolCalls = [{ function: { name: forced.name, arguments: forced.args } }];
         }
+      }
+      if (mode === "browser" && toolCalls && toolCalls.length > 0) {
+        toolCalls = toolCalls.map((call) => call.function.name.startsWith("mcp__browser_agent__")
+          ? {
+              function: {
+                ...call.function,
+                arguments: {
+                  ...asToolArgs(call.function.arguments),
+                  useExtensions: String(browserUseExtensions),
+                },
+              },
+            }
+          : call);
       }
       if ((mode === "browser" || mode === "scraper") && toolCalls && toolCalls.length > 1) {
         toolCalls = [toolCalls[0]];

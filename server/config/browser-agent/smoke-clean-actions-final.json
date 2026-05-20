@@ -1,0 +1,38 @@
+{
+  "sessionId": "smoke-clean-actions-final",
+  "mode": "browser",
+  "currentUrl": "about:blank",
+  "currentTitle": "",
+  "currentExtensionId": "",
+  "currentPageKey": "blank",
+  "lastObservation": {
+    "ok": true,
+    "url": "about:blank",
+    "title": "",
+    "textPreview": "",
+    "links": [],
+    "buttons": [],
+    "inputs": [],
+    "forms": [],
+    "interactiveElements": [],
+    "stats": {
+      "links": 0,
+      "buttons": 0,
+      "inputs": 0,
+      "forms": 0,
+      "scripts": 0,
+      "images": 0
+    },
+    "isLoginPage": false
+  },
+  "pendingInstruction": "show available actions for the current page",
+  "pendingAction": null,
+  "visited": [
+    "about:blank"
+  ],
+  "learnedAliases": [],
+  "lastToolResults": [],
+  "failureCount": 0,
+  "updatedAt": "2026-05-20T09:58:07.378Z",
+  "useExtensions": true
+}

@@ -11,6 +11,7 @@ import {
 import {
   listBrowserExtensions,
   listExtensionCatalog,
+  updateBrowserExtensionEnabled,
   type BrowserExtension,
   type ExtensionCatalogItem,
 } from "@/chat/api/mcp";
@@ -27,12 +28,22 @@ function shortUrl(url: string) {
   }
 }
 
-function itemEnabled(item: ExtensionCatalogItem) {
-  return item.target.toLowerCase() === "mcp" || item.type.toLowerCase() === "mcp";
-}
-
 function riskClass(risk: string) {
   return `extension-risk extension-risk--${risk || "low"}`;
+}
+
+function extensionCopySummary(extension: BrowserExtension) {
+  return {
+    name: extension.name,
+    enabled: extension.enabled,
+    type: extension.type,
+    domains: extension.domains,
+    actions: extension.actions.map((action) => ({
+      label: action.label,
+      requiresConfirmation: action.requiresConfirmation,
+    })),
+    protectedActionCount: extension.dangerousActions.length,
+  };
 }
 
 export function ExtensionsShell() {
@@ -41,6 +52,7 @@ export function ExtensionsShell() {
   const [filter, setFilter] = useState<CatalogFilter>("all");
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
+  const [busyId, setBusyId] = useState("");
 
   const refresh = async () => {
     const [dynamicExtensions, staticCatalog] = await Promise.all([
@@ -97,13 +109,29 @@ export function ExtensionsShell() {
     window.setTimeout(() => setNotice(""), 1400);
   };
 
+  const toggleExtension = async (extension: BrowserExtension) => {
+    setBusyId(extension.id);
+    try {
+      const updated = await updateBrowserExtensionEnabled(extension.id, !extension.enabled);
+      if (updated) {
+        setExtensions((current) => current.map((entry) => entry.id === updated.id ? updated : entry));
+        setNotice(updated.enabled ? "extension enabled" : "extension disabled");
+      }
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "extension update failed");
+    } finally {
+      setBusyId("");
+      window.setTimeout(() => setNotice(""), 1800);
+    }
+  };
+
   return (
     <div className="program-shell tool-compact-page extension-page">
       <main className="tool-compact-body extension-page__body extension-catalog">
         <section className="tool-compact-card tool-compact-card--wide">
           <div className="tool-card-title">
             <Puzzle size={14} />
-            <h2>enabled extensions</h2>
+            <h2>extensions</h2>
             {notice && <span className="tool-card-title__note">{notice}</span>}
             <button type="button" className="catalog-filter-chip" onClick={() => void refresh()}>
               refresh
@@ -139,17 +167,23 @@ export function ExtensionsShell() {
               <article key={extension.id} className="extension-catalog-card">
                 <header>
                   <strong>{extension.name}</strong>
-                  <span className={riskClass(extension.dangerousActions.length ? "medium" : "low")}>
-                    {extension.enabled ? "enabled" : "disabled"}
-                  </span>
+                  <button
+                    type="button"
+                    className={riskClass(extension.enabled ? "low" : "medium")}
+                    disabled={busyId === extension.id}
+                    onClick={() => void toggleExtension(extension)}
+                    title={extension.enabled ? "Disable this extension for browser-agent routing" : "Enable this extension"}
+                  >
+                    {busyId === extension.id ? "saving" : extension.enabled ? "enabled" : "disabled"}
+                  </button>
                 </header>
 
                 <p>{extension.description || `${extension.type} from ${extension.source || "site skill"}`}</p>
 
                 <dl>
                   <div>
-                    <dt>id</dt>
-                    <dd>{extension.id}</dd>
+                    <dt>actions</dt>
+                    <dd>{extension.actions.length}</dd>
                   </div>
                   <div>
                     <dt>domains</dt>
@@ -157,18 +191,18 @@ export function ExtensionsShell() {
                   </div>
                   <div>
                     <dt>pages</dt>
-                    <dd>{extension.pages.join(", ") || "none"}</dd>
+                    <dd>{extension.pages.length ? `${extension.pages.length} observed` : "none"}</dd>
                   </div>
                   <div>
                     <dt>permissions</dt>
-                    <dd>{extension.permissions.join(", ") || "none"}</dd>
+                    <dd>{extension.permissions.length ? `${extension.permissions.length} granted` : "none"}</dd>
                   </div>
                 </dl>
 
                 <div className="catalog-card-actions">
-                  <button type="button" onClick={() => void copyText(JSON.stringify(extension, null, 2), "extension copied")}>
+                  <button type="button" onClick={() => void copyText(JSON.stringify(extensionCopySummary(extension), null, 2), "summary copied")}>
                     <Clipboard size={11} />
-                    copy
+                    summary
                   </button>
                   <button type="button" onClick={() => void copyText(extension.actions.map((action) => action.label).join("\n"), "actions copied")}>
                     <TerminalSquare size={11} />
@@ -180,7 +214,7 @@ export function ExtensionsShell() {
                   <ShieldCheck size={13} />
                   <span>
                     {extension.dangerousActions.length
-                      ? `confirmation required for: ${extension.dangerousActions.join(", ")}`
+                      ? `${extension.dangerousActions.length} protected actions hidden; exact confirmation required before use`
                       : "no risky actions marked"}
                   </span>
                 </div>
@@ -191,7 +225,7 @@ export function ExtensionsShell() {
                       key={action.id}
                       type="button"
                       className="catalog-filter-chip"
-                      title={action.id}
+                      title={action.requiresConfirmation ? "Requires explicit confirmation" : action.label}
                       onClick={() => void copyText(
                         JSON.stringify({
                           name: "mcp__extensions__plan_action",

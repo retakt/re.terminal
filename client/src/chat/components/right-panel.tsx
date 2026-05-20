@@ -12,6 +12,7 @@ import {
   CpuIcon,
   FileTextIcon,
   LoaderIcon,
+  PlugIcon,
   RefreshCwIcon,
   SaveIcon,
   SparklesIcon,
@@ -156,6 +157,20 @@ export function ModelSection() {
           <span>reasoning</span>
         </label>
       </div>
+
+      {chatMode === "browser" && (
+        <div className="chat-setting-row">
+          <label className="flex items-center gap-2 text-[11px] text-muted-foreground" title="Allow browser_agent to use enabled site-skill extensions for the current matching site">
+            <input
+              type="checkbox"
+              checked={sessionOptions.browserUseExtensions !== false}
+              onChange={(event) => updateSessionOptions({ browserUseExtensions: event.target.checked })}
+            />
+            <PlugIcon className="size-3" />
+            <span>site-skill extensions</span>
+          </label>
+        </div>
+      )}
 
       <div className="space-y-2">
         <SliderRow

@@ -12,6 +12,11 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,   // bind to 0.0.0.0 — reachable on Tailscale (100.77.70.7) and LAN
+    allowedHosts: [
+      "localhost",
+      "127.0.0.1",
+      "takt-pc.reverse-cliff.ts.net",
+    ],
     // Proxy WebSocket connections to the terminal server in dev
     proxy: {
       "/ws": {

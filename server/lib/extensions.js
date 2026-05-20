@@ -2,6 +2,7 @@ import {
   getSiteSkill,
   listPublicSiteSkills,
   matchSiteSkillForUrl,
+  updateSiteSkillEnabled,
 } from "./site-skills.js";
 
 function nowIso() {
@@ -51,15 +52,28 @@ function skillPageKeys(skill = {}) {
   return [];
 }
 
+function skillActions(skill = {}) {
+  const learned = Array.isArray(skill.learnedActions) ? skill.learnedActions : [];
+  const imported = Array.isArray(skill.actions) ? skill.actions : [];
+  const seen = new Set();
+
+  return [...learned, ...imported].filter((action) => {
+    const key = action.id || `${action.label || ""}:${action.pageKey || ""}`;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function dangerousActionKinds(skill = {}) {
-  return (skill.actions || [])
+  return skillActions(skill)
     .filter((action) => action.requiresConfirmation)
     .map((action) => action.kind || action.label || action.id)
     .filter(Boolean);
 }
 
 function permissionsForSiteSkill(skill = {}) {
-  const actions = skill.actions || [];
+  const actions = skillActions(skill);
 
   const hasLinks = actions.some((action) => Boolean(action.href));
   const hasClicks = actions.some((action) => Boolean(action.selector));
@@ -105,32 +119,38 @@ export function extensionFromSiteSkill(skill) {
 
     rules,
 
-    actions: (skill.actions || []).map(publicAction),
+    actions: skillActions(skill).map(publicAction),
     pages: skillPageKeys(skill),
   };
 }
 
-export function listExtensions() {
+export function listExtensions(options = {}) {
+  const includeDisabled = options?.includeDisabled === true;
   return listPublicSiteSkills()
     .map((publicSkill) => getSiteSkill(publicSkill.id) || publicSkill)
+    .filter((skill) => includeDisabled || skill.enabled !== false)
     .map((skill) => extensionFromSiteSkill(skill))
     .filter(Boolean);
 }
 
-export function getExtension(id) {
+export function getExtension(id, options = {}) {
   const raw = String(id || "").trim();
   if (!raw) return null;
 
   const skillId = raw.startsWith("site:") ? raw.slice("site:".length) : raw;
-  return extensionFromSiteSkill(getSiteSkill(skillId));
+  const skill = getSiteSkill(skillId);
+  if (!skill || (skill.enabled === false && options?.includeDisabled !== true)) return null;
+  return extensionFromSiteSkill(skill);
 }
 
-export function getExtensionSkill(id) {
+export function getExtensionSkill(id, options = {}) {
   const raw = String(id || "").trim();
   if (!raw) return null;
 
   const skillId = raw.startsWith("site:") ? raw.slice("site:".length) : raw;
-  return getSiteSkill(skillId);
+  const skill = getSiteSkill(skillId);
+  if (!skill || (skill.enabled === false && options?.includeDisabled !== true)) return null;
+  return skill;
 }
 
 export function matchExtensionForUrl(url) {
@@ -138,27 +158,42 @@ export function matchExtensionForUrl(url) {
   return extensionFromSiteSkill(skill);
 }
 
-export function findExtensionAction({ extensionId = "ezhrm", actionId = "", label = "" } = {}) {
-  const skill = getExtensionSkill(extensionId);
-  if (!skill) return { skill: null, action: null };
+export function setExtensionEnabled(id, enabled) {
+  const skill = updateSiteSkillEnabled(id, enabled !== false);
+  return skill ? extensionFromSiteSkill(skill) : null;
+}
 
+function actionMatches(action = {}, wantedId = "", wantedLabel = "") {
+  if (wantedId) return action.id === wantedId;
+  const actionLabel = safeText(action.label).toLowerCase();
+  return Boolean(
+    wantedLabel &&
+    (actionLabel === wantedLabel ||
+      actionLabel.includes(wantedLabel) ||
+      wantedLabel.includes(actionLabel))
+  );
+}
+
+export function findExtensionAction({ extensionId = "", actionId = "", label = "" } = {}) {
   const wantedId = String(actionId || "").trim();
   const wantedLabel = safeText(label).toLowerCase();
+  const skills = extensionId
+    ? [getExtensionSkill(extensionId)].filter(Boolean)
+    : listPublicSiteSkills()
+      .map((publicSkill) => getSiteSkill(publicSkill.id))
+      .filter((skill) => skill?.enabled !== false)
+      .filter(Boolean);
 
-  const actions = skill.actions || [];
+  for (const skill of skills) {
+    const action = skillActions(skill).find((entry) => actionMatches(entry, wantedId, wantedLabel));
+    if (action) return { skill, action };
+  }
 
-  const action = wantedId
-    ? actions.find((entry) => entry.id === wantedId)
-    : actions.find((entry) => safeText(entry.label).toLowerCase() === wantedLabel)
-      || actions.find((entry) => wantedLabel && safeText(entry.label).toLowerCase().includes(wantedLabel))
-      || actions.find((entry) => wantedLabel && wantedLabel.includes(safeText(entry.label).toLowerCase()));
-
-  return { skill, action };
+  return { skill: extensionId ? null : skills[0] || null, action: null };
 }
 
 export function planExtensionAction(args = {}) {
-  const extensionId = String(args.extensionId || args.id || args.skillId || "ezhrm").trim();
-
+  const extensionId = String(args.extensionId || args.id || args.skillId || "").trim();
   const { skill, action } = findExtensionAction({
     extensionId,
     actionId: args.actionId,
@@ -168,7 +203,12 @@ export function planExtensionAction(args = {}) {
   if (!skill) {
     return {
       ok: false,
-      error: `extension not found: ${extensionId}`,
+      error: extensionId ? `extension not found: ${extensionId}` : "extensionId is required unless the action label is unique across loaded extensions",
+      availableExtensions: listExtensions().map((extension) => ({
+        id: extension.id,
+        name: extension.name,
+        domains: extension.domains,
+      })),
     };
   }
 

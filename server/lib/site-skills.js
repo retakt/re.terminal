@@ -17,6 +17,10 @@ function readJsonFile(filePath) {
   }
 }
 
+function writeJsonFile(filePath, value) {
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n", "utf8");
+}
+
 function safeId(value) {
   return String(value || "")
     .trim()
@@ -26,6 +30,19 @@ function safeId(value) {
     .replace(/[^a-z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
+}
+
+function skillActions(skill = {}) {
+  const learned = Array.isArray(skill.learnedActions) ? skill.learnedActions : [];
+  const imported = Array.isArray(skill.actions) ? skill.actions : [];
+  const seen = new Set();
+
+  return [...learned, ...imported].filter((action) => {
+    const key = action.id || `${action.label || ""}:${action.pageKey || ""}`;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function publicSkillSummary(skill) {
@@ -38,16 +55,14 @@ function publicSkillSummary(skill) {
     description: skill.description || "",
     source: skill.source || "",
     updatedAt: skill.updatedAt || "",
-    actions: Array.isArray(skill.actions)
-      ? skill.actions.map((action) => ({
-          id: action.id,
-          label: action.label,
-          kind: action.kind || "",
-          pageKey: action.pageKey || "",
-          requiresConfirmation: Boolean(action.requiresConfirmation),
-          observedOnly: Boolean(action.observedOnly),
-        }))
-      : [],
+    actions: skillActions(skill).map((action) => ({
+      id: action.id,
+      label: action.label,
+      kind: action.kind || "",
+      pageKey: action.pageKey || "",
+      requiresConfirmation: Boolean(action.requiresConfirmation),
+      observedOnly: Boolean(action.observedOnly),
+    })),
     pages: skill.pages && typeof skill.pages === "object"
       ? Object.keys(skill.pages)
       : [],
@@ -88,6 +103,24 @@ export function getSiteSkill(id) {
   ) || null;
 }
 
+export function updateSiteSkillEnabled(id, enabled) {
+  const skill = getSiteSkill(id);
+  if (!skill) return null;
+  const sourceFile = skill.sourceFile || `${safeId(skill.id || id)}.generated.json`;
+  const filePath = path.join(siteSkillsDir(), sourceFile);
+  const next = {
+    ...skill,
+    enabled: enabled !== false,
+    updatedAt: new Date().toISOString(),
+  };
+  delete next.sourceFile;
+  writeJsonFile(filePath, next);
+  return {
+    ...next,
+    sourceFile,
+  };
+}
+
 export function matchSiteSkillForUrl(url) {
   const lowerUrl = String(url || "").toLowerCase();
   if (!lowerUrl) return null;
@@ -105,15 +138,13 @@ export function matchSiteSkillForUrl(url) {
 export function buildSiteSkillPrompt(skill) {
   if (!skill) return "";
 
-  const actions = Array.isArray(skill.actions)
-    ? skill.actions.map((action) => ({
-        id: action.id,
-        label: action.label,
-        kind: action.kind,
-        pageKey: action.pageKey,
-        requiresConfirmation: Boolean(action.requiresConfirmation),
-      }))
-    : [];
+  const actions = skillActions(skill).map((action) => ({
+    id: action.id,
+    label: action.label,
+    kind: action.kind,
+    pageKey: action.pageKey,
+    requiresConfirmation: Boolean(action.requiresConfirmation),
+  }));
 
   const pages = skill.pages && typeof skill.pages === "object"
     ? Object.values(skill.pages).map((page) => ({
