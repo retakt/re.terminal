@@ -7,12 +7,54 @@ import { spawn } from "child_process";
 const DEFAULT_CDP_URL = "ws://127.0.0.1:9222";
 const DEFAULT_TIMEOUT_MS = 12000;
 
-function cdpUrl() {
-  return (process.env.BROWSER_CDP_URL || process.env.CHROME_CDP_URL || process.env.LIGHTPANDA_CDP_URL || DEFAULT_CDP_URL).trim();
+function cdpUrl(options = {}) {
+  return String(options.cdpUrl || process.env.BROWSER_CDP_URL || process.env.CHROME_CDP_URL || process.env.LIGHTPANDA_CDP_URL || DEFAULT_CDP_URL).trim();
 }
 
-function browserEngine() {
-  return (process.env.BROWSER_ENGINE || "lightpanda").trim();
+function browserEngine(options = {}) {
+  return String(options.engineName || options.engine || process.env.BROWSER_ENGINE || "lightpanda").trim();
+}
+
+function redactUrl(value = "") {
+  return String(value || "").replace(/token=[^&]+/i, "token=***");
+}
+
+function httpVersionUrlFromCdp(rawUrl = "") {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "ws:" && url.protocol !== "wss:" && url.protocol !== "http:" && url.protocol !== "https:") {
+      return "";
+    }
+
+    const isRootWs = (url.protocol === "ws:" || url.protocol === "wss:") && (!url.pathname || url.pathname === "/");
+    const isHttpBase = (url.protocol === "http:" || url.protocol === "https:") && !/\/json\/version\/?$/i.test(url.pathname);
+
+    if (!isRootWs && !isHttpBase) return "";
+
+    url.protocol = url.protocol === "wss:" || url.protocol === "https:" ? "https:" : "http:";
+    url.pathname = "/json/version";
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+async function resolveCdpWebSocketUrl(rawUrl = DEFAULT_CDP_URL, timeoutMs = 900) {
+  const versionUrl = httpVersionUrlFromCdp(rawUrl);
+  if (!versionUrl) return rawUrl;
+
+  try {
+    const response = await fetch(versionUrl, {
+      signal: AbortSignal.timeout(Math.max(250, Math.min(Number(timeoutMs || 900), 2500))),
+    });
+    if (!response.ok) return rawUrl;
+    const data = await response.json().catch(() => ({}));
+    return String(data.webSocketDebuggerUrl || data.webSocketUrl || rawUrl).trim() || rawUrl;
+  } catch {
+    return rawUrl;
+  }
 }
 
 function chromeExecutable() {
@@ -101,9 +143,10 @@ async function installPageCompatibility(session, sid = '') {
   await session.call('Runtime.evaluate', { expression: source, returnByValue: true, awaitPromise: true }, DEFAULT_TIMEOUT_MS, sid).catch(() => null);
 }
 class CdpSession {
-  constructor(url, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  constructor(url, timeoutMs = DEFAULT_TIMEOUT_MS, label = "Browser") {
     this.url = url;
     this.timeoutMs = timeoutMs;
+    this.label = label;
     this.nextId = 1;
     this.pending = new Map();
     this.events = [];
@@ -115,7 +158,7 @@ class CdpSession {
       const ws = new WebSocket(this.url);
       const timer = setTimeout(() => {
         ws.close();
-        reject(new Error(`Lightpanda CDP connect timeout: ${this.url}`));
+        reject(new Error(`${this.label} CDP connect timeout: ${this.url}`));
       }, this.timeoutMs);
 
       ws.once("open", () => {
@@ -140,7 +183,7 @@ class CdpSession {
       });
       ws.on("close", () => {
         for (const pending of this.pending.values()) {
-          pending.reject(new Error("Lightpanda CDP connection closed"));
+          pending.reject(new Error(`${this.label} CDP connection closed`));
         }
         this.pending.clear();
       });
@@ -149,14 +192,14 @@ class CdpSession {
 
   call(method, params = {}, timeoutMs = this.timeoutMs, sessionId = "") {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("Lightpanda CDP is not connected"));
+      return Promise.reject(new Error(`${this.label} CDP is not connected`));
     }
     const id = this.nextId++;
     const payload = JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) });
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Lightpanda CDP timeout: ${method}`));
+        reject(new Error(`${this.label} CDP timeout: ${method}`));
       }, timeoutMs);
       this.pending.set(id, {
         resolve: (value) => {
@@ -205,14 +248,18 @@ class CdpSession {
 
 async function withSession(fn, options = {}) {
   const startedAt = Date.now();
-  const session = new CdpSession(cdpUrl(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
+  const configuredUrl = cdpUrl(options);
+  const engineName = browserEngine(options);
+  const resolvedUrl = await resolveCdpWebSocketUrl(configuredUrl, Math.min(Number(options.timeoutMs || DEFAULT_TIMEOUT_MS), 1800));
+  const session = new CdpSession(resolvedUrl, options.timeoutMs || DEFAULT_TIMEOUT_MS, engineName);
   await session.connect();
   try {
     const result = await fn(session, startedAt);
     return {
       ...result,
-      engine: browserEngine(),
-      cdpUrl: cdpUrl().replace(/token=[^&]+/i, "token=***"),
+      engine: engineName,
+      cdpUrl: redactUrl(configuredUrl),
+      resolvedCdpUrl: redactUrl(resolvedUrl),
       durationMs: Date.now() - startedAt,
     };
   } finally {
@@ -220,7 +267,7 @@ async function withSession(fn, options = {}) {
   }
 }
 
-export async function lightpandaStatus() {
+export async function lightpandaStatus(args = {}) {
   const startedAt = Date.now();
   try {
     return await withSession(async (session) => {
@@ -230,13 +277,13 @@ export async function lightpandaStatus() {
         status: "ready",
         version,
       };
-    }, { timeoutMs: 2000 });
+    }, { timeoutMs: Number(args.timeoutMs || 2000), cdpUrl: args.cdpUrl, engineName: args.engineName });
   } catch (err) {
     return {
       ok: false,
       status: "down",
-      engine: browserEngine(),
-      cdpUrl: cdpUrl().replace(/token=[^&]+/i, "token=***"),
+      engine: browserEngine(args),
+      cdpUrl: redactUrl(cdpUrl(args)),
       durationMs: Date.now() - startedAt,
       error: err instanceof Error ? err.message : String(err),
       hint: "Start Lightpanda with: lightpanda serve --host 127.0.0.1 --port 9222, or run Chrome with --remote-debugging-port=9222 and set BROWSER_CDP_URL/CHROME_CDP_URL.",
@@ -254,85 +301,11 @@ export async function lightpandaNavigate(args = {}) {
     const sid = attached?.sessionId || "";
     await session.call("Page.enable", {}, DEFAULT_TIMEOUT_MS, sid);
     await session.call("Runtime.enable", {}, DEFAULT_TIMEOUT_MS, sid);
-  await installPageCompatibility(session, sid);
+    await installPageCompatibility(session, sid);
     await session.call("Page.navigate", { url }, DEFAULT_TIMEOUT_MS, sid);
     await Promise.race([session.waitForEvent("Page.loadEventFired", 8000), wait(waitMs)]);
     await wait(waitMs);
-    const expression = `(() => {
-      const pick = (value, limit = 160) => String(value || "").replace(/\\s+/g, " ").trim().slice(0, limit);
-      const firstPicked = (values, limit = 160) => {
-        for (const value of values) {
-          const text = pick(value, limit);
-          if (text) return text;
-        }
-        return "";
-      };
-      const absoluteUrl = (value) => {
-        const raw = String(value || "").trim();
-        if (!raw) return "";
-        try { return new URL(raw, location.href).href; } catch { return raw; }
-      };
-      const nodeText = (node, limit = 12000) => {
-        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-        const parts = [];
-        let current;
-        while ((current = walker.nextNode()) && parts.length < 1600) {
-          const parent = current.parentElement;
-          if (parent && parent.closest("script, style, noscript, svg, template")) continue;
-          if (parent && parent.getAttribute("aria-hidden") === "true") continue;
-          const text = pick(current.nodeValue, 220);
-          if (text) parts.push(text);
-        }
-        return pick(parts.join(" "), limit);
-      };
-      const seenLinks = new Set();
-      const links = Array.from(document.querySelectorAll("a[href]")).map((a) => {
-        const href = absoluteUrl(a.href || a.getAttribute("href"));
-        const text = firstPicked([
-          a.innerText,
-          a.textContent,
-          a.getAttribute("aria-label"),
-          a.getAttribute("title"),
-          href
-        ], 140) || href;
-        return { text, href };
-      }).filter((link) => {
-        const key = link.href || link.text;
-        if (!key || seenLinks.has(key)) return false;
-        seenLinks.add(key);
-        return true;
-      }).slice(0, 120);
-      const forms = Array.from(document.querySelectorAll("form")).slice(0, 20).map((form, index) => ({
-        index,
-        action: form.action || "",
-        method: form.method || "get",
-        fields: Array.from(form.querySelectorAll("input, textarea, select")).slice(0, 40).map((field) => ({
-          name: field.getAttribute("name") || "",
-          type: field.getAttribute("type") || field.tagName.toLowerCase(),
-          placeholder: field.getAttribute("placeholder") || "",
-          required: field.hasAttribute("required")
-        }))
-      }));
-      return {
-        url: location.href,
-        title: document.title || "",
-        text: document.body ? nodeText(document.body, 12000) : "",
-        links,
-        forms,
-        stats: {
-          links: links.length,
-          forms: forms.length,
-          scripts: document.scripts.length,
-          images: document.images.length
-        }
-      };
-    })()`;
-    const evaluated = await session.call("Runtime.evaluate", {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    }, DEFAULT_TIMEOUT_MS, sid);
-    const value = evaluated?.result?.value || {};
+    const value = await evaluateBasicSnapshot(session, sid);
     if (targetId) {
       await session.call("Target.closeTarget", { targetId }).catch(() => null);
     }
@@ -341,7 +314,7 @@ export async function lightpandaNavigate(args = {}) {
       requestedUrl: url,
       page: value,
     };
-  });
+  }, { timeoutMs: args.timeoutMs || DEFAULT_TIMEOUT_MS, cdpUrl: args.cdpUrl, engineName: args.engineName });
 }
 
 export async function lightpandaFetch(args = {}) {
@@ -609,129 +582,147 @@ function semanticSnapshotExpression() {
 }
 
 
-async function evaluateBasicSnapshot(session, sid) {
-  const expression = `(() => {
-    const pick = (value, limit = 240) => String(value || "").replace(/\\s+/g, " ").trim().slice(0, limit);
-    const safeUrl = () => {
-      try { return location.href || ""; } catch { return ""; }
-    };
-    const safeTitle = () => {
-      try { return document.title || ""; } catch { return ""; }
-    };
-    const textFromBody = () => {
-      try {
-        return pick(document.body ? (document.body.innerText || document.body.textContent || "") : "", 2400);
-      } catch {
-        return "";
-      }
-    };
-    const links = (() => {
-      try {
-        return Array.from(document.querySelectorAll("a[href]")).slice(0, 80).map((a, index) => ({
-          index,
-          text: pick(a.innerText || a.textContent || a.getAttribute("aria-label") || a.href, 180),
-          href: a.href || a.getAttribute("href") || "",
-          selector: a.id ? "#" + a.id : ""
-        }));
-      } catch {
-        return [];
-      }
-    })();
-    const buttons = (() => {
-      try {
-        return Array.from(document.querySelectorAll("button, input[type='button'], input[type='submit'], [role='button']")).slice(0, 80).map((button, index) => ({
-          index,
-          text: pick(button.innerText || button.textContent || button.getAttribute("aria-label") || button.value || button.name, 180),
-          selector: button.id ? "#" + button.id : "",
-          tag: button.tagName ? button.tagName.toLowerCase() : "",
-          type: button.getAttribute ? (button.getAttribute("type") || "") : ""
-        }));
-      } catch {
-        return [];
-      }
-    })();
-    const forms = (() => {
-      try {
-        return Array.from(document.querySelectorAll("form")).slice(0, 20).map((form, index) => ({
-          index,
-          action: form.action || "",
-          method: form.method || "get",
-          selector: form.id ? "#" + form.id : "",
-          fields: Array.from(form.querySelectorAll("input, textarea, select")).slice(0, 40).map((field, fieldIndex) => ({
-            index: fieldIndex,
-            name: field.getAttribute("name") || "",
-            id: field.getAttribute("id") || "",
-            type: field.getAttribute("type") || field.tagName.toLowerCase(),
-            placeholder: field.getAttribute("placeholder") || "",
-            ariaLabel: field.getAttribute("aria-label") || "",
-            selector: field.id ? "#" + field.id : "",
-            secret: /password/i.test(field.getAttribute("type") || "")
-          }))
-        }));
-      } catch {
-        return [];
-      }
-    })();
-
-    return {
-      url: safeUrl(),
-      title: safeTitle(),
-      text: textFromBody(),
-      textPreview: textFromBody(),
-      links,
-      buttons,
-      inputs: forms.flatMap((form) => form.fields || []),
-      forms,
-      interactiveElements: [
-        ...buttons.map((button) => ({ ...button, role: "button" })),
-        ...links.map((link) => ({ ...link, role: "link", tag: "a" }))
-      ],
-      stats: {
-        links: links.length,
-        buttons: buttons.length,
-        forms: forms.length,
-        inputs: forms.flatMap((form) => form.fields || []).length
-      },
-      fallback: "basic"
-    };
-  })()`;
-
+async function evaluateSmall(session, sid, name, expression, fallback, timeoutMs = 2200) {
   try {
     const evaluated = await session.call("Runtime.evaluate", {
       expression,
       returnByValue: true,
       awaitPromise: false,
-    }, 3500, sid);
-
-    return evaluated?.result?.value || {
-      url: "",
-      title: "",
-      text: "",
-      textPreview: "",
-      links: [],
-      buttons: [],
-      inputs: [],
-      forms: [],
-      interactiveElements: [],
-      stats: {},
-      fallback: "basic-empty"
+    }, timeoutMs, sid);
+    return {
+      ok: true,
+      value: evaluated?.result?.value ?? fallback,
     };
   } catch (err) {
     return {
-      url: "",
-      title: "",
-      text: "",
-      textPreview: "Lightpanda could not evaluate page DOM: " + (err instanceof Error ? err.message : String(err)),
-      links: [],
-      buttons: [],
-      inputs: [],
-      forms: [],
-      interactiveElements: [],
-      stats: {},
-      fallback: "basic-error",
-      error: err instanceof Error ? err.message : String(err)
+      ok: false,
+      value: fallback,
+      error: {
+        name,
+        message: err instanceof Error ? err.message : String(err),
+      },
     };
   }
+}
+
+async function evaluateBasicSnapshot(session, sid) {
+  const failures = [];
+  const pickPrelude = "const pick = (value, limit = 240) => String(value || '').replace(/\\s+/g, ' ').trim().slice(0, limit);";
+
+  const urlTitle = await evaluateSmall(
+    session,
+    sid,
+    "url_title",
+    `(() => { ${pickPrelude} return { url: location.href || '', title: document.title || '' }; })()`,
+    { url: "", title: "" },
+    1400
+  );
+  if (urlTitle.error) failures.push(urlTitle.error);
+
+  const links = await evaluateSmall(
+    session,
+    sid,
+    "links",
+    `(() => { ${pickPrelude}
+      const absoluteUrl = (value) => { const raw = String(value || '').trim(); if (!raw) return ''; try { return new URL(raw, location.href).href; } catch { return raw; } };
+      return Array.from(document.querySelectorAll('a[href]')).slice(0, 120).map((a, index) => ({
+        index,
+        text: pick(a.innerText || a.textContent || a.getAttribute('aria-label') || a.getAttribute('title') || a.href, 180),
+        href: absoluteUrl(a.href || a.getAttribute('href')),
+        selector: a.id ? '#' + a.id : ''
+      })).filter((link) => link.href || link.text);
+    })()`,
+    [],
+    2200
+  );
+  if (links.error) failures.push(links.error);
+
+  const buttons = await evaluateSmall(
+    session,
+    sid,
+    "buttons",
+    `(() => { ${pickPrelude}
+      return Array.from(document.querySelectorAll("button, input[type='button'], input[type='submit'], [role='button']")).slice(0, 100).map((button, index) => ({
+        index,
+        text: pick(button.innerText || button.textContent || button.getAttribute('aria-label') || button.getAttribute('title') || button.value || button.name, 180),
+        selector: button.id ? '#' + button.id : '',
+        tag: button.tagName ? button.tagName.toLowerCase() : '',
+        type: button.getAttribute ? (button.getAttribute('type') || '') : ''
+      })).filter((button) => button.text || button.selector);
+    })()`,
+    [],
+    2200
+  );
+  if (buttons.error) failures.push(buttons.error);
+
+  const forms = await evaluateSmall(
+    session,
+    sid,
+    "forms",
+    `(() => { ${pickPrelude}
+      return Array.from(document.querySelectorAll('form')).slice(0, 25).map((form, index) => ({
+        index,
+        action: form.action || '',
+        method: form.method || 'get',
+        selector: form.id ? '#' + form.id : '',
+        fields: Array.from(form.querySelectorAll('input, textarea, select')).slice(0, 60).map((field, fieldIndex) => ({
+          index: fieldIndex,
+          name: field.getAttribute('name') || '',
+          id: field.getAttribute('id') || '',
+          type: field.getAttribute('type') || field.tagName.toLowerCase(),
+          placeholder: field.getAttribute('placeholder') || '',
+          ariaLabel: field.getAttribute('aria-label') || '',
+          selector: field.id ? '#' + field.id : '',
+          secret: /password/i.test(field.getAttribute('type') || '')
+        }))
+      }));
+    })()`,
+    [],
+    2200
+  );
+  if (forms.error) failures.push(forms.error);
+
+  const text = await evaluateSmall(
+    session,
+    sid,
+    "text",
+    `(() => { ${pickPrelude}
+      return pick(document.body ? (document.body.innerText || document.body.textContent || '') : '', 4000);
+    })()`,
+    "",
+    2200
+  );
+  if (text.error) failures.push(text.error);
+
+  const safeLinks = Array.isArray(links.value) ? links.value : [];
+  const safeButtons = Array.isArray(buttons.value) ? buttons.value : [];
+  const safeForms = Array.isArray(forms.value) ? forms.value : [];
+  const inputs = safeForms.flatMap((form) => Array.isArray(form.fields) ? form.fields : []);
+
+  return {
+    url: urlTitle.value?.url || "",
+    title: urlTitle.value?.title || "",
+    text: typeof text.value === "string" ? text.value : "",
+    textPreview: typeof text.value === "string" ? text.value : "",
+    links: safeLinks,
+    buttons: safeButtons,
+    inputs,
+    forms: safeForms,
+    interactiveElements: [
+      ...safeButtons.map((button) => ({ ...button, role: "button" })),
+      ...safeLinks.map((link) => ({ ...link, role: "link", tag: "a" })),
+      ...inputs.map((input) => ({ ...input, role: input.type || "input", tag: input.tag || "input" })),
+    ],
+    stats: {
+      links: safeLinks.length,
+      buttons: safeButtons.length,
+      forms: safeForms.length,
+      inputs: inputs.length,
+      extractionFailures: failures.length,
+    },
+    fallback: failures.length ? "basic-partial" : "basic",
+    extractionErrors: failures,
+  };
 }
 
 async function evaluateSemanticSnapshot(session, sid) {
@@ -815,7 +806,7 @@ async function withCurrentPage(fn, args = {}) {
   return withSession(async (session) => {
     const target = await attachToCurrentPageTarget(session, args);
     return fn(session, target.sid, target);
-  }, { timeoutMs: args.timeoutMs || DEFAULT_TIMEOUT_MS });
+  }, { timeoutMs: args.timeoutMs || DEFAULT_TIMEOUT_MS, cdpUrl: args.cdpUrl, engineName: args.engineName });
 }
 
 function normalizeActionFields(fields) {
@@ -1076,7 +1067,7 @@ export async function lightpandaAction(args = {}) {
   if (action === "submit" && hasPasswordField(args.fields) && args.confirm !== true) {
     return {
       ok: false,
-      engine: browserEngine(),
+      engine: browserEngine(args),
       action,
       requestedUrl: url,
       error: "Refusing to submit a form containing a password field without confirm=true.",
@@ -1114,7 +1105,7 @@ export async function lightpandaAction(args = {}) {
       actionResult,
       page,
     };
-  });
+  }, { timeoutMs: args.timeoutMs || DEFAULT_TIMEOUT_MS, cdpUrl: args.cdpUrl, engineName: args.engineName });
 }
 
 export async function lightpandaSnapshotCurrent(args = {}) {
@@ -1127,6 +1118,14 @@ export async function lightpandaSnapshotCurrent(args = {}) {
     } catch (err) {
       snapshotError = err instanceof Error ? err.message : String(err);
       snapshot = await evaluateBasicSnapshot(session, sid);
+    }
+
+    if (!snapshot?.url && !snapshot?.title && !snapshot?.text && !snapshot?.links?.length && !snapshot?.buttons?.length) {
+      const basic = await evaluateBasicSnapshot(session, sid);
+      if (basic?.url || basic?.title || basic?.text || basic?.links?.length || basic?.buttons?.length) {
+        snapshot = basic;
+        snapshotError = snapshotError || "semantic snapshot returned no observable page data";
+      }
     }
 
     return {
@@ -1298,11 +1297,19 @@ async function clickCurrentPageElement(args = {}) {
     await Promise.race([session.waitForEvent("Page.loadEventFired", 6000), wait(payload.afterWaitMs)]);
     await wait(payload.afterWaitMs);
 
-    const page = await evaluateSemanticSnapshot(session, sid);
+    let page;
+    let snapshotError = "";
+    try {
+      page = await evaluateSemanticSnapshot(session, sid);
+    } catch (err) {
+      snapshotError = err instanceof Error ? err.message : String(err);
+      page = await evaluateBasicSnapshot(session, sid);
+    }
     return {
       ok: Boolean(actionResult?.ok),
       action: "click",
       actionResult,
+      snapshotError,
       page,
     };
   }, args);
@@ -1416,7 +1423,7 @@ export async function lightpandaInstantScrape(args = {}) {
       requestedUrl: url,
       scrape: evaluated?.result?.value || {},
     };
-  });
+  }, { timeoutMs: args.timeoutMs || DEFAULT_TIMEOUT_MS, cdpUrl: args.cdpUrl, engineName: args.engineName });
 }
 
 export async function openHeadfulBrowser(args = {}) {
@@ -1456,7 +1463,7 @@ export async function openHeadfulBrowser(args = {}) {
 export function getLightpandaConfig() {
   return {
     engine: "lightpanda",
-    cdpUrl: cdpUrl().replace(/token=[^&]+/i, "token=***"),
+    cdpUrl: redactUrl(cdpUrl()),
     configured: Boolean(process.env.BROWSER_CDP_URL || process.env.CHROME_CDP_URL || process.env.LIGHTPANDA_CDP_URL),
     defaultCdpUrl: DEFAULT_CDP_URL,
     docs: "https://lightpanda.io/docs/open-source/usage",

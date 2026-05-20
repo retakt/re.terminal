@@ -150,11 +150,21 @@ export async function listBrowserExtensions(): Promise<BrowserExtension[]> {
 }
 
 export async function updateBrowserExtensionEnabled(id: string, enabled: boolean): Promise<BrowserExtension | null> {
-  const response = await fetch(`/api/extensions/${encodeURIComponent(id)}`, {
+  const body = JSON.stringify({ enabled });
+  let response = await fetch(`/api/extensions/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled }),
+    body,
   });
+
+  if (response.status === 404 || response.status === 405) {
+    response = await fetch(`/api/extensions/${encodeURIComponent(id)}/enabled`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+  }
+
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) {
     throw new Error(data.error || `Failed to update extension ${id}`);
