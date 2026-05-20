@@ -41,6 +41,33 @@ export interface ExtensionCatalogItem {
   description: string;
 }
 
+export interface BrowserExtensionAction {
+  id: string;
+  label: string;
+  kind: string;
+  pageKey: string;
+  requiresConfirmation: boolean;
+  observedOnly: boolean;
+}
+
+export interface BrowserExtension {
+  id: string;
+  skillId: string;
+  type: string;
+  name: string;
+  enabled: boolean;
+  version: string;
+  domains: string[];
+  description: string;
+  source: string;
+  updatedAt: string;
+  permissions: string[];
+  dangerousActions: string[];
+  rules: string[];
+  actions: BrowserExtensionAction[];
+  pages: string[];
+}
+
 export interface McpRoute {
   answer_directly: boolean;
   must_call_tools: boolean;
@@ -112,4 +139,12 @@ export async function routeMcpIntent(
 export async function listExtensionCatalog(): Promise<ExtensionCatalogItem[]> {
   const data = await getJson<{ items: ExtensionCatalogItem[] }>("/api/extensions/catalog", { items: [] });
   return data.items ?? [];
+}
+export async function listBrowserExtensions(): Promise<BrowserExtension[]> {
+  const data = await getJson<{ ok: boolean; extensions: BrowserExtension[] }>("/api/extensions", {
+    ok: false,
+    extensions: [],
+  });
+
+  return data.extensions ?? [];
 }

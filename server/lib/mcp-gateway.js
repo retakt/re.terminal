@@ -1074,6 +1074,56 @@ export function routeMcpIntent(text = "", options = {}) {
 
   const browserTarget = extractBrowserTarget(raw);
 
+  // ── Extension / site-skill routing ──────────────────────────────────────────
+  // These are known website actions, not URLs. Route them to extensions first.
+  if (/\b(extension|extensions|ezhrm|site skill|site skills|known actions|available actions|hrm|attendance|leave application|leave status|passport request|passport request status|passport request form|salary deduction|manage bank accounts|other leaves application|view deduction details|deduction details)\b/.test(lower)) {
+    if (browserTarget) {
+      return use(
+        "mcp__extensions__match_url",
+        { url: browserTarget },
+        "site-specific browser workflow should match URL to an extension",
+        "low",
+        0.95
+      );
+    }
+
+    const knownLabels = [
+      ["view deduction details", "View Deduction Details"],
+      ["deduction details", "View Deduction Details"],
+      ["leave application", "Leave Application"],
+      ["leave status", "Leave Status"],
+      ["passport request form", "Passport Request Form"],
+      ["passport request status", "Passport Request Status"],
+      ["salary deduction", "Salary Deduction"],
+      ["manage bank accounts", "Manage Bank Accounts"],
+      ["other leaves application", "Other Leaves Application"],
+      ["login", "Login"],
+      ["sign in", "Login"],
+      ["search", "SEARCH"],
+    ];
+
+    const matched = knownLabels.find(([needle]) => lower.includes(needle));
+
+    if (matched) {
+      return use(
+        "mcp__extensions__plan_action",
+        { extensionId: "ezhrm", label: matched[1] },
+        "EZHRM action should be planned through the extension layer before execution",
+        "low",
+        0.98
+      );
+    }
+
+    return use(
+      "mcp__extensions__get",
+      { id: "ezhrm" },
+      "EZHRM workflow requires the EZHRM extension",
+      "low",
+      0.92
+    );
+  }
+
+
   // ── Browser / Lightpanda routing ────────────────────────────────────────────
   // Important: status checks do NOT require a URL.
   if (/\b(lightpanda|light panda|browser|cdp|headless browser|chrome)\b/.test(lower)) {
@@ -1366,58 +1416,6 @@ export function routeMcpIntent(text = "", options = {}) {
       0.92
     );
   }
-    if (/\b(extension|extensions|ezhrm|site skill|site skills|known actions|available actions|hrm|attendance|leave application|leave status|passport request|salary deduction|check out|checkout|emergency checkout)\b/.test(lower)) {
-    const browserTarget = extractBrowserTarget(raw);
-
-    if (browserTarget) {
-      return use(
-        "mcp__extensions__match_url",
-        { url: browserTarget },
-        "site-specific browser workflow should match URL to an extension",
-        "low",
-        0.95
-      );
-    }
-
-    const knownLabels = [
-      ["emergency checkout", "Emergency CheckOut"],
-      ["emergency check out", "Emergency CheckOut"],
-      ["check out", "Check Out"],
-      ["checkout", "Check Out"],
-      ["leave application", "Leave Application"],
-      ["leave status", "Leave Status"],
-      ["passport request form", "Passport Request Form"],
-      ["passport request status", "Passport Request Status"],
-      ["salary deduction", "Salary Deduction"],
-      ["manage bank accounts", "Manage Bank Accounts"],
-      ["other leaves application", "Other Leaves Application"],
-      ["view deduction details", "View Deduction Details"],
-      ["login", "Login"],
-      ["sign in", "Login"],
-      ["search", "SEARCH"],
-    ];
-
-    const matched = knownLabels.find(([needle]) => lower.includes(needle));
-
-    if (matched) {
-      return use(
-        "mcp__extensions__plan_action",
-        { extensionId: "ezhrm", label: matched[1] },
-        "EZHRM action should be planned through the extension layer before execution",
-        "low",
-        0.95
-      );
-    }
-
-    return use(
-      "mcp__extensions__get",
-      { id: "ezhrm" },
-      "EZHRM workflow requires the EZHRM extension",
-      "low",
-      0.9
-    );
-  }
-
   // ── Memory ──────────────────────────────────────────────────────────────────
   if (/\b(memory|remembered|knowledge graph|graphiti|falkor|falkordb)\b/.test(lower)) {
     if (/\b(graph|nodes?|edges?|falkor|falkordb)\b/.test(lower)) {

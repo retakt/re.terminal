@@ -415,6 +415,38 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
   const explicitWebIntent = /\b(search|look up|lookup|web search|google|find latest|latest news|current news|news|right now on the web)\b/.test(lower);
 
   const browserTarget = extractBrowserTarget(text);
+    // Known extension/site-skill actions must route to extensions, not Lightpanda URL extraction.
+  if (/\b(extension|extensions|ezhrm|site skill|site skills|known actions|available actions|hrm|attendance|leave application|leave status|passport request|passport request status|passport request form|salary deduction|manage bank accounts|other leaves application|view deduction details|deduction details)\b/.test(lower)) {
+    const knownLabels: Array<[string, string]> = [
+      ["view deduction details", "View Deduction Details"],
+      ["deduction details", "View Deduction Details"],
+      ["leave application", "Leave Application"],
+      ["leave status", "Leave Status"],
+      ["passport request form", "Passport Request Form"],
+      ["passport request status", "Passport Request Status"],
+      ["salary deduction", "Salary Deduction"],
+      ["manage bank accounts", "Manage Bank Accounts"],
+      ["other leaves application", "Other Leaves Application"],
+      ["login", "Login"],
+      ["sign in", "Login"],
+      ["search", "SEARCH"],
+    ];
+
+    const matched = knownLabels.find(([needle]) => lower.includes(needle));
+
+    if (browserTarget) {
+      return make("mcp__extensions__match_url", { url: browserTarget });
+    }
+
+    if (matched) {
+      return make("mcp__extensions__plan_action", {
+        extensionId: "ezhrm",
+        label: matched[1],
+      });
+    }
+
+    return make("mcp__extensions__get", { id: "ezhrm" });
+  }
   if ((/\b(lightpanda|browser|open page|open url|visit|navigate|extract page|read webpage|webpage|browse)\b/.test(lower) && browserTarget) || /^https?:\/\//i.test(browserTarget)) {
     return make("mcp__browser__lightpanda_navigate", { url: browserTarget });
   }
@@ -545,6 +577,7 @@ async function routeToolUse(args: {
           "Mandatory tool paths: explicit current web facts/search, memory writes or reads, repo/file questions, local Docker/Ollama/monitor checks, graph/FalkorDB questions.",
           "If a mandatory path applies, set answer_directly false and must_call_tools true.",
           "Only choose tools from the supplied list. Prefer one or two focused tools.",
+          "Known website actions such as EZHRM Leave Status, View Deduction Details, Passport Request Status, Salary Deduction, or Manage Bank Accounts must use mcp__extensions__plan_action first. Do not send action labels as browser URLs.",
         ].join("\n"),
       },
       {
