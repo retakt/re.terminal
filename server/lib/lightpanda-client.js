@@ -51,7 +51,16 @@ async function resolveCdpWebSocketUrl(rawUrl = DEFAULT_CDP_URL, timeoutMs = 900)
     });
     if (!response.ok) return rawUrl;
     const data = await response.json().catch(() => ({}));
-    return String(data.webSocketDebuggerUrl || data.webSocketUrl || rawUrl).trim() || rawUrl;
+    const discovered = String(data.webSocketDebuggerUrl || data.webSocketUrl || rawUrl).trim() || rawUrl;
+    try {
+      const requested = new URL(rawUrl);
+      const resolved = new URL(discovered);
+      if (resolved.hostname === "0.0.0.0" || resolved.hostname === "::") {
+        resolved.hostname = requested.hostname;
+        return resolved.href;
+      }
+    } catch {}
+    return discovered;
   } catch {
     return rawUrl;
   }
@@ -754,7 +763,7 @@ async function openPageTarget(session, url, waitMs) {
 async function attachToCurrentPageTarget(session, args = {}) {
   const waitMs = Math.max(150, Math.min(Number(args.waitMs || 900), 8000));
   const requestedUrl = normalizeOptionalUrl(args.url || args.currentUrl || "");
-  const shouldNavigate = Boolean(args.navigate && requestedUrl);
+  let shouldNavigate = Boolean(args.navigate && requestedUrl);
   const targets = await session.call("Target.getTargets", {}).catch(() => ({ targetInfos: [] }));
   const pages = Array.isArray(targets?.targetInfos)
     ? targets.targetInfos.filter((target) => target.type === "page")
@@ -786,6 +795,11 @@ async function attachToCurrentPageTarget(session, args = {}) {
     created = true;
   }
 
+  const selectedUrl = String(selected?.url || "").trim();
+  if (!created && requestedUrl && (!selectedUrl || /^about:blank$/i.test(selectedUrl))) {
+    shouldNavigate = true;
+  }
+
   const attached = await session.call("Target.attachToTarget", { targetId, flatten: true });
   const sid = attached?.sessionId || "";
 
@@ -799,7 +813,7 @@ async function attachToCurrentPageTarget(session, args = {}) {
     await wait(waitMs);
   }
 
-  return { targetId, sid, created, requestedUrl, selectedUrl: selected?.url || "" };
+  return { targetId, sid, created, requestedUrl, selectedUrl };
 }
 
 async function withCurrentPage(fn, args = {}) {

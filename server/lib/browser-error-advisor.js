@@ -79,6 +79,7 @@ export function adviseBrowserFailure({
     diagnosis = "The runtime browser engine is unavailable or did not return a valid page snapshot.";
     evidence.push("The action requires CDP because it needs a live page, not a static fetch.");
     fixes.push("Start Lightpanda on CDP port 9222, or set `LIGHTPANDA_CDP_URL` / `BROWSER_CDP_URL` to the active CDP endpoint.");
+    fixes.push("If Lightpanda runs on another PC, do not use 127.0.0.1. Set `LIGHTPANDA_CDP_URL=ws://OTHER_PC_IP:9222` and start Lightpanda with a non-local bind address such as `--host 0.0.0.0`.");
     fixes.push("Run `browser agent status` to inspect configured engine priority and health.");
   } else if (verification && verification.ok === false) {
     diagnosis = "The browser tool ran, but its result did not prove it satisfied the instruction.";

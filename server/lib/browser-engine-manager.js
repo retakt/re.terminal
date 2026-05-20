@@ -145,7 +145,7 @@ function engineMatchesProduct(engine, status = {}) {
   const product = productText(status);
   if (!status?.ok) return false;
   if (engine === "chrome_cdp") return /\b(chrome|chromium|headlesschrome)\b/i.test(product);
-  if (engine === "lightpanda_cdp") return !/\b(chrome|chromium|headlesschrome)\b/i.test(product) || /\blightpanda\b/i.test(product);
+  if (engine === "lightpanda_cdp") return true;
   return true;
 }
 
