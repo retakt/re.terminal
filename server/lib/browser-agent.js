@@ -556,7 +556,7 @@ function classifyInstruction(instruction = "") {
 
   if (extractUrl(instruction) && /\b(open|go|visit|navigate|load|observe|inspect|read|view)\b/.test(lower)) return "navigate";
   if (/\b(show|list|what actions|available actions|known actions|extension actions|site actions)\b/.test(lower)) return "show_actions";
-  if (/\b(execute|click|open|go to|navigate to|perform|run)\b/.test(lower)) return "execute_action";
+  if (/\b(execute|click|clicking|press|tap|select|choose|open|go to|navigate to|perform|run)\b/.test(lower) || /\btry\s+clicking\b/.test(lower)) return "execute_action";
   if (/\b(plan|can you|find|where|how)\b/.test(lower)) return "plan_action";
   if (/\b(observe|inspect|read|snapshot|current page)\b/.test(lower)) return "observe";
   if (extractUrl(instruction)) return "navigate";
@@ -791,9 +791,10 @@ function visibleElementMatchingAction(action = {}, observation = {}) {
 }
 
 
+
 function extractGenericClickTarget(instruction = "") {
   const raw = String(instruction || "").trim();
-  const quoted = raw.match(/["\'](.+?)["\']/)?.[1];
+  const quoted = raw.match(/["'](.+?)["']/)?.[1];
   if (quoted) return safeText(quoted, 160);
 
   const lower = raw.toLowerCase();
@@ -805,22 +806,35 @@ function extractGenericClickTarget(instruction = "") {
     return "";
   }
 
+  const actionMatch = raw.match(/(?:try\s+)?(?:click|clicking|open|press|tap|select|choose)\s+(?:on\s+|the\s+)?(.+)$/i);
+  if (actionMatch?.[1]) {
+    return safeText(
+      actionMatch[1]
+        .replace(/\s+(?:and|then)\s+(?:read|observe|inspect|tell|show|summarize).*$/i, " ")
+        .replace(/\b(button|link|page|menu|section)\b/ig, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+      160
+    );
+  }
+
   return safeText(
     raw
-      .replace(/\b(please|execute|click|open|go to|navigate to|perform|run|press|tap|the|button|link|on this page|there)\b/ig, " ")
+      .replace(/\b(please|try|execute|click|clicking|open|go to|navigate to|perform|run|press|tap|select|choose|read|observe|inspect|tell|show|the|button|link|on this page|there)\b/ig, " ")
+      .replace(/\b(and|then)\b.*$/ig, " ")
       .replace(/\s+/g, " ")
       .trim(),
     160
   );
 }
-async function executeAction(args = {}, state = loadState(args.sessionId)) {
-  const steps = [];
-  const useExtensions = boolArg(args.useExtensions, true);
-  if (!useExtensions) {
-    const observationResult = await observePage(args, state);
-    const observation = observationResult.observation;
-    const updated = updateStateFromObservation(state, observation, null, "");
 
+async function executeGenericVisibleAction(args = {}, state = defaultState(), steps = [], existingObservationResult = null) {
+  const observationResult = existingObservationResult || await observePage({ ...args, useExtensions: false }, state);
+  const observation = observationResult.observation;
+  const pageKey = pageKeyForObservation(null, observation);
+  const updated = updateStateFromObservation(state, observation, null, pageKey);
+
+  if (!existingObservationResult) {
     steps.push({
       type: "observe",
       tool: "lightpandaSnapshotCurrent",
@@ -831,63 +845,78 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
       ok: true,
       resultPreview: preview(compactObservation(observation), 900),
     });
+  }
 
-    const targetText = extractGenericClickTarget(args.instruction || args.label || args.text || "");
+  const targetText = extractGenericClickTarget(args.instruction || args.label || args.text || "");
 
-    if (!targetText) {
-      return responseBase({
-        ok: true,
-        status: "success",
-        instruction: args.instruction || "",
-        state: updated,
-        observation,
-        extension: null,
-        pageKey: pageKeyForObservation(null, observation),
-        steps,
-        summary: "Observed the current page. Extensions are disabled, so I will only report real visible elements unless you name a visible button/link to click.",
-        possibleNextActions: [],
-        requiresUser: true,
-      });
-    }
-
-    const clickResult = await lightpandaClickByText({
-      url: observation.url || state.currentUrl || "",
-      text: targetText,
-      waitMs: args.waitMs || "1200",
-    });
-
-    const clicked = Boolean(clickResult?.ok && clickResult?.clicked);
-
-    steps.push({
-      type: "action",
-      tool: "lightpandaClickByText",
-      input: { url: observation.url || state.currentUrl || "", text: targetText },
-      ok: clicked,
-      resultPreview: preview(clickResult, 900),
-    });
-
-    const postObservation = observationFromPageResult(clickResult || {});
-    const finalObservation = postObservation.url ? postObservation : observation;
-    const finalState = updateStateFromObservation(updated, finalObservation, null, pageKeyForObservation(null, finalObservation));
-
+  if (!targetText) {
     return responseBase({
-      ok: clicked,
-      status: clicked ? "success" : "needs_user",
+      ok: true,
+      status: "success",
       instruction: args.instruction || "",
-      state: finalState,
-      observation: finalObservation,
+      state: updated,
+      observation,
       extension: null,
-      pageKey: pageKeyForObservation(null, finalObservation),
+      pageKey,
       steps,
-      summary: clicked
-        ? "Clicked visible text \"" + targetText + "\"."
-        : "I could not find a visible button/link matching \"" + targetText + "\" on the current page.",
+      summary: "Observed the current page. Tell me the exact visible button or link text to click.",
       possibleNextActions: [],
       requiresUser: true,
-      blockedReason: clicked ? "" : "target_not_found",
     });
   }
+
+  const clickResult = await lightpandaClickByText({
+    url: observation.url || state.currentUrl || "",
+    text: targetText,
+    waitMs: args.waitMs || "1200",
+  });
+
+  const clicked = Boolean(clickResult?.ok && clickResult?.clicked);
+
+  steps.push({
+    type: "action",
+    tool: "lightpandaClickByText",
+    input: {
+      url: observation.url || state.currentUrl || "",
+      text: targetText,
+    },
+    ok: clicked,
+    resultPreview: preview(clickResult, 900),
+  });
+
+  const postObservation = observationFromPageResult(clickResult || {});
+  const finalObservation = postObservation.url ? postObservation : observation;
+  const finalPageKey = pageKeyForObservation(null, finalObservation);
+  const finalState = updateStateFromObservation(updated, finalObservation, null, finalPageKey);
+
+  return responseBase({
+    ok: clicked,
+    status: clicked ? "success" : "needs_user",
+    instruction: args.instruction || "",
+    state: finalState,
+    observation: finalObservation,
+    extension: null,
+    pageKey: finalPageKey,
+    steps,
+    summary: clicked
+      ? "Clicked visible text \"" + targetText + "\" and observed the result."
+      : "I could not find a visible button/link matching \"" + targetText + "\" on the current page.",
+    possibleNextActions: [],
+    requiresUser: true,
+    blockedReason: clicked ? "" : "target_not_found",
+  });
+}
+
+async function executeAction(args = {}, state = loadState(args.sessionId)) {
+  const steps = [];
+  const useExtensions = boolArg(args.useExtensions, true);
+
+  if (!useExtensions) {
+    return executeGenericVisibleAction(args, state, steps);
+  }
+
   const observationResult = await observePage(args, state);
+
   steps.push({
     type: "observe",
     tool: "lightpandaSnapshotCurrent",
@@ -899,7 +928,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
     resultPreview: preview(compactObservation(observationResult.observation), 900),
   });
 
-  let extension = extensionFromContext({
+  const extension = extensionFromContext({
     extensionId: args.extensionId,
     observation: observationResult.observation,
     state,
@@ -907,20 +936,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
   }) || observationResult.extension;
 
   if (!extension) {
-    const updated = updateStateFromObservation(state, observationResult.observation, null, "");
-    return responseBase({
-      ok: false,
-      status: "needs_user",
-      instruction: args.instruction || "",
-      state: updated,
-      observation: observationResult.observation,
-      extension: null,
-      pageKey: "",
-      steps,
-      summary: "No active extension matches the current page or instruction.",
-      possibleNextActions: [],
-      requiresUser: true,
-    });
+    return executeGenericVisibleAction(args, state, steps, observationResult);
   }
 
   const skill = getExtensionSkill(extension.id);
@@ -937,31 +953,20 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
   });
 
   if (!actionResolution.ok) {
-    const updated = updateStateFromObservation(state, observationResult.observation, extension, pageKey);
-    return responseBase({
-      ok: false,
-      status: "needs_user",
-      instruction: args.instruction || "",
-      state: updated,
-      observation: observationResult.observation,
-      extension,
-      pageKey,
-      steps,
-      summary: actionResolution.reason || "No matching action was found.",
-      possibleNextActions: safePossibleNextActions(extension, skill),
-      requiresUser: true,
-    });
+    return executeGenericVisibleAction(args, state, steps, observationResult);
   }
 
   const action = actionResolution.action;
   const dangerous = actionIsDangerous(action, args.instruction);
   const requiredPhrase = requiredConfirmationPhrase(action);
+
   if (dangerous) {
     const confirm = args.confirm === true || String(args.confirm || "").toLowerCase() === "true";
     const confirmText = String(args.confirmText || "").trim();
 
     if (!confirm || confirmText !== requiredPhrase) {
       const updated = updateStateFromObservation(state, observationResult.observation, extension, pageKey);
+
       return responseBase({
         ok: false,
         status: "blocked",
@@ -971,16 +976,17 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
         extension,
         pageKey,
         steps,
-        summary: `Blocked dangerous action "${action.label}".`,
+        summary: "Blocked dangerous action \"" + (action.label || action.id || "action") + "\".",
         possibleNextActions: safePossibleNextActions(extension, skill),
         requiresUser: true,
-        blockedReason: `Exact confirmation required: ${requiredPhrase}`,
+        blockedReason: "Exact confirmation required: " + requiredPhrase,
       });
     }
   }
 
   if (observationResult.observation.isLoginPage && action.pageKey && !/login/i.test(action.pageKey)) {
     const updated = updateStateFromObservation(state, observationResult.observation, extension, pageKey);
+
     return responseBase({
       ok: false,
       status: "needs_user",
@@ -990,7 +996,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
       extension,
       pageKey,
       steps,
-      summary: `This action belongs to ${displayPageKey(action.pageKey)}, but the current page appears to be a login page. Login/session is required before I can do this.`,
+      summary: "This action belongs to " + displayPageKey(action.pageKey) + ", but the current page appears to be a login page. Login/session is required before I can do this.",
       possibleNextActions: [],
       requiresUser: true,
       blockedReason: "login_required",
@@ -998,25 +1004,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
   }
 
   if (!sameKnownPage(action, observationResult.observation, skill, pageKey) && !visibleElementMatchingAction(action, observationResult.observation)) {
-    const targetUrl = actionTargetUrl(action, skill, state);
-    const updated = updateStateFromObservation(state, observationResult.observation, extension, pageKey);
-    return responseBase({
-      ok: false,
-      status: "needs_user",
-      instruction: args.instruction || "",
-      state: updated,
-      observation: observationResult.observation,
-      extension,
-      pageKey,
-      steps,
-      summary: `The current page does not appear to contain "${action.label}". Navigate to the correct page first.`,
-      possibleNextActions: [
-        ...(targetUrl ? [{ label: `Navigate to ${displayPageKey(action.pageKey)}`, type: "link", requiresConfirmation: false }] : []),
-        ...safePossibleNextActions(extension, skill),
-      ].slice(0, 8),
-      requiresUser: true,
-      blockedReason: "wrong_page",
-    });
+    return executeGenericVisibleAction(args, state, steps, observationResult);
   }
 
   let actionResult = null;
@@ -1029,11 +1017,16 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
       navigate: true,
       waitMs: args.waitMs || "1200",
     });
+
     clicked = Boolean(actionResult?.ok);
+
     steps.push({
       type: "action",
       tool: "lightpandaSnapshotCurrent",
-      input: { url: action.href, navigate: true },
+      input: {
+        url: action.href,
+        navigate: true,
+      },
       ok: clicked,
       resultPreview: preview(actionResult, 900),
     });
@@ -1043,10 +1036,14 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
       selector: action.selector,
       waitMs: args.waitMs || "1800",
     });
+
     steps.push({
       type: "plan",
       tool: "lightpandaWaitForSelector",
-      input: { url: targetUrl, selector: action.selector },
+      input: {
+        url: targetUrl,
+        selector: action.selector,
+      },
       ok: Boolean(selectorReady?.ok && selectorReady?.found),
       resultPreview: preview(selectorReady, 600),
     });
@@ -1057,11 +1054,16 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
         selector: action.selector,
         waitMs: args.waitMs || "1200",
       });
+
       clicked = Boolean(actionResult?.ok && actionResult?.clicked);
+
       steps.push({
         type: "action",
         tool: "lightpandaClickBySelector",
-        input: { url: targetUrl, selector: action.selector },
+        input: {
+          url: targetUrl,
+          selector: action.selector,
+        },
         ok: clicked,
         resultPreview: preview(actionResult, 900),
       });
@@ -1073,12 +1075,17 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
         text: action.label,
         waitMs: args.waitMs || "1200",
       });
+
       clicked = Boolean(byText?.ok && byText?.clicked);
       actionResult = byText;
+
       steps.push({
         type: "retry",
         tool: "lightpandaClickByText",
-        input: { url: targetUrl, text: action.label },
+        input: {
+          url: targetUrl,
+          text: action.label,
+        },
         ok: clicked,
         resultPreview: preview(byText, 900),
       });
@@ -1089,12 +1096,17 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
       text: action.label,
       waitMs: args.waitMs || "1200",
     });
+
     clicked = Boolean(byText?.ok && byText?.clicked);
     actionResult = byText;
+
     steps.push({
       type: "action",
       tool: "lightpandaClickByText",
-      input: { url: targetUrl || observationResult.observation.url, text: action.label },
+      input: {
+        url: targetUrl || observationResult.observation.url,
+        text: action.label,
+      },
       ok: clicked,
       resultPreview: preview(byText, 900),
     });
@@ -1118,7 +1130,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
       extension,
       pageKey: finalPageKey,
       steps,
-      summary: `I could not execute "${action.label}". The target was not found or did not click successfully.`,
+      summary: "I could not execute \"" + (action.label || action.id || "action") + "\". The target was not found or did not click successfully.",
       possibleNextActions: safePossibleNextActions(extension, skill),
       requiresUser: true,
       blockedReason: "target_not_clicked",
@@ -1134,7 +1146,7 @@ async function executeAction(args = {}, state = loadState(args.sessionId)) {
     extension,
     pageKey: finalPageKey,
     steps,
-    summary: `Executed "${action.label}".`,
+    summary: "Executed \"" + (action.label || action.id || "action") + "\".",
     possibleNextActions: safePossibleNextActions(extension, skill),
     requiresUser: true,
   });
