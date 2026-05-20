@@ -323,7 +323,7 @@ function clickTargetFromInstruction(message = "") {
 function observeFocus(message = "") {
   const lower = normalize(message);
   if (/\blink|links\b/.test(lower)) return "links";
-  if (/\bbutton|buttons|clickable|actions|elements\b/.test(lower)) return "actions";
+  if (/\bbutton|buttons|clickable|actions|elements|menu|menus|option|options|nav|navigation\b/.test(lower)) return "actions";
   if (/\bform|forms|input|inputs|field|fields\b/.test(lower)) return "forms";
   return "page";
 }
@@ -401,7 +401,7 @@ export function watchBrowserInstruction(args = {}) {
   }
 
   const url = extractUrl(raw);
-  if (url && (/\b(navigate|visit|open|go|load|read|view|inspect)\b/i.test(raw) || raw === url || isLikelyUrl(raw))) {
+  if (url && (/\b(navigate|visit|open|go|goto|load|read|view|inspect)\b/i.test(raw) || /\bgo\s+to\b/i.test(raw) || raw === url || isLikelyUrl(raw))) {
     return output({
       intent: "navigate",
       confidence: 0.98,
@@ -528,7 +528,8 @@ export function watchBrowserInstruction(args = {}) {
   }
 
   if (
-    /\b(what|which|show|list|tell me|visible|available)\b.*\b(button|buttons|link|links|clickable|elements|actions|forms|inputs|fields)\b/i.test(raw) ||
+    /\b(what|which|show|list|tell me|visible|available|present)\b.*\b(button|buttons|link|links|clickable|elements|actions|forms|inputs|fields|menu|menus|option|options|nav|navigation)\b/i.test(raw) ||
+    /\b(menu|menus|option|options|nav|navigation)\b.*\b(present|visible|available|there|on this page|on the page)\b/i.test(raw) ||
     /\b(observe|inspect|read|snapshot|current page)\b/i.test(raw)
   ) {
     const command = { tool: "browserObserve", args: { currentUrl, focus: observeFocus(raw) } };
