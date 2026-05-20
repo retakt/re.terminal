@@ -20,6 +20,12 @@ import {
   lightpandaStatus,
   openHeadfulBrowser,
 } from "./lightpanda-client.js";
+import {
+  getExtension,
+  listExtensions,
+  matchExtensionForUrl,
+  planExtensionAction,
+} from "./extensions.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -428,6 +434,123 @@ async function monitorHealthCheck() {
   return runCommand(shell, [paths.healthScript], { cwd: serverRoot(), timeout: 15000 });
 }
 
+async function extensionListTool() {
+  return safeText({
+    ok: true,
+    extensions: listExtensions(),
+  });
+}
+
+async function extensionGetTool(args = {}) {
+  const id = String(args.id || args.extensionId || "ezhrm").trim();
+  const extension = getExtension(id);
+
+  if (!extension) {
+    throw new Error(`extension not found: ${id}`);
+  }
+
+  return safeText({
+    ok: true,
+    extension,
+  });
+}
+
+async function extensionMatchUrlTool(args = {}) {
+  const url = String(args.url || args.currentUrl || "").trim();
+  if (!url) throw new Error("url is required");
+
+  return safeText({
+    ok: true,
+    url,
+    extension: matchExtensionForUrl(url),
+  });
+}
+
+async function extensionPlanActionTool(args = {}) {
+  return safeText(planExtensionAction({
+    extensionId: args.extensionId || args.id || args.skillId || "ezhrm",
+    actionId: args.actionId,
+    label: args.label,
+  }));
+}
+
+async function extensionExecuteActionTool(args = {}) {
+  const plan = planExtensionAction({
+    extensionId: args.extensionId || args.id || args.skillId || "ezhrm",
+    actionId: args.actionId,
+    label: args.label,
+  });
+
+  if (!plan.ok) {
+    return safeText(plan);
+  }
+
+  const action = plan.action;
+  const confirm = args.confirm === true;
+  const confirmText = String(args.confirmText || "").trim();
+
+  if (action.requiresConfirmation) {
+    const requiredPhrase = `I CONFIRM ${action.label}`.toUpperCase();
+
+    if (!confirm || confirmText.toUpperCase() !== requiredPhrase) {
+      return safeText({
+        ok: false,
+        requiresConfirmation: true,
+        blocked: true,
+        extensionId: plan.extension.id,
+        action: {
+          id: action.id,
+          label: action.label,
+          kind: action.kind,
+          pageKey: action.pageKey,
+        },
+        requiredPhrase,
+        message: `Blocked. To execute "${action.label}", the user must explicitly type: ${requiredPhrase}`,
+      });
+    }
+  }
+
+  if (action.href) {
+    return safeText({
+      ok: true,
+      extensionId: plan.extension.id,
+      actionId: action.id,
+      mode: "navigate",
+      browser: await lightpandaFetch({
+        url: action.href,
+        waitMs: args.waitMs || "1200",
+      }),
+    });
+  }
+
+  if (action.selector) {
+    const currentUrl = String(args.currentUrl || args.url || "").trim();
+    if (!currentUrl) {
+      throw new Error("currentUrl is required for selector-based extension actions");
+    }
+
+    return safeText({
+      ok: true,
+      extensionId: plan.extension.id,
+      actionId: action.id,
+      mode: "click",
+      browser: await lightpandaAction({
+        url: currentUrl,
+        action: "click",
+        selector: action.selector,
+        text: action.label,
+        waitMs: args.waitMs || "1200",
+      }),
+    });
+  }
+
+  return safeText({
+    ok: false,
+    error: `action has no href or selector: ${action.id}`,
+    action,
+  });
+}
+
 const builtinServers = [
   {
     id: "local",
@@ -641,6 +764,83 @@ const builtinServers = [
         description: "Open a real Chrome window connected to the shared CDP port for user-visible browsing.",
         inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string" } } },
         execute: openHeadfulBrowser,
+      },
+    ],
+  },
+    {
+    id: "extensions",
+    title: "Extensions",
+    type: "builtin",
+    transport: "internal",
+    enabled: true,
+    description: "Browser extensions generated from site skills. Use this for EZHRM and other site-specific browser workflows.",
+    tools: [
+      {
+        name: "list",
+        description: "List enabled browser extensions generated from site skills.",
+        inputSchema: { type: "object", properties: {} },
+        execute: extensionListTool,
+      },
+      {
+        name: "get",
+        description: "Get one browser extension by id, including permissions and known actions.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            extensionId: { type: "string" },
+          },
+        },
+        execute: extensionGetTool,
+      },
+      {
+        name: "match_url",
+        description: "Match a URL to a browser extension, for example ezhrmsys.com to the EZHRM extension.",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string" },
+            currentUrl: { type: "string" },
+          },
+        },
+        execute: extensionMatchUrlTool,
+      },
+      {
+        name: "plan_action",
+        description: "Plan an extension action before execution. Use this before clicking or navigating with a site-specific action.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            extensionId: { type: "string" },
+            skillId: { type: "string" },
+            actionId: { type: "string" },
+            label: { type: "string" },
+          },
+        },
+        execute: extensionPlanActionTool,
+      },
+      {
+
+        name: "execute_action",
+        description: "Execute a safe extension action. Risky actions require an exact user confirmation phrase and should not be called automatically.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            extensionId: { type: "string" },
+            skillId: { type: "string" },
+            actionId: { type: "string" },
+            label: { type: "string" },
+            currentUrl: { type: "string" },
+            url: { type: "string" },
+            waitMs: { type: "string" },
+            confirm: { type: "boolean" },
+            confirmText: { type: "string" },
+          },
+        },
+        execute: extensionExecuteActionTool,
       },
     ],
   },
@@ -1164,6 +1364,57 @@ export function routeMcpIntent(text = "", options = {}) {
       "repo status questions require git status",
       "low",
       0.92
+    );
+  }
+    if (/\b(extension|extensions|ezhrm|site skill|site skills|known actions|available actions|hrm|attendance|leave application|leave status|passport request|salary deduction|check out|checkout|emergency checkout)\b/.test(lower)) {
+    const browserTarget = extractBrowserTarget(raw);
+
+    if (browserTarget) {
+      return use(
+        "mcp__extensions__match_url",
+        { url: browserTarget },
+        "site-specific browser workflow should match URL to an extension",
+        "low",
+        0.95
+      );
+    }
+
+    const knownLabels = [
+      ["emergency checkout", "Emergency CheckOut"],
+      ["emergency check out", "Emergency CheckOut"],
+      ["check out", "Check Out"],
+      ["checkout", "Check Out"],
+      ["leave application", "Leave Application"],
+      ["leave status", "Leave Status"],
+      ["passport request form", "Passport Request Form"],
+      ["passport request status", "Passport Request Status"],
+      ["salary deduction", "Salary Deduction"],
+      ["manage bank accounts", "Manage Bank Accounts"],
+      ["other leaves application", "Other Leaves Application"],
+      ["view deduction details", "View Deduction Details"],
+      ["login", "Login"],
+      ["sign in", "Login"],
+      ["search", "SEARCH"],
+    ];
+
+    const matched = knownLabels.find(([needle]) => lower.includes(needle));
+
+    if (matched) {
+      return use(
+        "mcp__extensions__plan_action",
+        { extensionId: "ezhrm", label: matched[1] },
+        "EZHRM action should be planned through the extension layer before execution",
+        "low",
+        0.95
+      );
+    }
+
+    return use(
+      "mcp__extensions__get",
+      { id: "ezhrm" },
+      "EZHRM workflow requires the EZHRM extension",
+      "low",
+      0.9
     );
   }
 

@@ -48,6 +48,18 @@ import {
   listMcpTools,
   routeMcpIntent,
 } from "./lib/mcp-gateway.js";
+import { importEzhrmObservation } from "./lib/ezhrm-skill-importer.js";
+import {
+  getSiteSkill,
+  listPublicSiteSkills,
+  matchSiteSkillForUrl,
+} from "./lib/site-skills.js";
+import {
+  getExtension,
+  listExtensions,
+  matchExtensionForUrl,
+  planExtensionAction,
+} from "./lib/extensions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -400,6 +412,19 @@ function resolveSafe(clientPath) {
 
 app.use(express.json({ limit: "10mb" }));
 
+app.post("/api/ezhrm-skill/import-observation", (req, res) => {
+  try {
+    const observation = req.body?.observation || req.body;
+    const result = importEzhrmObservation(observation);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
 // MCP gateway API
 app.get("/api/mcp/servers", (_req, res) => {
   res.json({ servers: listMcpServers() });
@@ -468,6 +493,74 @@ app.post("/api/mcp/call", async (req, res) => {
 
 app.get("/api/extensions/catalog", (_req, res) => {
   res.json({ items: getExtensionCatalog() });
+});
+app.get("/api/extensions", (_req, res) => {
+  res.json({
+    ok: true,
+    extensions: listExtensions(),
+  });
+});
+
+app.get("/api/extensions/:id", (req, res) => {
+  const extension = getExtension(req.params.id);
+
+  if (!extension) {
+    res.status(404).json({
+      ok: false,
+      error: "extension not found",
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    extension,
+  });
+});
+
+app.post("/api/extensions/match", (req, res) => {
+  const extension = matchExtensionForUrl(req.body?.url || "");
+
+  res.json({
+    ok: true,
+    extension,
+  });
+});
+
+app.post("/api/extensions/plan-action", (req, res) => {
+  res.json(planExtensionAction(req.body || {}));
+});
+
+app.get("/api/site-skills", (_req, res) => {
+  res.json({
+    skills: listPublicSiteSkills(),
+  });
+});
+
+app.get("/api/site-skills/:id", (req, res) => {
+  const skill = getSiteSkill(req.params.id);
+
+  if (!skill) {
+    res.status(404).json({
+      ok: false,
+      error: "site skill not found",
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    skill,
+  });
+});
+
+app.post("/api/site-skills/match", (req, res) => {
+  const skill = matchSiteSkillForUrl(req.body?.url || "");
+
+  res.json({
+    ok: true,
+    skill,
+  });
 });
 
 // Memory Graph API

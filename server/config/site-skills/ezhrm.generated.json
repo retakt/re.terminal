@@ -1,0 +1,666 @@
+{
+  "id": "ezhrm",
+  "name": "EZHRM Skill",
+  "enabled": true,
+  "version": "0.1.0",
+  "source": "ezhrm-skill-recorder",
+  "domains": [
+    "ezhrmsys.com",
+    "www.ezhrmsys.com"
+  ],
+  "updatedAt": "2026-05-20T07:29:58.916Z",
+  "rules": [
+    "Use only imported EZHRM observations and actions.",
+    "Operate round by round.",
+    "Ask before login, logout, check-in, check-out, emergency checkout, leave submission, profile updates, or any irreversible action.",
+    "Never reveal password values.",
+    "Do not use hidden actions unless the user explicitly asks and the current page confirms they are available."
+  ],
+  "pages": {
+    "login_page": {
+      "key": "login_page",
+      "url": "https://ezhrmsys.com/",
+      "path": "/",
+      "title": "Login - HRM",
+      "capturedAt": "2026-05-20T07:29:08.823Z",
+      "counts": {
+        "forms": 1,
+        "fields": 3,
+        "buttons": 1,
+        "links": 0,
+        "tables": 0
+      },
+      "forms": [
+        {
+          "index": 0,
+          "action": "https://ezhrmsys.com/loginto",
+          "method": "post",
+          "id": "login-form",
+          "name": "",
+          "visible": true,
+          "selector": "#login-form",
+          "fields": [
+            {
+              "index": 0,
+              "tag": "input",
+              "type": "hidden",
+              "name": "_token",
+              "id": "",
+              "placeholder": "",
+              "ariaLabel": "",
+              "required": false,
+              "visible": false,
+              "secret": false,
+              "selector": "input[name=\"_token\"]",
+              "valueCaptured": false
+            },
+            {
+              "index": 1,
+              "tag": "input",
+              "type": "text",
+              "name": "employee_id",
+              "id": "employee_id",
+              "placeholder": "Please enter your employee ID",
+              "ariaLabel": "",
+              "required": false,
+              "visible": true,
+              "secret": false,
+              "selector": "#employee_id",
+              "valueCaptured": false
+            },
+            {
+              "index": 2,
+              "tag": "input",
+              "type": "password",
+              "name": "password",
+              "id": "password",
+              "placeholder": "Please enter your password",
+              "ariaLabel": "",
+              "required": false,
+              "visible": true,
+              "secret": true,
+              "selector": "#password",
+              "valueCaptured": false
+            }
+          ],
+          "buttons": [
+            {
+              "index": 0,
+              "tag": "button",
+              "type": "submit",
+              "text": "Login",
+              "id": "submitbtn",
+              "name": "",
+              "visible": true,
+              "selector": "#submitbtn"
+            }
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "index": 1,
+          "tag": "input",
+          "type": "text",
+          "name": "employee_id",
+          "id": "employee_id",
+          "placeholder": "Please enter your employee ID",
+          "ariaLabel": "",
+          "required": false,
+          "visible": true,
+          "secret": false,
+          "selector": "#employee_id",
+          "valueCaptured": false
+        },
+        {
+          "index": 2,
+          "tag": "input",
+          "type": "password",
+          "name": "password",
+          "id": "password",
+          "placeholder": "Please enter your password",
+          "ariaLabel": "",
+          "required": false,
+          "visible": true,
+          "secret": true,
+          "selector": "#password",
+          "valueCaptured": false
+        }
+      ],
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "type": "submit",
+          "text": "Login",
+          "id": "submitbtn",
+          "name": "",
+          "visible": true,
+          "selector": "#submitbtn"
+        }
+      ],
+      "links": [],
+      "tables": []
+    },
+    "attendance_employee": {
+      "key": "attendance_employee",
+      "url": "https://ezhrmsys.com/attendance-employee",
+      "path": "/attendance-employee",
+      "title": "",
+      "capturedAt": "2026-05-20T07:29:56.459Z",
+      "counts": {
+        "forms": 4,
+        "fields": 8,
+        "buttons": 18,
+        "links": 251,
+        "tables": 2
+      },
+      "forms": [
+        {
+          "index": 0,
+          "action": "https://ezhrmsys.com/logout",
+          "method": "post",
+          "id": "",
+          "name": "",
+          "visible": false,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(3) > div:nth-of-type(1) > form:nth-of-type(1)",
+          "fields": [
+            {
+              "index": 0,
+              "tag": "input",
+              "type": "hidden",
+              "name": "_token",
+              "id": "",
+              "placeholder": "",
+              "ariaLabel": "",
+              "required": false,
+              "visible": false,
+              "secret": false,
+              "selector": "input[name=\"_token\"]",
+              "valueCaptured": false
+            }
+          ],
+          "buttons": []
+        },
+        {
+          "index": 1,
+          "action": "https://ezhrmsys.com/logout",
+          "method": "post",
+          "id": "",
+          "name": "",
+          "visible": false,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > form:nth-of-type(1)",
+          "fields": [
+            {
+              "index": 0,
+              "tag": "input",
+              "type": "hidden",
+              "name": "_token",
+              "id": "",
+              "placeholder": "",
+              "ariaLabel": "",
+              "required": false,
+              "visible": false,
+              "secret": false,
+              "selector": "input[name=\"_token\"]",
+              "valueCaptured": false
+            }
+          ],
+          "buttons": []
+        },
+        {
+          "index": 2,
+          "action": "https://ezhrmsys.com/attendance-employee",
+          "method": "post",
+          "id": "searchData",
+          "name": "",
+          "visible": true,
+          "selector": "#searchData",
+          "fields": [
+            {
+              "index": 0,
+              "tag": "input",
+              "type": "hidden",
+              "name": "_token",
+              "id": "",
+              "placeholder": "",
+              "ariaLabel": "",
+              "required": false,
+              "visible": false,
+              "secret": false,
+              "selector": "input[name=\"_token\"]",
+              "valueCaptured": false
+            },
+            {
+              "index": 1,
+              "tag": "input",
+              "type": "text",
+              "name": "fromDate",
+              "id": "fromDate",
+              "placeholder": "",
+              "ariaLabel": "",
+              "required": false,
+              "visible": true,
+              "secret": false,
+              "selector": "#fromDate",
+              "valueCaptured": false
+            },
+            {
+              "index": 2,
+              "tag": "input",
+              "type": "text",
+              "name": "toDate",
+              "id": "toDate",
+              "placeholder": "",
+              "ariaLabel": "",
+              "required": false,
+              "visible": true,
+              "secret": false,
+              "selector": "#toDate",
+              "valueCaptured": false
+            }
+          ],
+          "buttons": [
+            {
+              "index": 1,
+              "tag": "button",
+              "type": "submit",
+              "text": "SEARCH",
+              "id": "submitButton",
+              "name": "",
+              "visible": true,
+              "selector": "#submitButton"
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "action": "https://ezhrmsys.com/attendance-employee",
+          "method": "post",
+          "id": "verify_user",
+          "name": "",
+          "visible": false,
+          "selector": "#verify_user",
+          "fields": [
+            {
+              "index": 0,
+              "tag": "input",
+              "type": "password",
+              "name": "",
+              "id": "password",
+              "placeholder": "Password...",
+              "ariaLabel": "",
+              "required": false,
+              "visible": false,
+              "secret": true,
+              "selector": "#password",
+              "valueCaptured": false
+            }
+          ],
+          "buttons": []
+        }
+      ],
+      "fields": [
+        {
+          "index": 3,
+          "tag": "input",
+          "type": "text",
+          "name": "fromDate",
+          "id": "fromDate",
+          "placeholder": "",
+          "ariaLabel": "",
+          "required": false,
+          "visible": true,
+          "secret": false,
+          "selector": "#fromDate",
+          "valueCaptured": false
+        },
+        {
+          "index": 4,
+          "tag": "input",
+          "type": "text",
+          "name": "toDate",
+          "id": "toDate",
+          "placeholder": "",
+          "ariaLabel": "",
+          "required": false,
+          "visible": true,
+          "secret": false,
+          "selector": "#toDate",
+          "valueCaptured": false
+        },
+        {
+          "index": 5,
+          "tag": "select",
+          "type": "select",
+          "name": "attendance_record_length",
+          "id": "dt-length-0",
+          "placeholder": "",
+          "ariaLabel": "",
+          "required": false,
+          "visible": true,
+          "secret": false,
+          "selector": "#dt-length-0",
+          "valueCaptured": false
+        },
+        {
+          "index": 6,
+          "tag": "input",
+          "type": "search",
+          "name": "",
+          "id": "dt-search-0",
+          "placeholder": "",
+          "ariaLabel": "",
+          "required": false,
+          "visible": true,
+          "secret": false,
+          "selector": "#dt-search-0",
+          "valueCaptured": false
+        }
+      ],
+      "buttons": [
+        {
+          "index": 6,
+          "tag": "button",
+          "type": "",
+          "text": "Check Out",
+          "id": "",
+          "name": "",
+          "visible": true,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(1)"
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "type": "",
+          "text": "Emergency CheckOut",
+          "id": "emergencyCheckOutBtn",
+          "name": "",
+          "visible": true,
+          "selector": "#emergencyCheckOutBtn"
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "type": "",
+          "text": "View Deduction Details",
+          "id": "deductions_btn",
+          "name": "",
+          "visible": true,
+          "selector": "#deductions_btn"
+        },
+        {
+          "index": 10,
+          "tag": "button",
+          "type": "submit",
+          "text": "SEARCH",
+          "id": "submitButton",
+          "name": "",
+          "visible": true,
+          "selector": "#submitButton"
+        }
+      ],
+      "links": [
+        {
+          "index": 17,
+          "text": "Leave Application",
+          "href": "https://ezhrmsys.com/leave_application_form",
+          "visible": true,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(4) > a:nth-of-type(1)"
+        },
+        {
+          "index": 18,
+          "text": "Other Leaves Application",
+          "href": "https://ezhrmsys.com/unlock-leave-application",
+          "visible": true,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(5) > a:nth-of-type(1)"
+        },
+        {
+          "index": 19,
+          "text": "Leave Status",
+          "href": "https://ezhrmsys.com/leave_status",
+          "visible": true,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(6) > a:nth-of-type(1)"
+        },
+        {
+          "index": 20,
+          "text": "Passport Request Form",
+          "href": "https://ezhrmsys.com/passport-request-form",
+          "visible": true,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(8) > a:nth-of-type(1)"
+        },
+        {
+          "index": 21,
+          "text": "Passport Request Status",
+          "href": "https://ezhrmsys.com/passport-request-status",
+          "visible": true,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(9) > a:nth-of-type(1)"
+        },
+        {
+          "index": 22,
+          "text": "Salary Deduction",
+          "href": "https://ezhrmsys.com/salary_deduction",
+          "visible": true,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(11) > a:nth-of-type(1)"
+        },
+        {
+          "index": 23,
+          "text": "Manage Bank Accounts",
+          "href": "https://ezhrmsys.com/my-bank-accounts",
+          "visible": true,
+          "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(12) > a:nth-of-type(1)"
+        }
+      ],
+      "tables": [
+        {
+          "index": 0,
+          "visible": true,
+          "selector": "#attendance_record",
+          "rowCount": 32,
+          "headers": [
+            "Verify",
+            "#",
+            "Start Date",
+            "Shift In",
+            "End Date",
+            "Shift Out",
+            "CheckIn Date",
+            "Check In",
+            "CheckOut Date",
+            "Check Out",
+            "Duty Hours",
+            "Verify",
+            "1",
+            "01 May 2026 (Fri)",
+            "10:00:00",
+            "01 May 2026 (Fri)",
+            "19:00:00",
+            "01 May 2026",
+            "09:59:32",
+            "01 May 2026",
+            "19:45:39",
+            "09:00:00"
+          ],
+          "cellTextCaptured": false
+        },
+        {
+          "index": 1,
+          "visible": false,
+          "selector": "#deduction_table",
+          "rowCount": 1,
+          "headers": [
+            "Start Date",
+            "Shift In",
+            "End Date",
+            "Shift Out",
+            "CheckIn Date",
+            "Check In",
+            "CheckOut Date",
+            "Check Out",
+            "Duty Hours",
+            "Status"
+          ],
+          "cellTextCaptured": false
+        }
+      ]
+    }
+  },
+  "actions": [
+    {
+      "id": "attendance_employee_button_view_deduction_details",
+      "label": "View Deduction Details",
+      "kind": "button",
+      "source": "visible_button",
+      "pageKey": "attendance_employee",
+      "selector": "#deductions_btn",
+      "href": "",
+      "formIndex": null,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_check_out_check_out",
+      "label": "Check Out",
+      "kind": "check_out",
+      "source": "visible_button",
+      "pageKey": "attendance_employee",
+      "selector": "div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(1)",
+      "href": "",
+      "formIndex": null,
+      "requiresConfirmation": true,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_emergency_check_out_emergency_checkout",
+      "label": "Emergency CheckOut",
+      "kind": "emergency_check_out",
+      "source": "visible_button",
+      "pageKey": "attendance_employee",
+      "selector": "#emergencyCheckOutBtn",
+      "href": "",
+      "formIndex": null,
+      "requiresConfirmation": true,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_leave_application_leave_application",
+      "label": "Leave Application",
+      "kind": "leave_application",
+      "source": "visible_link",
+      "pageKey": "attendance_employee",
+      "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(4) > a:nth-of-type(1)",
+      "href": "https://ezhrmsys.com/leave_application_form",
+      "formIndex": null,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_leave_status_leave_status",
+      "label": "Leave Status",
+      "kind": "leave_status",
+      "source": "visible_link",
+      "pageKey": "attendance_employee",
+      "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(6) > a:nth-of-type(1)",
+      "href": "https://ezhrmsys.com/leave_status",
+      "formIndex": null,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_link_manage_bank_accounts",
+      "label": "Manage Bank Accounts",
+      "kind": "link",
+      "source": "visible_link",
+      "pageKey": "attendance_employee",
+      "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(12) > a:nth-of-type(1)",
+      "href": "https://ezhrmsys.com/my-bank-accounts",
+      "formIndex": null,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_link_other_leaves_application",
+      "label": "Other Leaves Application",
+      "kind": "link",
+      "source": "visible_link",
+      "pageKey": "attendance_employee",
+      "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(5) > a:nth-of-type(1)",
+      "href": "https://ezhrmsys.com/unlock-leave-application",
+      "formIndex": null,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_link_passport_request_form",
+      "label": "Passport Request Form",
+      "kind": "link",
+      "source": "visible_link",
+      "pageKey": "attendance_employee",
+      "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(8) > a:nth-of-type(1)",
+      "href": "https://ezhrmsys.com/passport-request-form",
+      "formIndex": null,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_link_passport_request_status",
+      "label": "Passport Request Status",
+      "kind": "link",
+      "source": "visible_link",
+      "pageKey": "attendance_employee",
+      "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(9) > a:nth-of-type(1)",
+      "href": "https://ezhrmsys.com/passport-request-status",
+      "formIndex": null,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_link_salary_deduction",
+      "label": "Salary Deduction",
+      "kind": "link",
+      "source": "visible_link",
+      "pageKey": "attendance_employee",
+      "selector": "div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(11) > a:nth-of-type(1)",
+      "href": "https://ezhrmsys.com/salary_deduction",
+      "formIndex": null,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "attendance_employee_search_search",
+      "label": "SEARCH",
+      "kind": "search",
+      "source": "visible_form_button",
+      "pageKey": "attendance_employee",
+      "selector": "#submitButton",
+      "href": "",
+      "formIndex": 2,
+      "requiresConfirmation": false,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:58.915Z"
+    },
+    {
+      "id": "login_page_login_login",
+      "label": "Login",
+      "kind": "login",
+      "source": "visible_form_button",
+      "pageKey": "login_page",
+      "selector": "#submitbtn",
+      "href": "",
+      "formIndex": 0,
+      "requiresConfirmation": true,
+      "observedOnly": true,
+      "lastObservedAt": "2026-05-20T07:29:10.248Z"
+    }
+  ]
+}

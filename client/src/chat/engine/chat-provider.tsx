@@ -479,12 +479,12 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
   function isToolAllowedInMode(name: string, mode: ChatMode, allowWebTools: boolean) {
     const isMcp = name.startsWith("mcp__");
     const isBrowser = name.startsWith("mcp__browser__");
+    const isExtension = name.startsWith("mcp__extensions__");
     const isWeb = name === "search_web" || name.startsWith("mcp__web__");
 
     if (mode === "browser") {
-      return isBrowser;
+      return isBrowser || isExtension;
     }
-
     if (mode === "scraper") {
       return name === "mcp__browser__instant_scrape"
         || name === "mcp__browser__lightpanda_action"
