@@ -753,7 +753,10 @@ async function browserAgentDiagnoseTool(args = {}) {
   return safeText(await browserAgentDiagnose(args), 20000);
 }
 
-const builtinServers = [
+// ============================================================================
+// BUILTIN TOOL GROUPS (Internal JavaScript tools, NOT external MCP servers)
+// ============================================================================
+const builtinToolGroups = [
   {
     id: "local",
     title: "Local System",
@@ -1226,6 +1229,15 @@ const builtinServers = [
   },
 ];
 
+// ============================================================================
+// EXTERNAL MCP SERVER CONFIGURATION
+// ============================================================================
+import {
+  loadExternalMcpConfigs,
+  getMcpConfigPath,
+  hasExternalMcpConfig,
+} from "./external-mcp-config.js";
+
 const extensionCatalog = [
   { name: "OpenWebUI MCP Streamable HTTP", type: "MCP", target: "MCP", risk: "medium", source: "https://docs.openwebui.com/features/mcp", description: "Connect Streamable HTTP MCP servers to OpenWebUI-style clients." },
   { name: "OpenWebUI mcpo bridge", type: "OpenWebUI Tool", target: "Extensions", risk: "medium", source: "https://docs.openwebui.com/features/extensibility/plugin/tools/openapi-servers/mcp/", description: "Expose stdio/SSE MCP tools as OpenAPI endpoints." },
@@ -1243,6 +1255,15 @@ function isServerEnabled(server) {
   return Boolean(server.enabled);
 }
 
+/**
+ * Checks if a server is a builtin/internal tool group.
+ * @param {object} server - Server object
+ * @returns {boolean}
+ */
+function isBuiltinServer(server) {
+  return server.source === "builtin" || server.type === "builtin";
+}
+
 function serverStatus(server) {
   if (server.id === "git" && !findGitRoot()) return "disabled";
   if (server.id === "web" && !configuredSearxngBase()) return "needs_config";
@@ -1253,25 +1274,55 @@ function serverStatus(server) {
   return "ready";
 }
 
-export function listMcpServers() {
-  return builtinServers.map((server) => ({
+/**
+ * Lists all MCP servers (builtin tool groups + configured external servers).
+ * Builtin servers have source: "builtin", transport: "internal", mcpNative: false.
+ * External servers have source: "external", transport: stdio/sse/http, mcpNative: true.
+ * @returns {Array<object>} Array of server status objects
+ */
+export async function listMcpServers() {
+  // Map builtin tool groups with honest status fields
+  const builtinList = builtinToolGroups.map((server) => ({
     id: server.id,
     title: server.title,
-    type: server.type,
-    transport: server.transport,
+    source: "builtin",
+    type: "builtin",
+    transport: "internal",
+    protocol: "internal-function",
+    external: false,
+    mcpNative: false,
     enabled: isServerEnabled(server),
     description: server.description,
     status: serverStatus(server),
     toolCount: isServerEnabled(server) ? server.tools.length : 0,
     responseMs: serverResponseMs.get(server.id) ?? null,
   }));
+
+  // Load and append configured external MCP servers
+  const externalConfigs = await loadExternalMcpConfigs();
+
+  return [...builtinList, ...externalConfigs];
 }
 
+/**
+ * Lists all available MCP tools.
+ * NOTE: Only builtin/internal tools are listed. External MCP tools are NOT listed
+ * until a real external MCP client is implemented and successfully connects.
+ * @returns {Array<object>} Array of tool definition objects
+ */
 export function listMcpTools() {
-  return builtinServers.flatMap((server) => isServerEnabled(server) ? server.tools.map((tool) => ({
+  // Only return tools from builtin tool groups
+  // External MCP servers do not contribute tools until real client connection
+  return builtinToolGroups.flatMap((server) => isServerEnabled(server) ? server.tools.map((tool) => ({
     name: `mcp__${server.id}__${tool.name}`,
     serverId: server.id,
     serverTitle: server.title,
+    source: "builtin",
+    type: "builtin",
+    transport: "internal",
+    protocol: "internal-function",
+    external: false,
+    mcpNative: false,
     description: tool.description,
     inputSchema: tool.inputSchema,
     enabled: true,
@@ -1813,7 +1864,8 @@ export async function callMcpTool(name, args = {}) {
   if (!match) throw new Error(`invalid MCP tool name: ${name}`);
 
   const [, serverId, toolName] = match;
-  const server = builtinServers.find((entry) => entry.id === serverId);
+  // Only builtin tool groups can be called at this time
+  const server = builtinToolGroups.find((entry) => entry.id === serverId);
   if (!server || !isServerEnabled(server)) throw new Error(`MCP server not enabled: ${serverId}`);
 
   const tool = server.tools.find((entry) => entry.name === toolName);
@@ -1853,6 +1905,41 @@ export async function callMcpTool(name, args = {}) {
   }
 }
 
+/**
+ * Admin/ops helper: Returns MCP architecture status overview.
+ * Read-only diagnostic tool for understanding builtin vs external server state.
+ * @returns {Promise<object>} Architecture status summary
+ */
+export async function mcp__ops__mcp_architecture_status() {
+  const builtinList = builtinToolGroups.map((server) => ({
+    id: server.id,
+    title: server.title,
+    source: "builtin",
+    type: "builtin",
+    transport: "internal",
+    protocol: "internal-function",
+    external: false,
+    mcpNative: false,
+    enabled: isServerEnabled(server),
+    status: serverStatus(server),
+    toolCount: isServerEnabled(server) ? server.tools.length : 0,
+  }));
+
+  const externalList = await loadExternalMcpConfigs();
+
+  return {
+    builtinToolGroups: builtinList,
+    externalMcpServers: externalList,
+    summary: {
+      builtinCount: builtinList.length,
+      externalConfiguredCount: externalList.length,
+      externalConnectedCount: externalList.filter((s) => s.connected).length,
+      configPath: getMcpConfigPath(),
+      hasConfigFile: hasExternalMcpConfig(),
+    },
+  };
+}
+
 async function measureTool(name, args = {}) {
   const startedAt = Date.now();
 
@@ -1861,7 +1948,8 @@ async function measureTool(name, args = {}) {
     if (!match) throw new Error(`invalid MCP tool name: ${name}`);
 
     const [, serverId, toolName] = match;
-    const server = builtinServers.find((entry) => entry.id === serverId);
+    // Only builtin tool groups can be measured at this time
+    const server = builtinToolGroups.find((entry) => entry.id === serverId);
     if (!server || !isServerEnabled(server)) throw new Error(`MCP server not enabled: ${serverId}`);
 
     const tool = server.tools.find((entry) => entry.name === toolName);
@@ -1944,6 +2032,9 @@ export async function getServiceStatus() {
   serverHealthOk.set("ops", Boolean(ollama.ok || docker.ok || monitor.ok));
   serverResponseMs.set("ops", Math.max(ollama.durationMs || 0, docker.durationMs || 0, monitor.durationMs || 0));
 
+  // Note: listMcpServers is now async, so we await it
+  const mcpServersList = await listMcpServers();
+
   return {
     ok: true,
     durationMs: Date.now() - startedAt,
@@ -1965,13 +2056,16 @@ export async function getServiceStatus() {
       git,
       web,
     },
-    mcpServers: listMcpServers(),
+    mcpServers: mcpServersList,
   };
 }
 
 export {
+  // Browser/Lightpanda helpers
   lightpandaNavigate,
   lightpandaStatus,
   openHeadfulBrowser,
   getLightpandaConfig,
+  // MCP architecture admin helper
+  mcp__ops__mcp_architecture_status,
 };
