@@ -53,6 +53,7 @@ import {
   listMcpTools,
   routeMcpIntent,
 } from "./lib/mcp-gateway.js";
+import { convertMcpLogsToAuditInputs } from "./lib/mcp-log-audit.js";
 import { importEzhrmObservation } from "./lib/ezhrm-skill-importer.js";
 import {
   getSiteSkill,
@@ -766,6 +767,33 @@ app.get("/api/mcp/logs", (_req, res) => {
   res.json({ logs: getMcpLogs() });
 });
 
+app.post("/api/logs/import-mcp", (_req, res) => {
+  try {
+    const existingGatewayIds = new Set(
+      queryAuditEvents({ category: "mcp", limit: 2000 }).events
+        .map((event) => String(event?.refs?.gatewayLogId || ""))
+        .filter(Boolean),
+    );
+    const missingLogs = getMcpLogs()
+      .filter((entry) => !existingGatewayIds.has(String(entry?.id || "")));
+    const appended = appendAuditEvents(
+      convertMcpLogsToAuditInputs(missingLogs, {
+        source: "server.mcp.import",
+        action: "gateway.import",
+        imported: true,
+      }),
+    );
+    res.json({
+      ok: true,
+      imported: appended.length,
+      totalGatewayLogs: getMcpLogs().length,
+      logFile: AUDIT_LOG_FILE,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/api/services/status", async (_req, res) => {
   try {
     res.json(await getServiceStatus());
@@ -806,50 +834,12 @@ app.post("/api/mcp/route", async (req, res) => {
 });
 
 app.post("/api/mcp/call", async (req, res) => {
-  const startedAt = Date.now();
   const toolName = String(req.body?.name || "");
   const toolArgs = req.body?.args || {};
   try {
     const result = await callMcpTool(toolName, toolArgs);
-    appendAuditEvent({
-      source: "server.mcp",
-      category: "mcp",
-      action: "call",
-      status: "success",
-      title: toolName || "mcp call",
-      summary: auditPreview(result, 360),
-      refs: {
-        tool: toolName,
-        durationMs: Date.now() - startedAt,
-      },
-      usage: auditUsageFromUnknown(result, { stage: "mcp", model: "" }),
-      payload: {
-        tool: toolName,
-        args: toolArgs,
-        durationMs: Date.now() - startedAt,
-        result,
-      },
-    });
     res.json({ ok: true, success: true, result });
   } catch (err) {
-    appendAuditEvent({
-      source: "server.mcp",
-      category: "mcp",
-      action: "call",
-      status: "error",
-      title: toolName || "mcp call",
-      summary: err.message,
-      refs: {
-        tool: toolName,
-        durationMs: Date.now() - startedAt,
-      },
-      payload: {
-        tool: toolName,
-        args: toolArgs,
-        durationMs: Date.now() - startedAt,
-        error: err.message,
-      },
-    });
     log("WARN", "mcp", "tool call failed", { tool: toolName, error: err.message });
     res.status(500).json({ ok: false, success: false, error: err.message });
   }

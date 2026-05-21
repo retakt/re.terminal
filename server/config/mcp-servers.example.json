@@ -9,7 +9,7 @@
       "protocol": "mcp",
       "enabled": false,
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"],
+      "args": ["-y", "@playwright/mcp@latest", "--isolated"],
       "description": "Official Microsoft Playwright MCP server for browser automation."
     }
   }

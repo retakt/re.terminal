@@ -34,7 +34,7 @@ function playwrightConfig(enabled) {
         protocol: "mcp",
         enabled,
         command: "npx",
-        args: ["-y", "@playwright/mcp@latest"],
+        args: ["-y", "@playwright/mcp@latest", "--isolated"],
         description: "Official Microsoft Playwright MCP server for browser automation.",
       },
     },
@@ -76,7 +76,7 @@ async function main() {
     assert(examplePlaywright?.protocol === "mcp", "example Playwright config uses MCP protocol");
     assert(examplePlaywright?.enabled === false, "example Playwright config is disabled by default");
     assert(examplePlaywright?.command === "npx", "example Playwright config uses npx");
-    assert(examplePlaywright?.args?.join(" ") === "-y @playwright/mcp@latest", "example Playwright config uses official package");
+    assert(examplePlaywright?.args?.includes("@playwright/mcp@latest"), "example Playwright config uses official package");
 
     writeConfig(playwrightConfig(false));
     let servers = await gateway.listMcpServers();

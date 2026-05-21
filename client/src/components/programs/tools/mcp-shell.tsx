@@ -26,12 +26,6 @@ import {
 
 const PHONE_QUERY = "(max-width: 767px), (hover: none) and (pointer: coarse)";
 
-function preview(value: unknown, limit = 220) {
-  const text =
-    typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  return text.length > limit ? `${text.slice(0, limit)}...` : text;
-}
-
 function statusLabel(server: McpServer) {
   if (server.status === "needs_config") return "needs config";
   if (server.status === "degraded") return "degraded";
@@ -159,52 +153,35 @@ function isBuiltinTool(
 // Activity Logs - SINGLE compact component, near top
 function ActivityLogsCompact({
   logs,
-  groupedLogs,
-  showLogs,
-  setShowLogs,
 }: {
   logs: McpLog[];
-  groupedLogs: Array<McpLog & { count: number }>;
-  showLogs: boolean;
-  setShowLogs: (s: boolean) => void;
 }) {
   return (
     <section className="tool-compact-card tool-compact-card--wide mcp-logs-card">
-      <button
-        type="button"
-        className="mcp-logs-header"
-        onClick={() => setShowLogs(!showLogs)}
-      >
+      <div className="mcp-logs-header">
         <div className="mcp-logs-header-left">
           <ScrollText size={12} />
-          <span>Activity Logs</span>
+          <span>Activity moved to Logs</span>
+          {/*
           {logs.length > 0 && <span className="mcp-logs-count">· {logs.length} entries</span>}
+          */}
+          {logs.length > 0 && <span className="mcp-logs-count">[{logs.length}] kept locally</span>}
         </div>
-        {showLogs ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-      </button>
-      {showLogs && (
+      </div>
+      <div className="mcp-log-list">
         <div className="mcp-log-list">
-          {logs.length === 0 ? (
-            <div className="mcp-empty-row">No activity yet</div>
-          ) : (
-            groupedLogs.slice(0, 5).map((log) => (
-              <article key={log.id} className={`mcp-log-row mcp-log-row--${log.status}`}>
-                <div className="mcp-log-row-header">
-                  <span className="mcp-log-tool-name">{log.tool}</span>
-                  <span className="mcp-log-meta">
+          <div className="mcp-empty-row">
+            Tool gateway activity now streams into the main <strong>Logs</strong> page as structured <code>[mcp]</code> lines.
+          </div>
+          <div className="mcp-log-note">
+            The local gateway buffer still exists for tooling and import, but this page no longer renders a separate activity feed.
+          </div>
+          {/*
                     {log.durationMs}ms · {log.status === "complete" ? "success" : log.status}
                     {log.count > 1 && ` ×${log.count}`}
-                  </span>
-                </div>
-                <code className="mcp-log-preview">{preview(log.args, 80)}</code>
-              </article>
-            ))
-          )}
-          {logs.length > 5 && (
-            <div className="mcp-log-note">showing latest 5 logs. use terminal for full history.</div>
-          )}
+          */}
         </div>
-      )}
+      </div>
     </section>
   );
 }
@@ -213,7 +190,7 @@ function ActivityLogsCompact({
 function MobileMcpShell({
   tools, logs, loading, filter, query, setFilter, setQuery, notice, refresh,
   builtinServers, externalServers, filteredBuiltinServers, filteredExternalServers,
-  filteredTools, groupedLogs, copyText, inspectServer, testTool,
+  filteredTools, copyText, inspectServer, testTool,
   inspectTitle, inspectBody, inspectExpanded, setInspectExpanded, setInspectTitle, setInspectBody,
   developerActions,
 }: {
@@ -226,7 +203,6 @@ function MobileMcpShell({
   filteredBuiltinServers: Array<McpServer & { source?: string; mcpNative?: boolean }>;
   filteredExternalServers: Array<McpServer & { source?: string; mcpNative?: boolean }>;
   filteredTools: Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>;
-  groupedLogs: Array<McpLog & { count: number }>;
   copyText: (text: string, label?: string) => Promise<void>;
   inspectServer: (server: McpServer) => void;
   testTool: (tool: McpTool) => Promise<void>;
@@ -237,7 +213,6 @@ function MobileMcpShell({
   const builtinReadyCount = builtinServers.filter((s) => s.status === "ready").length;
   const builtinToolCount = tools.filter((t) => isBuiltinTool(t) && t.enabled).length;
 
-  const [mobileLogsOpen, setMobileLogsOpen] = useState(false);
   const [mobileToolsExpanded, setMobileToolsExpanded] = useState(false);
   const visibleMobileTools = mobileToolsExpanded
     ? filteredTools.filter(isBuiltinTool)
@@ -284,9 +259,6 @@ function MobileMcpShell({
         {/* Activity Logs - Compact, Near Top (SINGLE component) */}
         <ActivityLogsCompact
           logs={logs}
-          groupedLogs={groupedLogs}
-          showLogs={mobileLogsOpen}
-          setShowLogs={setMobileLogsOpen}
         />
 
         {/* Builtin Tool Groups - Compact Rows */}
@@ -418,8 +390,7 @@ function MobileMcpShell({
 function DesktopMcpShell({
   servers, tools, logs, loading, filter, query, setFilter, setQuery, notice, refresh,
   builtinServers, externalServers, filteredBuiltinServers, filteredExternalServers,
-  filteredTools, groupedLogs, copyText, testServer, inspectServer, testTool,
-  showLogs, setShowLogs,
+  filteredTools, copyText, testServer, inspectServer, testTool,
   inspectTitle, inspectBody, inspectExpanded, setInspectExpanded, setInspectTitle, setInspectBody,
   developerActions, setDeveloperActions,
   expandedTools,
@@ -435,12 +406,10 @@ function DesktopMcpShell({
   filteredBuiltinServers: Array<McpServer & { source?: string; mcpNative?: boolean }>;
   filteredExternalServers: Array<McpServer & { source?: string; mcpNative?: boolean }>;
   filteredTools: Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>;
-  groupedLogs: Array<McpLog & { count: number }>;
   copyText: (text: string, label?: string) => Promise<void>;
   testServer: (server: McpServer) => Promise<void>;
   inspectServer: (server: McpServer) => void;
   testTool: (tool: McpTool) => Promise<void>;
-  showLogs: boolean; setShowLogs: (s: boolean) => void;
   inspectTitle: string; inspectBody: string; inspectExpanded: boolean; setInspectExpanded: (e: boolean) => void;
   setInspectTitle: (title: string) => void; setInspectBody: (body: string) => void;
   developerActions: boolean; setDeveloperActions: (d: boolean) => void;
@@ -597,9 +566,6 @@ function DesktopMcpShell({
         {/* Activity Logs - Compact, Near Top (SINGLE component) */}
         <ActivityLogsCompact
           logs={logs}
-          groupedLogs={groupedLogs}
-          showLogs={showLogs}
-          setShowLogs={setShowLogs}
         />
 
         {/* Builtin Tool Groups */}
@@ -691,7 +657,6 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
   const [inspectTitle, setInspectTitle] = useState("inspect");
   const [inspectBody, setInspectBody] = useState("select a tool group or tool to inspect details.");
   const [inspectExpanded, setInspectExpanded] = useState(false);
-  const [showLogs, setShowLogs] = useState(false);
   const [expandedTools, setExpandedTools] = useState(false);
 
   const [developerActions, setDeveloperActions] = useState(false);
@@ -761,17 +726,6 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
     });
   }, [filter, query, tools]);
 
-  const groupedLogs = useMemo(() => {
-    const groups: Array<McpLog & { count: number }> = [];
-    for (const log of logs) {
-      const previous = groups[groups.length - 1];
-      const same = previous && previous.tool === log.tool && previous.status === log.status && preview(previous.args, 100) === preview(log.args, 100) && preview(previous.result, 100) === preview(log.result, 100);
-      if (same) { previous.count += 1; previous.durationMs = log.durationMs; }
-      else groups.push({ ...log, count: 1 });
-    }
-    return groups;
-  }, [logs]);
-
   const copyText = async (text: string, label = "copied") => { await navigator.clipboard?.writeText(text); setNotice(label); window.setTimeout(() => setNotice(""), 1400); };
   const testServer = async (server: McpServer) => {
     const tool = tools.find((entry) => entry.serverId === server.id && entry.enabled && isSafeAutoTestTool(entry));
@@ -840,7 +794,7 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
     return <MobileMcpShell tools={tools} logs={logs} loading={loading} filter={filter} query={query}
       setFilter={setFilter} setQuery={setQuery} notice={notice} refresh={refresh} builtinServers={builtinServers}
       externalServers={externalServers} filteredBuiltinServers={filteredBuiltinServers} filteredExternalServers={filteredExternalServers}
-      filteredTools={filteredTools} groupedLogs={groupedLogs} copyText={copyText} inspectServer={inspectServer}
+      filteredTools={filteredTools} copyText={copyText} inspectServer={inspectServer}
       testTool={testTool} inspectTitle={inspectTitle} inspectBody={inspectBody} inspectExpanded={inspectExpanded}
       setInspectExpanded={setInspectExpanded} setInspectTitle={setInspectTitle} setInspectBody={setInspectBody}
       developerActions={developerActions} />;
@@ -849,9 +803,8 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
   return <DesktopMcpShell servers={servers} tools={tools} logs={logs} loading={loading} filter={filter} query={query}
     setFilter={setFilter} setQuery={setQuery} notice={notice} refresh={refresh} builtinServers={builtinServers}
     externalServers={externalServers} filteredBuiltinServers={filteredBuiltinServers} filteredExternalServers={filteredExternalServers}
-    filteredTools={filteredTools} groupedLogs={groupedLogs} copyText={copyText} testServer={testServer} inspectServer={inspectServer}
-    testTool={testTool} showLogs={showLogs}
-    setShowLogs={setShowLogs} inspectTitle={inspectTitle} inspectBody={inspectBody}
+    filteredTools={filteredTools} copyText={copyText} testServer={testServer} inspectServer={inspectServer}
+    testTool={testTool} inspectTitle={inspectTitle} inspectBody={inspectBody}
     inspectExpanded={inspectExpanded}
     setInspectExpanded={setInspectExpanded} setInspectTitle={setInspectTitle} setInspectBody={setInspectBody}
     developerActions={developerActions} setDeveloperActions={setDeveloperActions}

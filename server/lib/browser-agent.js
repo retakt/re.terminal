@@ -45,7 +45,26 @@ const __dirname = path.dirname(__filename);
 const CONFIRM_PREFIX = "I CONFIRM ";
 const DEFAULT_SESSION_ID = "default-browser-session";
 const DANGEROUS_RE = /\b(login|log\s*in|sign\s*in|submit|save|delete|remove|check\s*out|checkout|emergency|approve|reject|payment|profile\s*update|password|attendance)\b/i;
+const LOCAL_HIGH_RISK_RE = /\b(delete|remove|check\s*out|checkout|payment|pay|card|bank|transfer|approve|reject|profile\s*update|change\s+password|attendance|payroll|emergency)\b/i;
 const SUGGESTION_BLOCK_RE = /\b(login|log\s*in|sign\s*in|submit|save|delete|remove|check\s*out|checkout|emergency|approve|reject|payment|profile\s*update|password)\b/i;
+let browserAgentMcpCaller = null;
+
+export function setBrowserAgentMcpCaller(caller) {
+  browserAgentMcpCaller = typeof caller === "function" ? caller : null;
+}
+
+async function callBrowserAgentMcpTool(name, args = {}) {
+  if (!browserAgentMcpCaller) {
+    try {
+      const gateway = await import("./mcp-gateway.js");
+      if (typeof gateway.callMcpTool === "function") browserAgentMcpCaller = gateway.callMcpTool;
+    } catch {}
+  }
+  if (!browserAgentMcpCaller) {
+    throw new Error("Browser agent Playwright MCP backend is unavailable because the MCP gateway caller is not registered.");
+  }
+  return browserAgentMcpCaller(name, args);
+}
 
 function envFlag(name, fallback = false) {
   const raw = process.env[name];
@@ -910,7 +929,7 @@ function availableSafeBrowserCommands() {
 }
 
 function availableBrowserBackends() {
-  return ["auto", "lightpanda", "chrome_cdp"];
+  return ["auto", "lightpanda", "playwright_mcp", "chrome_cdp"];
 }
 
 function compactStateForPlanner(state = {}) {
@@ -976,6 +995,17 @@ function commandLooksDangerous(command = {}) {
   return false;
 }
 
+function commandLooksLocallyHighRisk(command = {}) {
+  const tool = command?.tool || "";
+  const args = command?.args || {};
+  const text = `${tool} ${args.text || ""} ${args.submitText || ""} ${args.currentUrl || ""} ${args.url || ""} ${args.instruction || ""}`;
+  if (LOCAL_HIGH_RISK_RE.test(text)) return true;
+  if (Array.isArray(args.fields) && args.fields.some((field) =>
+    LOCAL_HIGH_RISK_RE.test(`${field.label || ""} ${field.name || ""} ${field.id || ""} ${field.value || ""}`)
+  )) return true;
+  return false;
+}
+
 function confirmationPhraseForCommand(command = {}) {
   return `${CONFIRM_PREFIX}${command?.tool || "browser action"}`;
 }
@@ -986,11 +1016,13 @@ function userConfirmedCommand(command = {}, args = {}) {
 }
 
 function normalizePlannerCommand(plan = {}, args = {}, state = defaultState()) {
+  const requestedBackend = String(plan.backend || "auto") === "playwright" ? "playwright_mcp" : (plan.backend || "auto");
   const normalized = {
     ...plan,
-    backend: plan.backend || "auto",
+    backend: requestedBackend,
     command: {
       ...(plan.command || {}),
+      backend: requestedBackend,
       args: {
         ...(plan.command?.args || {}),
       },
@@ -1023,7 +1055,7 @@ function validateBrowserPlan(plan = {}, args = {}, state = defaultState(), guard
   if (tool === "browserNavigate" && !isHttpUrl(commandArgs.url || "")) {
     return { ok: false, status: "planner_error", reason: "browserNavigate requires an http(s) url.", plan: normalized };
   }
-  if (commandNeedsCurrentUrl(tool) && !isHttpUrl(commandArgs.currentUrl || "")) {
+  if (commandNeedsCurrentUrl(tool) && !isHttpUrl(commandArgs.currentUrl || "") && !isHttpUrl(commandArgs.url || "")) {
     return {
       ok: false,
       status: "needs_user",
@@ -1041,7 +1073,11 @@ function validateBrowserPlan(plan = {}, args = {}, state = defaultState(), guard
       plan: normalized,
     };
   }
-  if ((normalized.requiresConfirmation || commandLooksDangerous(normalized.command)) && !userConfirmedCommand(normalized.command, args)) {
+  const requiresLocalConfirmation =
+    normalized.requiresConfirmation ||
+    normalized.risk === "high" ||
+    commandLooksLocallyHighRisk(normalized.command);
+  if (requiresLocalConfirmation && !userConfirmedCommand(normalized.command, args)) {
     const phrase = confirmationPhraseForCommand(normalized.command);
     return {
       ok: false,
@@ -1105,8 +1141,488 @@ function compactToolResult(result = {}, command = {}) {
   };
 }
 
+function mcpContentText(result = {}) {
+  if (typeof result === "string") {
+    try {
+      return mcpContentText(JSON.parse(result));
+    } catch {
+      return safeText(result, 12000);
+    }
+  }
+  if (Array.isArray(result?.content)) {
+    return result.content.map((item) => item?.text || "").filter(Boolean).join("\n").trim();
+  }
+  if (typeof result?.text === "string") return result.text;
+  if (result?.structuredContent) return JSON.stringify(result.structuredContent, null, 2);
+  return result ? JSON.stringify(result, null, 2) : "";
+}
+
+function normalizeControlText(value = "") {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function parsePlaywrightSnapshot(result = {}, requestedUrl = "") {
+  const text = mcpContentText(result);
+  const url = text.match(/Page URL:\s*(https?:\/\/[^\s]+)/i)?.[1]
+    || text.match(/\burl:\s*(https?:\/\/[^\s]+)/i)?.[1]
+    || requestedUrl
+    || "";
+  const title = text.match(/Page Title:\s*(.+)/i)?.[1]?.trim()
+    || text.match(/\btitle:\s*(.+)/i)?.[1]?.trim()
+    || "";
+  const links = [];
+  const buttons = [];
+  const inputs = [];
+  const interactiveElements = [];
+  const lines = text.split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const refMatch = line.match(/\[ref=([^\]\s]+)[^\]]*\]/);
+    if (!refMatch) continue;
+    const ref = refMatch[1];
+    const beforeRef = line.slice(0, refMatch.index).replace(/^-\s*/, "").replace(/\[[^\]]+\]/g, "").trim();
+    const quoted = beforeRef.match(/"([^"]*)"/)?.[1] || "";
+    const role = normalizeControlText(beforeRef.replace(/"[^"]*"/g, "")).replace(/\s+/g, "_");
+    const label = safeText(quoted || beforeRef.replace(/"[^"]*"/g, "").replace(/^[a-zA-Z_ -]+\s*/, ""), 160);
+    const control = {
+      role,
+      text: label,
+      label,
+      name: label,
+      ref,
+      target: ref,
+      selector: ref,
+      disabled: /\bdisabled\b/i.test(line),
+      raw: safeText(line, 400),
+    };
+    interactiveElements.push(control);
+    if (/\blink\b/i.test(role)) links.push({ text: label, href: "", ref, target: ref });
+    if (/\b(button|menuitem|tab)\b/i.test(role)) buttons.push({ text: label, ref, target: ref, selector: ref });
+    if (/\b(textbox|searchbox|combobox|checkbox|radio|slider|spinbutton|input)\b/i.test(role)) {
+      inputs.push({
+        label,
+        name: label,
+        type: role.includes("checkbox") ? "checkbox" : role.includes("radio") ? "radio" : role.includes("combobox") ? "combobox" : "textbox",
+        ref,
+        target: ref,
+        selector: ref,
+      });
+    }
+  }
+
+  return {
+    ok: !(result?.isError),
+    url,
+    title,
+    textPreview: safeText(text, 2400),
+    markdown: safeText(text, 12000),
+    links: links.slice(0, 80),
+    buttons: buttons.slice(0, 80),
+    inputs: inputs.slice(0, 80),
+    forms: inputs.length ? [{ fields: inputs.slice(0, 40), source: "playwright_mcp.snapshot" }] : [],
+    interactiveElements: interactiveElements.slice(0, 140),
+    stats: {
+      links: links.length,
+      buttons: buttons.length,
+      inputs: inputs.length,
+      forms: inputs.length ? 1 : 0,
+      interactiveElements: interactiveElements.length,
+    },
+    requestedUrl,
+    engine: "playwright_mcp",
+    extractionPath: "playwright_mcp.snapshot",
+    extractionSources: ["playwright_mcp.snapshot"],
+    extractionCapabilities: {
+      accessibilityTree: true,
+      selectors: true,
+    },
+    error: result?.isError ? safeText(text, 500) : "",
+  };
+}
+
+function playwrightResult({ ok = true, status = "success", action = "", observation = null, requestedUrl = "", error = "", steps = [], raw = {}, extra = {} } = {}) {
+  const obs = observation || parsePlaywrightSnapshot(raw?.snapshot || raw, requestedUrl);
+  return {
+    ok,
+    status,
+    action,
+    engine: "playwright_mcp",
+    requestedUrl,
+    currentUrl: obs.url || requestedUrl,
+    currentTitle: obs.title || "",
+    observation: obs,
+    page: obs,
+    error,
+    steps,
+    raw,
+    ...extra,
+  };
+}
+
+function namesFromMcpTools(tools = []) {
+  return new Set((Array.isArray(tools) ? tools : []).map((tool) => String(tool?.name || "").trim()).filter(Boolean));
+}
+
+async function ensurePlaywrightMcpReady() {
+  const status = await callBrowserAgentMcpTool("mcp__ops__playwright_mcp_status", {});
+  if (!status?.ok || !status.discovered || status.server?.enabled === false) {
+    throw new Error(status?.message || status?.error || "Playwright MCP is not configured or enabled.");
+  }
+
+  let tools = [];
+  if (status.server?.status !== "ready" || !status.server?.toolCount) {
+    const refreshed = await callBrowserAgentMcpTool("mcp__ops__external_mcp_refresh", { serverId: "playwright" });
+    if (!refreshed?.ok && refreshed?.ok !== undefined) {
+      throw new Error(refreshed.error || "Playwright MCP refresh failed.");
+    }
+    tools = Array.isArray(refreshed?.tools) ? refreshed.tools : [];
+  } else {
+    const listed = await callBrowserAgentMcpTool("mcp__ops__external_mcp_tools", { serverId: "playwright" });
+    tools = Array.isArray(listed?.tools) ? listed.tools : [];
+  }
+
+  const toolNames = namesFromMcpTools(tools);
+  if (!toolNames.size) throw new Error("Playwright MCP is ready but returned no discovered tools.");
+  return { status, tools, toolNames };
+}
+
+async function callPlaywrightTool(toolName, args = {}, toolNames = null) {
+  if (toolNames && !toolNames.has(toolName)) {
+    throw new Error(`Playwright MCP tool is not discovered: ${toolName}`);
+  }
+  return callBrowserAgentMcpTool(`mcp__playwright__${toolName}`, args);
+}
+
+function matchScore(control = {}, query = "") {
+  const target = normalizeControlText(query);
+  if (!target) return 0;
+  const hay = normalizeControlText(`${control.label || ""} ${control.text || ""} ${control.name || ""} ${control.raw || ""}`);
+  if (!hay) return 0;
+  if (hay === target) return 100;
+  if (hay.includes(target)) return 80;
+  const parts = target.split(/\s+/).filter(Boolean);
+  return parts.length ? parts.filter((part) => hay.includes(part)).length / parts.length * 60 : 0;
+}
+
+function findPlaywrightControl(observation = {}, query = "", { roles = [] } = {}) {
+  const roleSet = roles.map((role) => normalizeControlText(role));
+  const controls = Array.isArray(observation.interactiveElements) ? observation.interactiveElements : [];
+  return controls
+    .filter((control) => !control.disabled)
+    .filter((control) => !roleSet.length || roleSet.some((role) => normalizeControlText(control.role).includes(role)))
+    .map((control) => ({ control, score: matchScore(control, query) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.control || null;
+}
+
+function playwrightFieldType(control = {}, field = {}) {
+  const role = normalizeControlText(control.role || control.type || field.type || "");
+  if (role.includes("checkbox")) return "checkbox";
+  if (role.includes("radio")) return "radio";
+  if (role.includes("combobox")) return "combobox";
+  if (role.includes("slider")) return "slider";
+  return "textbox";
+}
+
+function playwrightFieldValue(control = {}, field = {}) {
+  const type = playwrightFieldType(control, field);
+  const raw = String(field.value ?? "");
+  if (type === "checkbox" || type === "radio") {
+    return /^(?:false|no|off|unchecked|0)$/i.test(raw) ? "false" : "true";
+  }
+  return raw;
+}
+
+function redactedPlaywrightField(field = {}, control = {}) {
+  const label = field.label || field.name || control.label || control.text || "field";
+  const secret = Boolean(field.secret) || /\b(password|pass|pwd|otp|code|pin)\b/i.test(String(label));
+  return {
+    label,
+    value: secret ? "[redacted]" : String(field.value ?? ""),
+    secret,
+    selector: control.ref || control.target || "",
+    backend: "playwright_mcp",
+  };
+}
+
+async function playwrightSnapshotStep({ requestedUrl = "", label = "snapshot", toolNames = null } = {}) {
+  const snapshot = await callPlaywrightTool("browser_snapshot", {}, toolNames);
+  const observation = parsePlaywrightSnapshot(snapshot, requestedUrl);
+  return {
+    snapshot,
+    observation,
+    step: {
+      type: "playwright_mcp",
+      tool: "browser_snapshot",
+      ok: !snapshot?.isError,
+      valid: isValidObservation(observation),
+      currentUrl: observation.url,
+      resultPreview: preview({ label, url: observation.url, title: observation.title }, 400),
+    },
+  };
+}
+
+async function executePlaywrightMcpCommand(command = {}, args = {}, state = defaultState()) {
+  const tool = command?.tool || "";
+  const commandArgs = command?.args || {};
+  const requestedUrl = commandArgs.url || commandArgs.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
+  const ready = await ensurePlaywrightMcpReady();
+  const toolNames = ready.toolNames;
+  const steps = [];
+
+  if (tool === "browserNavigate") {
+    const targetUrl = normalizeUrlInput(commandArgs.url || "");
+    if (!targetUrl) {
+      return playwrightResult({
+        ok: false,
+        status: "failed",
+        action: "navigate",
+        requestedUrl: commandArgs.url || "",
+        error: "browserNavigate requires an http(s) URL for Playwright MCP.",
+        steps,
+      });
+    }
+    const nav = await callPlaywrightTool("browser_navigate", { url: targetUrl }, toolNames);
+    steps.push({ type: "playwright_mcp", tool: "browser_navigate", ok: !nav?.isError, requestedUrl: targetUrl, resultPreview: safeText(mcpContentText(nav), 400) });
+    const snap = await playwrightSnapshotStep({ requestedUrl: targetUrl, label: "post-navigate", toolNames });
+    steps.push(snap.step);
+    return playwrightResult({
+      ok: !nav?.isError && isValidObservation(snap.observation),
+      status: !nav?.isError && isValidObservation(snap.observation) ? "success" : "failed",
+      action: "navigate",
+      requestedUrl: targetUrl,
+      observation: snap.observation,
+      error: nav?.isError ? safeText(mcpContentText(nav), 500) : "",
+      steps,
+      raw: { navigate: nav, snapshot: snap.snapshot },
+    });
+  }
+
+  if (tool === "browserObserve" || tool === "browserScrape" || tool === "browserShowActions") {
+    const snap = await playwrightSnapshotStep({ requestedUrl, label: "observe", toolNames });
+    steps.push(snap.step);
+    return playwrightResult({
+      ok: isValidObservation(snap.observation),
+      status: isValidObservation(snap.observation) ? "success" : "failed",
+      action: "observe",
+      requestedUrl,
+      observation: snap.observation,
+      error: snap.snapshot?.isError ? safeText(mcpContentText(snap.snapshot), 500) : "",
+      steps,
+      raw: { snapshot: snap.snapshot },
+    });
+  }
+
+  if (isHttpUrl(commandArgs.url || "")) {
+    const navUrl = normalizeUrlInput(commandArgs.url);
+    const nav = await callPlaywrightTool("browser_navigate", { url: navUrl }, toolNames);
+    steps.push({ type: "playwright_mcp", tool: "browser_navigate", ok: !nav?.isError, requestedUrl: navUrl, resultPreview: safeText(mcpContentText(nav), 400) });
+    if (nav?.isError) {
+      return playwrightResult({
+        ok: false,
+        status: "failed",
+        action: "navigate",
+        requestedUrl: navUrl,
+        error: safeText(mcpContentText(nav), 500) || "Playwright navigation failed.",
+        steps,
+        raw: { navigate: nav },
+      });
+    }
+  }
+
+  const before = await playwrightSnapshotStep({ requestedUrl, label: "before-action", toolNames });
+  steps.push(before.step);
+  const beforeObservation = before.observation;
+
+  if (tool === "browserClickByText") {
+    const targetText = commandArgs.text || commandArgs.label || "";
+    const control = findPlaywrightControl(beforeObservation, targetText, { roles: ["button", "link", "menuitem", "tab"] });
+    if (!control) {
+      return playwrightResult({
+        ok: false,
+        status: "needs_user",
+        action: "click",
+        requestedUrl,
+        observation: beforeObservation,
+        error: `No visible Playwright target matched "${targetText}".`,
+        steps,
+      });
+    }
+    const click = await callPlaywrightTool("browser_click", { element: control.label || targetText, target: control.ref || control.target }, toolNames);
+    steps.push({ type: "playwright_mcp", tool: "browser_click", ok: !click?.isError, currentUrl: beforeObservation.url, resultPreview: safeText(mcpContentText(click), 400) });
+    if (toolNames.has("browser_wait_for")) {
+      await callPlaywrightTool("browser_wait_for", { time: Number(commandArgs.afterWaitSeconds || 1) }, toolNames).catch(() => null);
+    }
+    const after = await playwrightSnapshotStep({ requestedUrl: beforeObservation.url || requestedUrl, label: "post-click", toolNames });
+    steps.push(after.step);
+    return playwrightResult({
+      ok: !click?.isError && isValidObservation(after.observation),
+      status: !click?.isError && isValidObservation(after.observation) ? "success" : "failed",
+      action: "click",
+      requestedUrl,
+      observation: after.observation,
+      error: click?.isError ? safeText(mcpContentText(click), 500) : "",
+      steps,
+      raw: { before: before.snapshot, click, snapshot: after.snapshot },
+    });
+  }
+
+  if (tool === "browserFillFields" || tool === "browserFillAndSubmit") {
+    const fields = Array.isArray(commandArgs.fields) ? commandArgs.fields : [];
+    const mappedFields = [];
+    const filledFields = [];
+    const missing = [];
+    for (const field of fields) {
+      const label = field.label || field.name || field.id || "";
+      const value = String(field.value ?? "");
+      const control = findPlaywrightControl(beforeObservation, label, { roles: ["textbox", "searchbox", "combobox", "checkbox", "radio", "slider", "spinbutton"] })
+        || findPlaywrightControl(beforeObservation, value, { roles: ["checkbox", "radio", "combobox"] });
+      if (!control) {
+        missing.push(label || "field");
+        continue;
+      }
+      const type = playwrightFieldType(control, field);
+      mappedFields.push({
+        element: control.label || label,
+        target: control.ref || control.target,
+        name: label || control.label || control.text || "field",
+        type,
+        value: playwrightFieldValue(control, field),
+      });
+      filledFields.push(redactedPlaywrightField(field, control));
+    }
+
+    if (missing.length) {
+      return playwrightResult({
+        ok: false,
+        status: "needs_user",
+        action: "fill",
+        requestedUrl,
+        observation: beforeObservation,
+        error: `Could not find fields: ${missing.join(", ")}`,
+        steps,
+        extra: { missing },
+      });
+    }
+
+    const fill = mappedFields.length
+      ? await callPlaywrightTool("browser_fill_form", { fields: mappedFields }, toolNames)
+      : { content: [{ type: "text", text: "No fields requested." }] };
+    steps.push({ type: "playwright_mcp", tool: "browser_fill_form", ok: !fill?.isError, currentUrl: beforeObservation.url, resultPreview: safeText(mcpContentText(fill), 400) });
+
+    if (tool === "browserFillFields") {
+      const after = await playwrightSnapshotStep({ requestedUrl: beforeObservation.url || requestedUrl, label: "post-fill", toolNames });
+      steps.push(after.step);
+      return playwrightResult({
+        ok: !fill?.isError && isValidObservation(after.observation),
+        status: !fill?.isError && isValidObservation(after.observation) ? "success" : "failed",
+        action: "fill",
+        requestedUrl,
+        observation: after.observation,
+        error: fill?.isError ? safeText(mcpContentText(fill), 500) : "",
+        steps,
+        raw: { before: before.snapshot, fill, snapshot: after.snapshot },
+        extra: {
+          filledFields,
+          actionResult: {
+            fillResult: {
+              filled: filledFields.map((field) => ({ key: field.label, label: field.label, redacted: field.secret, valuePreview: field.value })),
+              missing: [],
+            },
+          },
+        },
+      });
+    }
+
+    const submitResult = await executePlaywrightMcpCommand({
+      tool: "browserSubmitForm",
+      backend: "playwright_mcp",
+      args: {
+        ...commandArgs,
+        url: "",
+        currentUrl: beforeObservation.url || requestedUrl,
+      },
+    }, args, state);
+    return {
+      ...submitResult,
+      action: "fill_and_submit",
+      steps: [...steps, ...(submitResult.steps || [])],
+      raw: { before: before.snapshot, fill, submit: submitResult.raw },
+      filledFields,
+      actionResult: {
+        fillResult: {
+          filled: filledFields.map((field) => ({ key: field.label, label: field.label, redacted: field.secret, valuePreview: field.value })),
+          missing: [],
+        },
+        submitResult: submitResult.submitResult || submitResult.actionResult?.submitResult || { ok: submitResult.ok, submitted: "form" },
+      },
+      submitResult,
+    };
+  }
+
+  if (tool === "browserSubmitForm") {
+    const explicitText = commandArgs.text || commandArgs.submitText || commandArgs.buttonText || "";
+    const submitTarget =
+      (explicitText && findPlaywrightControl(beforeObservation, explicitText, { roles: ["button"] })) ||
+      findPlaywrightControl(beforeObservation, "submit", { roles: ["button"] }) ||
+      findPlaywrightControl(beforeObservation, "login", { roles: ["button"] }) ||
+      findPlaywrightControl(beforeObservation, "sign in", { roles: ["button"] }) ||
+      findPlaywrightControl(beforeObservation, "send", { roles: ["button"] });
+    let submit = null;
+    if (submitTarget) {
+      submit = await callPlaywrightTool("browser_click", { element: submitTarget.label || "submit", target: submitTarget.ref || submitTarget.target }, toolNames);
+      steps.push({ type: "playwright_mcp", tool: "browser_click", ok: !submit?.isError, resultPreview: safeText(mcpContentText(submit), 400) });
+    } else {
+      submit = await callPlaywrightTool("browser_press_key", { key: "Enter" }, toolNames);
+      steps.push({ type: "playwright_mcp", tool: "browser_press_key", ok: !submit?.isError, resultPreview: safeText(mcpContentText(submit), 400) });
+    }
+    if (toolNames.has("browser_wait_for")) {
+      if (commandArgs.waitForText) {
+        await callPlaywrightTool("browser_wait_for", { text: String(commandArgs.waitForText) }, toolNames).catch(() => null);
+      } else {
+        await callPlaywrightTool("browser_wait_for", { time: Number(commandArgs.afterWaitSeconds || 1.5) }, toolNames).catch(() => null);
+      }
+    }
+    const after = await playwrightSnapshotStep({ requestedUrl: beforeObservation.url || requestedUrl, label: "post-submit", toolNames });
+    steps.push(after.step);
+    return playwrightResult({
+      ok: !submit?.isError && isValidObservation(after.observation),
+      status: !submit?.isError && isValidObservation(after.observation) ? "success" : "failed",
+      action: "submit",
+      requestedUrl,
+      observation: after.observation,
+      error: submit?.isError ? safeText(mcpContentText(submit), 500) : "",
+      steps,
+      raw: { before: before.snapshot, submit, snapshot: after.snapshot },
+      extra: {
+        submitResult: { ok: !submit?.isError, submitted: submitTarget ? "button" : "enter" },
+        actionResult: {
+          action: "submit",
+          ok: !submit?.isError,
+          submitted: submitTarget ? "button" : "enter",
+          submitResult: { ok: !submit?.isError, submitted: submitTarget ? "button" : "enter" },
+        },
+      },
+    });
+  }
+
+  return playwrightResult({
+    ok: false,
+    status: "failed",
+    action: tool,
+    requestedUrl,
+    observation: beforeObservation,
+    error: `Playwright MCP backend does not implement abstract command ${tool}.`,
+    steps,
+  });
+}
+
 async function executeBrowserCommand(command = {}, args = {}, state = defaultState()) {
   const tool = command?.tool || "";
+  if (command?.backend === "playwright_mcp" || command?.args?.backend === "playwright_mcp") {
+    return executePlaywrightMcpCommand(command, args, state);
+  }
   const activeEnginePriority = state.activeEngine === "chrome_cdp"
     ? ["chrome_cdp", "lightpanda_cdp", "static_fetch"]
     : state.activeEngine === "lightpanda_cdp"

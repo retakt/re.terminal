@@ -770,7 +770,7 @@ function StatusBar() {
             <span className={`reterm-statusbar-item reterm-statusbar-item--icononly reterm-statusbar-docker reterm-statusbar-docker--${debugInfo.docker}`} title={`docker ${debugInfo.docker}`}>
               <Blocks size={11} strokeWidth={1.8} />
             </span>
-            <span className={`reterm-statusbar-item reterm-statusbar-item--icononly reterm-statusbar-docker reterm-statusbar-docker--${debugInfo.browser}`} title={`lightpanda ${debugInfo.browser}`}>
+            <span className={`reterm-statusbar-item reterm-statusbar-item--icononly reterm-statusbar-docker reterm-statusbar-docker--${debugInfo.browser}`} title={`browser ${debugInfo.browser}`}>
               <Globe size={11} strokeWidth={1.8} />
             </span>
             <span className="reterm-statusbar-item reterm-statusbar-item--icononly reterm-statusbar-item--model" title={`active model ${debugInfo.model}`}>
@@ -841,7 +841,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
     { id: "extensions", label: "Open extensions page", hint: "catalog and imports", icon: Puzzle, run: () => openProgram("extensions") },
     { id: "chat", label: "Open AI chat", hint: "agent console", icon: MessageSquare, run: () => openProgram("chat") },
     { id: "logs", label: "Open Logs page", hint: "live audit trail", icon: ScrollText, run: () => openProgram("logs") },
-    { id: "browser", label: "Open Lightpanda browser", hint: "shared AI/browser inspector", icon: Globe, run: () => openProgram("browser") },
+    { id: "browser", label: "Open Browser", hint: "shared AI/browser inspector", icon: Globe, run: () => openProgram("browser") },
     { id: "terminal", label: "Open terminal", hint: "new shell session", icon: Terminal, run: () => createSession(`terminal ${Date.now()}`) },
     { id: "clear-activity", label: "Clear activity", hint: "run inspector logs", icon: ClipboardCheck, run: () => clearStoredActivity() },
     { id: "restart-server", label: "Restart server", hint: "placeholder: backend action not exposed", icon: RotateCw, run: () => setNotice("restart server TODO: backend action not exposed") },

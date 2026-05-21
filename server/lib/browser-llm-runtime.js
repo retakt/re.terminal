@@ -12,7 +12,7 @@ const ALLOWED_TOOLS = new Set([
   "browserShowActions",
 ]);
 
-const ALLOWED_BACKENDS = new Set(["auto", "lightpanda", "chrome_cdp", "playwright"]);
+const ALLOWED_BACKENDS = new Set(["auto", "lightpanda", "chrome_cdp", "playwright_mcp"]);
 const ALLOWED_RISKS = new Set(["low", "medium", "high"]);
 
 function envFlag(name, fallback = false) {
@@ -279,13 +279,20 @@ Allowed tools:
 - browserScrape: args { "currentUrl": "...", "focus": "..." }
 - browserShowActions: args { "currentUrl": "...", "instruction": "..." }
 
-Allowed backends: auto, lightpanda, chrome_cdp, playwright. Use playwright only if the context says it is implemented.
+Backend choices:
+- auto: let the runtime choose the safest backend.
+- lightpanda: fast read, scrape, observe, simple extraction.
+- playwright_mcp: real browser actions such as click, type, forms, login, submit, screenshots, network, console, and tabs.
+- chrome_cdp: legacy/manual compatibility backend only.
+
+Allowed backends: auto, lightpanda, playwright_mcp, chrome_cdp. Use playwright_mcp for real browser fidelity when the user asks to click/type/fill/submit/login or explicitly says Playwright.
+For playwright_mcp, a command may include "url" as well as fields/text. That means: navigate there first, then execute the requested browser action after a fresh snapshot.
 
 Return schema:
 {
   "intent": "navigate|observe|click_or_open|fill_form|submit_form|fill_and_submit|scrape|show_actions|learn",
   "risk": "low|medium|high",
-  "backend": "auto|lightpanda|chrome_cdp|playwright",
+  "backend": "auto|lightpanda|playwright_mcp|chrome_cdp",
   "command": { "tool": "browserNavigate|browserObserve|browserClickByText|browserFillFields|browserSubmitForm|browserFillAndSubmit|browserScrape|browserShowActions", "args": {} },
   "requiresConfirmation": false,
   "reason": "short reason",
@@ -379,8 +386,7 @@ export function validatePlannerShape(plan = {}) {
   const command = plan?.command;
   const tool = command?.tool;
   if (!ALLOWED_RISKS.has(String(plan?.risk || ""))) errors.push("risk must be low, medium, or high");
-  if (!ALLOWED_BACKENDS.has(String(plan?.backend || "auto"))) errors.push("backend must be auto, lightpanda, chrome_cdp, or playwright");
-  if (String(plan?.backend || "auto") === "playwright") errors.push("playwright backend is not implemented in this runtime");
+  if (!ALLOWED_BACKENDS.has(String(plan?.backend || "auto"))) errors.push("backend must be auto, lightpanda, playwright_mcp, or chrome_cdp");
   if (!ALLOWED_TOOLS.has(String(tool || ""))) errors.push(`tool is not allowed: ${tool || "<missing>"}`);
   if (!command || typeof command !== "object" || Array.isArray(command)) errors.push("command must be an object");
   if (!command?.args || typeof command.args !== "object" || Array.isArray(command.args)) errors.push("command.args must be an object");
