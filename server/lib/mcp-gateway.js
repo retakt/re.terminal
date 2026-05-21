@@ -1175,6 +1175,48 @@ const builtinServers = [
     description: "Read-only local Docker, Ollama API, and cold-start monitor tools.",
     tools: [
       {
+        name: "mcp_architecture_status",
+        description: "Return MCP architecture overview with builtin groups and external server configs.",
+        inputSchema: { type: "object", properties: {} },
+        execute: mcpArchitectureStatusTool,
+      },
+      {
+        name: "external_mcp_servers",
+        description: "List configured external MCP server definitions from config file.",
+        inputSchema: { type: "object", properties: {} },
+        execute: async () => safeText({ ok: true, servers: await loadExternalMcpConfigs() }),
+      },
+      {
+        name: "external_mcp_status",
+        description: "Check connection status of all configured external MCP servers.",
+        inputSchema: { type: "object", properties: {} },
+        execute: async () => safeText({ ok: true, statuses: await listExternalMcpStatuses() }),
+      },
+      {
+        name: "external_mcp_tools",
+        description: "List tools from a specific external MCP server by serverId. Requires real discovery.",
+        inputSchema: { type: "object", required: ["serverId"], properties: { serverId: { type: "string" } } },
+        execute: async (args) => safeText({ ok: true, tools: await listExternalMcpTools(args.serverId) }),
+      },
+      {
+        name: "external_mcp_refresh",
+        description: "Refresh/re-discover tools from a specific external MCP server by serverId.",
+        inputSchema: { type: "object", required: ["serverId"], properties: { serverId: { type: "string" } } },
+        execute: async (args) => safeText({ ok: true, refreshed: await refreshExternalMcpTools(args.serverId) }),
+      },
+      {
+        name: "playwright_mcp_status",
+        description: "Check status of the Playwright MCP external server specifically. Returns empty if not discovered.",
+        inputSchema: { type: "object", properties: {} },
+        execute: async () => {
+          const configs = await loadExternalMcpConfigs();
+          const pwConfig = configs.find(c => c.id === "playwright");
+          if (!pwConfig) return safeText({ ok: true, discovered: false, message: "Playwright MCP not configured" });
+          const status = await getExternalMcpServerStatus("playwright");
+          return safeText({ ok: true, discovered: true, ...status });
+        },
+      },
+      {
         name: "local_docker_status",
         description: "Check local Docker engine status with docker info. Use for docker status and docker daemon checks.",
         inputSchema: { type: "object", properties: {} },
@@ -1287,6 +1329,10 @@ export async function listMcpServers() {
     status: serverStatus(server),
     toolCount: isServerEnabled(server) ? server.tools.length : 0,
     responseMs: serverResponseMs.get(server.id) ?? null,
+    source: "builtin",
+    protocol: "internal-function",
+    external: false,
+    mcpNative: false,
   }));
 
   const external = await loadExternalMcpConfigs();
