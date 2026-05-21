@@ -73,7 +73,7 @@ export function adviseBrowserFailure({
     diagnosis = "The agent only had static HTML, but the user asked for a runtime browser action or rendered interactive data.";
     evidence.push("static_fetch can read HTML/forms/links, but it cannot click, fill, submit, or see JS-rendered menus.");
     fixes.push("Start Lightpanda CDP with `lightpanda serve --host 127.0.0.1 --port 9222`.");
-    fixes.push("If using Chrome instead, start it with `--remote-debugging-port=9222` and set `BROWSER_ENGINE=chrome` if needed.");
+    fixes.push("Chrome is a manual fallback only; start it on port 9223 and explicitly enable `chrome_cdp` if needed.");
     fixes.push("Then ask `browser agent status` in /browser mode to verify CDP health.");
   } else if (cdpUnavailable) {
     diagnosis = "The runtime browser engine is unavailable or did not return a valid page snapshot.";

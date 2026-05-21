@@ -1,6 +1,5 @@
 import {
   chromeCdpUrl,
-  ensureChromeCdpBrowser,
   hasChromeBrowser,
   lightpandaClickBySelector,
   lightpandaClickByText,
@@ -84,8 +83,9 @@ function engineNameFromEnv() {
 function chromeCdpConfigured() {
   const requested = engineNameFromEnv();
   return requested === "chrome" ||
-    Boolean(process.env.CHROME_CDP_URL || process.env.BROWSER_CHROME_CDP_URL) ||
-    hasChromeBrowser();
+    envFlag("BROWSER_CHROME_FALLBACK_ENABLED", false) ||
+    envFlag("BROWSER_ENABLE_CHROME_FALLBACK", false) ||
+    Boolean(process.env.CHROME_CDP_URL || process.env.BROWSER_CHROME_CDP_URL);
 }
 
 function configuredEnginePriority(mode = "browser") {
@@ -95,7 +95,7 @@ function configuredEnginePriority(mode = "browser") {
     .filter((entry) => VALID_ENGINES.has(entry));
 
   const requested = engineNameFromEnv();
-  const nativeEnabled = envFlag("LIGHTPANDA_NATIVE_MCP_ENABLED", false);
+  const nativeEnabled = false;
 
   let defaults;
   if (requested === "chrome") {
@@ -110,21 +110,20 @@ function configuredEnginePriority(mode = "browser") {
     defaults = [
       ...(nativeEnabled ? ["lightpanda_native_mcp"] : []),
       "lightpanda_cdp",
-      ...(chromeCdpConfigured() ? ["chrome_cdp"] : []),
       "static_fetch",
     ];
   } else {
     defaults = [
       ...(nativeEnabled ? ["lightpanda_native_mcp"] : []),
       "lightpanda_cdp",
-      ...(chromeCdpConfigured() ? ["chrome_cdp"] : []),
       "static_fetch",
     ];
   }
 
   const priority = explicitPriority.length ? explicitPriority : defaults;
   return Array.from(new Set(priority.filter((entry) =>
-    entry !== "lightpanda_native_mcp" || nativeEnabled
+    (entry !== "lightpanda_native_mcp" || nativeEnabled) &&
+    (entry !== "chrome_cdp" || explicitPriority.includes("chrome_cdp") || chromeCdpConfigured())
   )));
 }
 
@@ -160,21 +159,6 @@ async function cdpEngineHealth(engine) {
     return { ok: false, engine, status: "down", error: "No CDP URL configured." };
   }
 
-  if (engine === "chrome_cdp") {
-    const chrome = await ensureChromeCdpBrowser({
-      timeoutMs: Number(process.env.BROWSER_CHROME_START_TIMEOUT_MS || 9000),
-    });
-    if (!chrome.ok) {
-      return {
-        ok: false,
-        engine,
-        status: "down",
-        error: chrome.error || "Chrome CDP fallback is unavailable.",
-        cdpUrl: chrome.cdpUrl || cdpUrl,
-      };
-    }
-  }
-
   const status = await lightpandaStatus({
     cdpUrl,
     engineName: engine,
@@ -188,6 +172,7 @@ async function cdpEngineHealth(engine) {
     engine,
     cdpUrl: status.cdpUrl || cdpUrl,
     product: productText(status),
+    manualStartSupported: engine === "chrome_cdp" ? hasChromeBrowser() : undefined,
     mismatch: status.ok && !matches
       ? `CDP endpoint did not identify as ${engine}.`
       : "",
@@ -223,6 +208,7 @@ function normalizeObservation(result = {}, context = {}) {
   const verifiedUrl = result?.navigationVerified && requestedUrl ? requestedUrl : "";
   const url = normalizeUrlInput(page.url || verifiedUrl || "");
   const textPreview = safeText(page.textPreview || page.text || page.markdown || "", 5000);
+  const markdown = safeText(page.markdown || "", 12000);
   const links = uniqueEntries(Array.isArray(page.links) ? page.links : [])
     .map((link, index) => ({
       index: link.index ?? index,
@@ -273,6 +259,8 @@ function normalizeObservation(result = {}, context = {}) {
     url,
     title: safeText(page.title || "", 500),
     textPreview,
+    markdown,
+    accessibility: page.accessibility || null,
     links,
     buttons,
     inputs,
@@ -289,6 +277,9 @@ function normalizeObservation(result = {}, context = {}) {
     requestedUrl,
     navigationVerified: Boolean(result?.navigationVerified),
     engine: context.engine || result?.engine || "",
+    extractionPath: page.extractionPath || (Array.isArray(page.extractionSources) ? page.extractionSources.join(",") : ""),
+    extractionSources: Array.isArray(page.extractionSources) ? page.extractionSources : [],
+    extractionCapabilities: page.extractionCapabilities || {},
     snapshotError: result?.snapshotError || page.snapshotError || "",
     extractionErrors: page.extractionErrors || result?.extractionErrors || [],
     error: result?.error || page.error || "",
@@ -340,6 +331,7 @@ function resultPreview(observation = {}) {
     url: observation.url || "",
     title: observation.title || "",
     textPreview: safeText(observation.textPreview || "", 600),
+    extractionPath: observation.extractionPath || "",
     links: (observation.links || []).slice(0, 8).map((link) => ({ text: link.text, href: link.href })),
     buttons: (observation.buttons || []).slice(0, 8).map((button) => ({ text: button.text, selector: button.selector })),
     engine: observation.engine || "",
@@ -671,6 +663,14 @@ async function observeWithStaticFetch(args = {}) {
         ...buttons.map((button) => ({ ...button, role: "button" })),
         ...inputs.map((input) => ({ ...input, role: input.type || "input", tag: "input" })),
       ],
+      extractionSources: ["static_fetch"],
+      extractionPath: "static_fetch",
+      extractionCapabilities: {
+        markdown: false,
+        accessibilityTree: false,
+        domEval: false,
+        selectors: false,
+      },
       stats: { status: response.status, contentType: response.headers.get("content-type") || "" },
     },
   }, { engine: "static_fetch", requestedUrl });
@@ -692,7 +692,7 @@ async function observeWithNativeMcp(args = {}) {
     status: "engine_unavailable",
     engine: "lightpanda_native_mcp",
     requestedUrl,
-    error: "Lightpanda native MCP is configured as an optional future engine, but stdio tool bridging is not wired in this process yet.",
+    error: "Lightpanda native MCP is disabled until a real stdio adapter is implemented.",
     observation: emptyObservation({ engine: "lightpanda_native_mcp", requestedUrl }),
   };
 }
@@ -1182,12 +1182,12 @@ export async function browserHealth(args = {}) {
       engines.push({ ok: true, engine, status: "ready", capability: "read-only text and links" });
     } else if (engine === "lightpanda_native_mcp") {
       engines.push({
-        ok: envFlag("LIGHTPANDA_NATIVE_MCP_ENABLED", false),
+        ok: false,
         engine,
-        status: envFlag("LIGHTPANDA_NATIVE_MCP_ENABLED", false) ? "configured_stub" : "disabled",
+        status: "disabled",
         command: process.env.LIGHTPANDA_NATIVE_MCP_COMMAND || "lightpanda",
         args: process.env.LIGHTPANDA_NATIVE_MCP_ARGS || "mcp",
-        note: "Native MCP interface is stubbed here until stdio tool bridging is added.",
+        note: "Native Lightpanda MCP is available in the browser binary, but this app has no stdio adapter wired yet.",
       });
     } else {
       engines.push(await cdpEngineHealth(engine));

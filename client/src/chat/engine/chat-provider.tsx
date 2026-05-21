@@ -1100,7 +1100,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       const promptMode = chatModeRef.current;
       void warmupModels({
         model: currentModel,
-        includeBrowserAgent: promptMode === "browser",
+        includeBrowserAgent: false,
       }).catch((err) => console.warn("Model warmup failed:", err));
 
       const runId = generateUUID();

@@ -16,6 +16,17 @@ function browserEngine(options = {}) {
   return String(options.engineName || options.engine || process.env.BROWSER_ENGINE || "lightpanda").trim();
 }
 
+function cdpSourceName(options = {}) {
+  const engine = browserEngine(options).toLowerCase();
+  if (engine.includes("chrome")) return "chrome_cdp";
+  if (engine.includes("static")) return "static_fetch";
+  return "lightpanda_cdp";
+}
+
+function uniqueStrings(values = []) {
+  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
 function redactUrl(value = "") {
   return String(value || "").replace(/token=[^&]+/i, "token=***");
 }
@@ -187,6 +198,26 @@ function normalizeOptionalUrl(input = "") {
 function safeText(value, limit = 16000) {
   const text = typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
   return text.length > limit ? `${text.slice(0, limit)}\n...[truncated]` : text;
+}
+
+function markdownToPlainText(value = "", limit = 16000) {
+  return String(value || "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[`*_>#~|-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, limit);
+}
+
+function cdpCapabilitiesForEngine(options = {}) {
+  const source = cdpSourceName(options);
+  return {
+    cdp: true,
+    markdown: source === "lightpanda_cdp",
+    accessibilityTree: true,
+    domEval: true,
+    nativeMcp: false,
+  };
 }
 
 function wait(ms) {
@@ -426,6 +457,12 @@ export async function lightpandaStatus(args = {}) {
         ok: true,
         status: "ready",
         version,
+        capabilities: cdpCapabilitiesForEngine(args),
+        chromeFallback: {
+          automatic: false,
+          supported: Boolean(chromeExecutable()),
+          cdpUrl: chromeCdpUrl(),
+        },
       };
     }, { timeoutMs: Number(args.timeoutMs || 2000), cdpUrl: args.cdpUrl, engineName: args.engineName });
   } catch (err) {
@@ -436,7 +473,13 @@ export async function lightpandaStatus(args = {}) {
       cdpUrl: redactUrl(cdpUrl(args)),
       durationMs: Date.now() - startedAt,
       error: err instanceof Error ? err.message : String(err),
-      hint: "Start Lightpanda with: lightpanda serve --host 127.0.0.1 --port 9222, or run Chrome with --remote-debugging-port=9222 and set BROWSER_CDP_URL/CHROME_CDP_URL.",
+      hint: "Start Lightpanda with: lightpanda serve --host 127.0.0.1 --port 9222. Chrome is a manual fallback only.",
+      capabilities: cdpCapabilitiesForEngine(args),
+      chromeFallback: {
+        automatic: false,
+        supported: Boolean(chromeExecutable()),
+        cdpUrl: chromeCdpUrl(),
+      },
     };
   }
 }
@@ -455,13 +498,14 @@ export async function lightpandaNavigate(args = {}) {
     await session.call("Page.navigate", { url }, DEFAULT_TIMEOUT_MS, sid);
     await Promise.race([session.waitForEvent("Page.loadEventFired", 8000), wait(waitMs)]);
     await wait(waitMs);
-    const value = await evaluateBasicSnapshot(session, sid);
+    const { page: value, snapshotError } = await waitForSettledPageSnapshot(session, sid, args);
     if (targetId) {
       await session.call("Target.closeTarget", { targetId }).catch(() => null);
     }
     return {
       ok: true,
       requestedUrl: url,
+      snapshotError,
       page: value,
     };
   }, { timeoutMs: args.timeoutMs || DEFAULT_TIMEOUT_MS, cdpUrl: args.cdpUrl, engineName: args.engineName });
@@ -871,6 +915,14 @@ async function evaluateBasicSnapshot(session, sid) {
       extractionFailures: failures.length,
     },
     fallback: failures.length ? "basic-partial" : "basic",
+    extractionSources: ["dom_eval"],
+    extractionPath: "dom_eval",
+    extractionCapabilities: {
+      domEval: true,
+      selectors: true,
+      markdown: false,
+      accessibilityTree: false,
+    },
     extractionErrors: failures,
   };
 }
@@ -885,7 +937,155 @@ async function evaluateSemanticSnapshot(session, sid) {
   return evaluated?.result?.value || {};
 }
 
-async function capturePageSnapshot(session, sid) {
+function axValue(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") return String(value.value || "");
+  return String(value);
+}
+
+function summarizeAccessibilityTree(raw = {}) {
+  const nodes = Array.isArray(raw.nodes) ? raw.nodes : [];
+  const roles = {};
+  const textParts = [];
+  const controls = [];
+  const controlRoles = new Set([
+    "button",
+    "link",
+    "textbox",
+    "searchbox",
+    "combobox",
+    "checkbox",
+    "radio",
+    "switch",
+    "menuitem",
+    "tab",
+    "option",
+  ]);
+
+  for (const node of nodes) {
+    const role = axValue(node?.role) || "unknown";
+    roles[role] = (roles[role] || 0) + 1;
+
+    const name = axValue(node?.name);
+    const value = axValue(node?.value);
+    const text = safeText([name, value].filter(Boolean).join(" "), 300);
+    if (text && !textParts.includes(text)) textParts.push(text);
+
+    if (controlRoles.has(role) && controls.length < 80) {
+      controls.push({
+        role,
+        name: safeText(name, 180),
+        value: safeText(value, 180),
+      });
+    }
+  }
+
+  const root = nodes[0] || {};
+  return {
+    ok: nodes.length > 0,
+    nodeCount: nodes.length,
+    rootRole: axValue(root.role),
+    rootName: safeText(axValue(root.name), 240),
+    roles,
+    controls,
+    textPreview: safeText(textParts.join(" "), 4000),
+  };
+}
+
+async function captureLightpandaReadability(session, sid, args = {}) {
+  const source = cdpSourceName(args);
+  const sources = [];
+  const errors = [];
+  let markdown = "";
+  let accessibility = {
+    ok: false,
+    nodeCount: 0,
+    roles: {},
+    controls: [],
+    textPreview: "",
+  };
+
+  if (source === "lightpanda_cdp") {
+    try {
+      const result = await session.call("LP.getMarkdown", {}, 5000, sid);
+      markdown = String(result?.markdown || result?.content || "").trim();
+      if (markdown) sources.push("lightpanda_cdp.markdown");
+    } catch (err) {
+      errors.push({
+        name: "LP.getMarkdown",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  try {
+    const result = await session.call("Accessibility.getFullAXTree", {}, 5000, sid);
+    accessibility = summarizeAccessibilityTree(result);
+    if (accessibility.ok) {
+      sources.push(source === "chrome_cdp" ? "chrome_cdp" : "lightpanda_cdp.axtree");
+    }
+  } catch (err) {
+    errors.push({
+      name: "Accessibility.getFullAXTree",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return {
+    markdown,
+    accessibility,
+    extractionSources: sources,
+    extractionErrors: errors,
+    extractionCapabilities: {
+      ...cdpCapabilitiesForEngine(args),
+      markdown: Boolean(markdown),
+      accessibilityTree: Boolean(accessibility.ok),
+    },
+  };
+}
+
+function mergeReadableSnapshot(snapshot = {}, readability = {}, args = {}) {
+  const source = cdpSourceName(args);
+  const domSource = source === "chrome_cdp" ? "chrome_cdp" : "dom_eval";
+  const markdownText = markdownToPlainText(readability.markdown || "");
+  const accessibilityText = readability.accessibility?.textPreview || "";
+  const text = markdownText || snapshot.text || accessibilityText || "";
+  const extractionSources = uniqueStrings([
+    ...(readability.extractionSources || []),
+    ...(snapshot.extractionSources || []),
+    domSource,
+  ]);
+  const extractionErrors = [
+    ...(Array.isArray(snapshot.extractionErrors) ? snapshot.extractionErrors : []),
+    ...(Array.isArray(readability.extractionErrors) ? readability.extractionErrors : []),
+  ];
+
+  return {
+    ...snapshot,
+    text,
+    textPreview: text || snapshot.textPreview || accessibilityText,
+    markdown: readability.markdown || snapshot.markdown || "",
+    accessibility: readability.accessibility || snapshot.accessibility || null,
+    extractionSources,
+    extractionPath: extractionSources.join(","),
+    extractionCapabilities: {
+      ...(snapshot.extractionCapabilities || {}),
+      ...(readability.extractionCapabilities || cdpCapabilitiesForEngine(args)),
+      domEval: true,
+      selectors: true,
+    },
+    extractionErrors,
+    stats: {
+      ...(snapshot.stats || {}),
+      markdownChars: String(readability.markdown || "").length,
+      axNodes: Number(readability.accessibility?.nodeCount || 0),
+      extractionFailures: extractionErrors.length,
+    },
+  };
+}
+
+async function capturePageSnapshot(session, sid, args = {}) {
   let snapshot;
   let snapshotError = "";
 
@@ -904,7 +1104,8 @@ async function capturePageSnapshot(session, sid) {
     }
   }
 
-  return { snapshot: snapshot || {}, snapshotError };
+  const readability = await captureLightpandaReadability(session, sid, args);
+  return { snapshot: mergeReadableSnapshot(snapshot || {}, readability, args), snapshotError };
 }
 
 async function waitForSettledPageSnapshot(session, sid, args = {}) {
@@ -917,7 +1118,7 @@ async function waitForSettledPageSnapshot(session, sid, args = {}) {
 
   while (Date.now() - startedAt <= settleTimeoutMs) {
     attempts += 1;
-    const { snapshot, snapshotError } = await capturePageSnapshot(session, sid);
+    const { snapshot, snapshotError } = await capturePageSnapshot(session, sid, args);
     best = betterSnapshot(snapshot || {}, best || {});
     bestError = snapshotError || bestError;
 
@@ -1685,14 +1886,7 @@ async function clickCurrentPageElement(args = {}) {
     await Promise.race([session.waitForEvent("Page.loadEventFired", 6000), wait(payload.afterWaitMs)]);
     await wait(payload.afterWaitMs);
 
-    let page;
-    let snapshotError = "";
-    try {
-      page = await evaluateSemanticSnapshot(session, sid);
-    } catch (err) {
-      snapshotError = err instanceof Error ? err.message : String(err);
-      page = await evaluateBasicSnapshot(session, sid);
-    }
+    const { snapshot: page, snapshotError } = await capturePageSnapshot(session, sid, args);
     return {
       ok: Boolean(actionResult?.ok),
       action: "click",
@@ -1821,7 +2015,11 @@ export async function openHeadfulBrowser(args = {}) {
     throw new Error("Chrome executable was not found. Set CHROME_PATH or BROWSER_CHROME_PATH.");
   }
 
-  const port = Number(process.env.BROWSER_CDP_PORT || 9222);
+  const chromeCdp = chromeCdpUrl();
+  let port = Number(process.env.BROWSER_CHROME_CDP_PORT || process.env.CHROME_CDP_PORT || 9223);
+  try {
+    port = Number(new URL(chromeCdp).port || port);
+  } catch {}
   const userDataDir = process.env.CHROME_USER_DATA_DIR || path.join(os.tmpdir(), "reterm-headful-chrome");
   fs.mkdirSync(userDataDir, { recursive: true });
 
@@ -1844,20 +2042,32 @@ export async function openHeadfulBrowser(args = {}) {
     url,
     pid: child.pid,
     cdpUrl: `ws://127.0.0.1:${port}`,
-    note: "Opened a real Chrome window with remote debugging so the AI browser tools can share the same CDP port.",
+    note: "Opened manual Chrome fallback. Lightpanda CDP remains the primary AI browser engine.",
   };
 }
 
 export function getLightpandaConfig() {
+  const chromeFallbackEnabled = ["1", "true", "yes", "on"].includes(String(process.env.BROWSER_CHROME_FALLBACK_ENABLED || "").trim().toLowerCase());
   return {
     engine: "lightpanda",
     cdpUrl: redactUrl(cdpUrl()),
     configured: Boolean(process.env.BROWSER_CDP_URL || process.env.CHROME_CDP_URL || process.env.LIGHTPANDA_CDP_URL),
     defaultCdpUrl: DEFAULT_CDP_URL,
     docs: "https://lightpanda.io/docs/open-source/usage",
+    capabilities: cdpCapabilitiesForEngine({ engineName: "lightpanda_cdp" }),
+    nativeMcp: {
+      enabled: false,
+      note: "Native Lightpanda MCP stdio bridging is intentionally disabled until a real adapter is implemented.",
+    },
+    chromeFallback: {
+      automatic: chromeFallbackEnabled,
+      supported: Boolean(chromeExecutable()),
+      cdpUrl: chromeCdpUrl(),
+    },
     headful: {
       supported: Boolean(chromeExecutable()),
-      cdpUrl: `ws://127.0.0.1:${Number(process.env.BROWSER_CDP_PORT || 9222)}`,
+      cdpUrl: chromeCdpUrl(),
+      automatic: false,
     },
   };
 }

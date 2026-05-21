@@ -321,19 +321,15 @@ async function buildWarmupTargets({ chatModel, includeBrowserAgent, all }) {
     for (const model of chatModels) addWarmupTarget(targets, OLLAMA_BASE_URL, model, "chat");
     if (chatModels.length === 0) addWarmupTarget(targets, OLLAMA_BASE_URL, chatModel || OLLAMA_MODEL, "chat");
 
-    if (includeBrowserAgent && BROWSER_AGENT_LLM_ENABLED && BROWSER_AGENT_BASE_URL) {
-      const runtimeModels = await listWarmupModels(BROWSER_AGENT_BASE_URL).catch((err) => {
-        log("WARN", "browser-agent", "warmup model listing failed", { source: "browser_agent", error: err.message });
-        return [];
-      });
-      for (const model of runtimeModels) addWarmupTarget(targets, BROWSER_AGENT_BASE_URL, model, "browser_agent");
-      if (runtimeModels.length === 0) addWarmupTarget(targets, BROWSER_AGENT_BASE_URL, BROWSER_AGENT_MODEL, "browser_agent");
-    }
   } else {
     addWarmupTarget(targets, OLLAMA_BASE_URL, chatModel || OLLAMA_MODEL, "chat");
-    if (includeBrowserAgent && BROWSER_AGENT_LLM_ENABLED) {
-      addWarmupTarget(targets, BROWSER_AGENT_BASE_URL, BROWSER_AGENT_MODEL, "browser_agent");
-    }
+  }
+
+  if (includeBrowserAgent) {
+    log("INFO", "browser-agent", "skipped runtime model warmup", {
+      reason: "browser_agent is deterministic-only and does not call its configured runtime model",
+      configured: Boolean(BROWSER_AGENT_LLM_ENABLED && BROWSER_AGENT_BASE_URL && BROWSER_AGENT_MODEL),
+    });
   }
 
   return [...targets.values()];
@@ -1024,7 +1020,11 @@ app.post("/api/models/warmup", async (req, res) => {
     started: true,
     scope: all ? "all" : MODEL_WARMUP_SCOPE,
     chatModel,
-    browserAgentModel: includeBrowserAgent && BROWSER_AGENT_LLM_ENABLED ? BROWSER_AGENT_MODEL || null : null,
+    browserAgentModel: null,
+    browserAgentWarmupSkipped: includeBrowserAgent,
+    browserAgentWarmupReason: includeBrowserAgent
+      ? "browser_agent is deterministic-only and does not call its configured runtime model"
+      : "",
   });
 });
 

@@ -287,30 +287,21 @@ function MonacoViewer({
 
         if (cancelled) return;
 
-        // Define custom theme
-        const applyTheme = () => {
+        // Get Monaco theme based on app theme
+        const getMonacoTheme = () => {
           const isLight = document.documentElement.getAttribute("data-theme") === "light";
-          const rootStyle = getComputedStyle(document.documentElement);
-          const bgBase = rootStyle.getPropertyValue("--bg-base").trim() || (isLight ? "#ffffff" : "#0d1117");
-          const fgBase = rootStyle.getPropertyValue("--fg-base").trim() || (isLight ? "#0f0f0f" : "#f5f5f3");
-          const bgHighlight = rootStyle.getPropertyValue("--bg-highlight").trim() || (isLight ? "#ececf1" : "#161b22");
-          const fgSubtle = rootStyle.getPropertyValue("--fg-subtle").trim() || (isLight ? "#848cb3" : "#6e7681");
-          const accentCyan = rootStyle.getPropertyValue("--accent-cyan").trim() || (isLight ? "#0f4b6e" : "#7dcfff");
+          return isLight ? "vs" : "vs-dark";
+        };
 
-          monaco.editor.defineTheme("file-viewer-theme", {
-            base: isLight ? "vs" : "vs-dark",
-            inherit: true,
-            rules: [],
-            colors: {
-              "editor.background": bgBase,
-              "editor.foreground": fgBase,
-              "editor.lineHighlightBackground": bgHighlight,
-              "editorLineNumber.foreground": fgSubtle,
-              "editorCursor.foreground": accentCyan,
-            },
-          });
-
-          monaco.editor.setTheme("file-viewer-theme");
+        // Apply Monaco theme based on app theme
+        const applyTheme = () => {
+          const theme = getMonacoTheme();
+          monaco.editor.setTheme(theme);
+          
+          // Force editor to re-render with new theme
+          if (editorRef.current) {
+            editorRef.current.updateOptions({ theme });
+          }
         };
 
         applyTheme();
@@ -327,7 +318,7 @@ function MonacoViewer({
         const editor = monaco.editor.create(container as HTMLElement, {
           value: code,
           language: languageId === "plaintext" ? "plaintext" : languageId,
-          theme: "file-viewer-theme",
+          theme: getMonacoTheme(),
           automaticLayout: true,
           readOnly: !onChange,
           minimap: { enabled: false },
