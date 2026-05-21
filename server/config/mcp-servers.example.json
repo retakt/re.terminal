@@ -1,0 +1,40 @@
+{
+  "servers": {
+    "playwright": {
+      "id": "playwright",
+      "title": "Playwright MCP",
+      "source": "external",
+      "type": "external",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "description": "Official Microsoft Playwright MCP server for browser automation."
+    },
+    "filesystem": {
+      "id": "filesystem",
+      "title": "Filesystem MCP",
+      "source": "external",
+      "type": "external",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "description": "Official MCP filesystem server with broader access than built-in tools."
+    },
+    "github": {
+      "id": "github",
+      "title": "GitHub MCP",
+      "source": "external",
+      "type": "external",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "[redacted]"
+      },
+      "description": "Official GitHub MCP server for repository operations."
+    }
+  }
+}

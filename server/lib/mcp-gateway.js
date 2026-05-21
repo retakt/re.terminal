@@ -5,6 +5,11 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import {
+  loadExternalMcpConfigs,
+  getMcpConfigPath,
+  hasExternalMcpConfig,
+} from "./external-mcp-config.js";
+import {
   checkMemoryHealth,
   getGraphSnapshot,
   getMemoryStatus,
@@ -767,87 +772,6 @@ async function browserAgentDiagnoseTool(args = {}) {
   return safeText(await browserAgentDiagnose(args), 20000);
 }
 
-async function externalMcpServersTool() {
-  return safeText({
-    ok: true,
-    servers: await listExternalMcpStatuses(),
-  }, 30000);
-}
-
-async function externalMcpStatusTool(args = {}) {
-  const serverId = String(args.serverId || args.id || "playwright").trim();
-  return safeText({
-    ok: true,
-    server: await getExternalMcpServerStatus(serverId),
-  }, 20000);
-}
-
-async function externalMcpToolsTool(args = {}) {
-  const serverId = String(args.serverId || args.id || "playwright").trim();
-  const tools = await listExternalMcpToolsWithRecords(serverId, args.refresh === true || String(args.refresh || "").toLowerCase() === "true");
-  return safeText({
-    ok: true,
-    serverId,
-    tools,
-  }, 50000);
-}
-
-async function externalMcpRefreshTool(args = {}) {
-  const serverId = String(args.serverId || args.id || "playwright").trim();
-  const tools = await listExternalMcpToolsWithRecords(serverId, true);
-  return safeText({
-    ok: true,
-    serverId,
-    refreshed: true,
-    toolCount: tools.length,
-    tools,
-  }, 50000);
-}
-
-async function playwrightMcpStatusTool(args = {}) {
-  const start = args.start !== false && String(args.start || "true").toLowerCase() !== "false";
-  if (start) {
-    try {
-      await getExternalMcpClient("playwright");
-    } catch {
-      // The status call below reports the startup error captured by the client.
-    }
-  }
-  return safeText({
-    ok: true,
-    server: await getExternalMcpServerStatus("playwright"),
-  }, 20000);
-}
-
-async function mcpArchitectureStatusTool() {
-  return safeText({
-    ok: true,
-    architecture: {
-      builtinToolGroups: builtinServers.map((server) => ({
-        id: server.id,
-        title: server.title,
-        type: server.type,
-        transport: server.transport,
-        enabled: isServerEnabled(server),
-        toolCount: isServerEnabled(server) ? server.tools.length : 0,
-      })),
-      externalServers: await listExternalMcpStatuses(),
-      externalToolsDiscovered: externalMcpCachedToolRecords().map((tool) => ({
-        name: tool.name,
-        serverId: tool.serverId,
-        originalName: tool.originalName,
-      })),
-    },
-  }, 40000);
-}
-
-async function listExternalMcpToolsWithRecords(serverId, refresh = false) {
-  const config = getExternalMcpServerConfig(serverId);
-  if (!config) throw new Error(`external MCP server not configured: ${serverId}`);
-  const tools = refresh ? await refreshExternalMcpTools(serverId) : await listExternalMcpTools(serverId);
-  return externalMcpToolRecords(config, tools);
-}
-
 const builtinServers = [
   {
     id: "local",
@@ -1166,7 +1090,7 @@ const builtinServers = [
       },
     ],
   },
-    {
+  {
     id: "extensions",
     title: "Extensions",
     type: "builtin",
@@ -1221,7 +1145,6 @@ const builtinServers = [
         execute: extensionPlanActionTool,
       },
       {
-
         name: "execute_action",
         description: "Execute a safe extension action. Risky actions require an exact user confirmation phrase and should not be called automatically.",
         inputSchema: {
@@ -1317,42 +1240,6 @@ const builtinServers = [
         inputSchema: { type: "object", properties: {} },
         execute: monitorHealthCheck,
       },
-      {
-        name: "external_mcp_servers",
-        description: "List configured external/native MCP servers and their status without faking readiness.",
-        inputSchema: { type: "object", properties: {} },
-        execute: externalMcpServersTool,
-      },
-      {
-        name: "external_mcp_status",
-        description: "Show status for an external/native MCP server by serverId.",
-        inputSchema: { type: "object", properties: { serverId: { type: "string" }, id: { type: "string" } } },
-        execute: externalMcpStatusTool,
-      },
-      {
-        name: "external_mcp_tools",
-        description: "Start/list real tools from an external/native MCP server by serverId.",
-        inputSchema: { type: "object", properties: { serverId: { type: "string" }, id: { type: "string" }, refresh: { type: "boolean" } } },
-        execute: externalMcpToolsTool,
-      },
-      {
-        name: "external_mcp_refresh",
-        description: "Refresh real tool discovery for an external/native MCP server by serverId.",
-        inputSchema: { type: "object", properties: { serverId: { type: "string" }, id: { type: "string" } } },
-        execute: externalMcpRefreshTool,
-      },
-      {
-        name: "playwright_mcp_status",
-        description: "Start lazily and report real status for the official Microsoft Playwright MCP server.",
-        inputSchema: { type: "object", properties: { start: { type: "boolean" } } },
-        execute: playwrightMcpStatusTool,
-      },
-      {
-        name: "mcp_architecture_status",
-        description: "Show builtin/internal MCP groups plus configured external MCP servers and discovered external tools.",
-        inputSchema: { type: "object", properties: {} },
-        execute: mcpArchitectureStatusTool,
-      },
     ],
   },
 ];
@@ -1375,6 +1262,10 @@ function isServerEnabled(server) {
   return Boolean(server.enabled);
 }
 
+function isBuiltinServer(server) {
+  return server.source === "builtin" || server.type === "builtin";
+}
+
 function serverStatus(server) {
   if (server.id === "git" && !findGitRoot()) return "disabled";
   if (server.id === "web" && !configuredSearxngBase()) return "needs_config";
@@ -1385,69 +1276,83 @@ function serverStatus(server) {
   return "ready";
 }
 
-function sanitizeExternalFunctionName(name = "") {
-  const sanitized = String(name || "")
-    .replace(/[^a-zA-Z0-9_]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return /^[a-zA-Z_]/.test(sanitized) ? sanitized : `tool_${sanitized || "unnamed"}`;
-}
-
-function externalMcpToolRecords(serverConfig, tools = []) {
-  const nameMap = new Map();
-  const records = (Array.isArray(tools) ? tools : []).map((tool) => {
-    const originalName = String(tool?.name || "").trim();
-    const sanitizedName = sanitizeExternalFunctionName(originalName);
-    nameMap.set(sanitizedName, originalName);
-    return {
-      name: `mcp__${serverConfig.id}__${sanitizedName}`,
-      serverId: serverConfig.id,
-      serverTitle: serverConfig.title,
-      description: tool?.description || `External MCP tool ${originalName}`,
-      inputSchema: tool?.inputSchema || { type: "object", properties: {} },
-      enabled: Boolean(serverConfig.enabled),
-      external: true,
-      originalName,
-    };
-  });
-  externalToolNameMaps.set(serverConfig.id, nameMap);
-  return records;
-}
-
-function externalMcpCachedToolRecords() {
-  return listExternalMcpServerConfigs()
-    .filter((server) => server.enabled && server.id !== "config_error")
-    .flatMap((server) => externalMcpToolRecords(server, getExternalMcpCachedTools(server.id)));
-}
-
 export async function listMcpServers() {
   const builtin = builtinServers.map((server) => ({
     id: server.id,
     title: server.title,
-    source: "builtin",
     type: server.type,
     transport: server.transport,
-    protocol: "internal",
     enabled: isServerEnabled(server),
     description: server.description,
     status: serverStatus(server),
     toolCount: isServerEnabled(server) ? server.tools.length : 0,
     responseMs: serverResponseMs.get(server.id) ?? null,
   }));
-  return [...builtin, ...(await listExternalMcpStatuses())];
+
+  const external = await loadExternalMcpConfigs();
+  const externalStatuses = await listExternalMcpStatuses();
+  return [
+    ...builtin,
+    ...external.map((cfg) => ({
+      id: cfg.id,
+      title: cfg.name || cfg.id,
+      type: "external",
+      transport: cfg.transport,
+      enabled: cfg.enabled,
+      description: cfg.description || "",
+      status: externalStatuses.find(s => s.id === cfg.id)?.status || "unknown",
+      toolCount: 0,
+      responseMs: null,
+    })),
+  ];
+}
+
+function externalMcpToolRecords(config, tools = []) {
+  if (!config || !config.enabled) return [];
+  return tools.map((tool) => ({
+    name: `mcp__${config.id}__${tool.name}`,
+    serverId: config.id,
+    serverTitle: config.name || config.id,
+    source: "external",
+    type: "mcp",
+    transport: config.transport,
+    protocol: "mcp",
+    external: true,
+    mcpNative: true,
+    description: tool.description || "",
+    inputSchema: tool.inputSchema || { type: "object", properties: {} },
+    enabled: true,
+    originalName: tool.name,
+  }));
 }
 
 export async function listMcpTools() {
-  const builtin = builtinServers.flatMap((server) => isServerEnabled(server) ? server.tools.map((tool) => ({
-    name: `mcp__${server.id}__${tool.name}`,
-    serverId: server.id,
-    serverTitle: server.title,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-    enabled: true,
-    external: false,
-  })) : []);
-  return [...builtin, ...externalMcpCachedToolRecords()];
+  const builtin = builtinServers.flatMap((server) =>
+    isServerEnabled(server) ? server.tools.map((tool) => ({
+      name: `mcp__${server.id}__${tool.name}`,
+      serverId: server.id,
+      serverTitle: server.title,
+      source: "builtin",
+      type: "builtin",
+      transport: "internal",
+      protocol: "internal-function",
+      external: false,
+      mcpNative: false,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      enabled: true,
+    })) : []
+  );
+
+  const externalConfigs = await loadExternalMcpConfigs();
+  const externalTools = [];
+  for (const config of externalConfigs) {
+    if (!config.enabled) continue;
+    const tools = await getExternalMcpCachedTools(config.id);
+    externalTools.push(...externalMcpToolRecords(config, tools));
+  }
+
+  return [...builtin, ...externalTools];
 }
 
 export async function listMcpToolDefinitions() {
@@ -1686,8 +1591,7 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // ── Extension / site-skill routing ──────────────────────────────────────────
-  // These are known website action catalogs, not URLs. Route labels away from URL tools.
+  // Extension / site-skill routing
   if (/\b(extension|extensions|site skill|site skills|known actions|available actions)\b/.test(lower) || namedExtensionId) {
     if (browserTarget) {
       return use(
@@ -1718,8 +1622,7 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // ── Browser / Lightpanda routing ────────────────────────────────────────────
-  // Important: status checks do NOT require a URL.
+  // Browser / Lightpanda routing
   if (/\b(lightpanda|light panda|browser|cdp|headless browser|chrome)\b/.test(lower)) {
     if (/\b(status|health|ready|running|check|up|down|available)\b/.test(lower)) {
       return use(
@@ -1752,7 +1655,6 @@ export function routeMcpIntent(text = "", options = {}) {
     }
   }
 
-  // Browser/scraper modes: URLs should go to browser tools, not web search.
   if (browserTarget && mode === "scraper") {
     return use(
       "mcp__browser__instant_scrape",
@@ -1773,8 +1675,6 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // In normal/auto mode, do not use local MCP unless the intent is explicit.
-  // This prevents random MCP calls from ordinary chat.
   const mcpAllowedMode = mode === "dev" || mode === "browser" || mode === "scraper";
   const explicitLocalOps =
     /\b(docker|container|containers|ollama|chat-api|chat api|llm api|monitor|cold start|cold-start|memory|graphiti|falkor|falkordb|repo|repository|git|branch|commit|diff|file|folder|directory|workspace|lightpanda|light panda|browser)\b/.test(lower);
@@ -1783,7 +1683,7 @@ export function routeMcpIntent(text = "", options = {}) {
     return result;
   }
 
-  // ── Web search ──────────────────────────────────────────────────────────────
+  // Web search
   if (/\b(search|look up|lookup|google|find latest|latest news|current news|news|right now on the web)\b/.test(lower)) {
     return use(
       "mcp__web__search",
@@ -1794,7 +1694,7 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // ── Docker / services ───────────────────────────────────────────────────────
+  // Docker / services
   if (/\b(docker|container|containers|image|images|volume|volumes)\b/.test(lower)) {
     if (/\b(disk|space|usage|size|df|volume|volumes|image|images|storage|full)\b/.test(lower)) {
       return use(
@@ -1847,7 +1747,7 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // ── Ollama / model API ──────────────────────────────────────────────────────
+  // Ollama / model API
   if (/\b(ollama|model|models|chat-api|chat api|llm api|api health|api probe)\b/.test(lower)) {
     if (/\b(model|models|tags|available)\b/.test(lower)) {
       return use(
@@ -1878,7 +1778,7 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // ── Monitor ─────────────────────────────────────────────────────────────────
+  // Monitor
   if (/\b(cold start|cold-start|pinger|ping monitor|monitor|health check|health-check)\b/.test(lower)) {
     if (/\b(log|logs|recent|tail)\b/.test(lower)) {
       return use(
@@ -1919,7 +1819,7 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // ── File tools ──────────────────────────────────────────────────────────────
+  // File tools
   if (/\b(create|write|save|overwrite)\b.*\bfile\b|\bmake\b.*\bfile\b/.test(lower)) {
     return use(
       "mcp__local__write_text_file",
@@ -1979,8 +1879,7 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // ── Git routing ─────────────────────────────────────────────────────────────
-  // Important: plain "status" must NOT trigger git.
+  // Git routing
   if (/\b(repo|repository|git|commit|diff|branch)\b/.test(lower)) {
     if (/\b(diff|changed|changes)\b/.test(lower)) {
       return use(
@@ -2010,7 +1909,8 @@ export function routeMcpIntent(text = "", options = {}) {
       0.92
     );
   }
-  // ── Memory ──────────────────────────────────────────────────────────────────
+
+  // Memory
   if (/\b(memory|remembered|knowledge graph|graphiti|falkor|falkordb)\b/.test(lower)) {
     if (/\b(graph|nodes?|edges?|falkor|falkordb)\b/.test(lower)) {
       return use(
@@ -2031,7 +1931,7 @@ export function routeMcpIntent(text = "", options = {}) {
     );
   }
 
-  // ── Current information fallback ────────────────────────────────────────────
+  // Current information fallback
   if (/\b(search|look up|lookup|latest|current|today|news|right now)\b/.test(lower)) {
     return use(
       "mcp__web__search",
@@ -2044,12 +1944,12 @@ export function routeMcpIntent(text = "", options = {}) {
 
   return result;
 }
+
 export async function callMcpTool(name, args = {}) {
   const match = String(name || "").match(/^mcp__(.+?)__(.+)$/);
   if (!match) throw new Error(`invalid MCP tool name: ${name}`);
 
   const [, serverId, toolName] = match;
-  const server = builtinServers.find((entry) => entry.id === serverId);
   const startedAt = Date.now();
   const entry = {
     id: `${startedAt}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2066,6 +1966,7 @@ export async function callMcpTool(name, args = {}) {
 
   try {
     let result;
+    const server = builtinServers.find(s => s.id === serverId);
     if (server) {
       if (!isServerEnabled(server)) throw new Error(`MCP server not enabled: ${serverId}`);
       const tool = server.tools.find((entry) => entry.name === toolName);
@@ -2093,8 +1994,8 @@ export async function callMcpTool(name, args = {}) {
   } catch (err) {
     entry.status = "error";
     entry.durationMs = Date.now() - startedAt;
-    serverResponseMs.set(server?.id || serverId, entry.durationMs);
-    serverHealthOk.set(server?.id || serverId, false);
+    serverResponseMs.set(serverId, entry.durationMs);
+    serverHealthOk.set(serverId, false);
     entry.result = err?.message || String(err);
     throw err;
   } finally {
@@ -2102,11 +2003,46 @@ export async function callMcpTool(name, args = {}) {
   }
 }
 
+async function mcpArchitectureStatusTool() {
+  const builtinList = builtinServers.map((server) => ({
+    id: server.id,
+    title: server.title,
+    source: "builtin",
+    type: "builtin",
+    transport: "internal",
+    protocol: "internal-function",
+    external: false,
+    mcpNative: false,
+    enabled: isServerEnabled(server),
+    status: serverStatus(server),
+    toolCount: isServerEnabled(server) ? server.tools.length : 0,
+  }));
+
+  const externalList = await loadExternalMcpConfigs();
+
+  return {
+    builtinToolGroups: builtinList,
+    externalMcpServers: externalList,
+    summary: {
+      builtinCount: builtinList.length,
+      externalConfiguredCount: externalList.length,
+      externalConnectedCount: externalList.filter((s) => s.connected).length,
+      configPath: getMcpConfigPath(),
+      hasConfigFile: hasExternalMcpConfig(),
+    },
+  };
+}
+
+export async function mcp__ops__mcp_architecture_status() {
+  return mcpArchitectureStatusTool();
+}
+
 async function measureTool(name, args = {}) {
   const startedAt = Date.now();
-
+  const match = String(name || "").match(/^mcp__(.+?)__/);
+  const serverId = match?.[1];
   try {
-    const result = await callMcpTool(name, args || {});
+    const result = await callMcpTool(name, args);
     const durationMs = Date.now() - startedAt;
 
     let parsedResult = result;
@@ -2117,7 +2053,7 @@ async function measureTool(name, args = {}) {
     }
 
     if (parsedResult && typeof parsedResult === "object" && parsedResult.ok === false) {
-      serverHealthOk.set(server.id, false);
+      if (serverId) serverHealthOk.set(serverId, false);
       return {
         ok: false,
         tool: name,
@@ -2127,7 +2063,7 @@ async function measureTool(name, args = {}) {
       };
     }
 
-    serverHealthOk.set(server.id, true);
+    if (serverId) serverHealthOk.set(serverId, true);
     return {
       ok: true,
       tool: name,
@@ -2135,9 +2071,7 @@ async function measureTool(name, args = {}) {
       preview: safeText(result, 700),
     };
   } catch (err) {
-    const match = String(name || "").match(/^mcp__(.+?)__/);
-    if (match) serverHealthOk.set(match[1], false);
-
+    if (serverId) serverHealthOk.set(serverId, false);
     return {
       ok: false,
       tool: name,
@@ -2182,6 +2116,8 @@ export async function getServiceStatus() {
   serverHealthOk.set("ops", Boolean(ollama.ok || docker.ok || monitor.ok));
   serverResponseMs.set("ops", Math.max(ollama.durationMs || 0, docker.durationMs || 0, monitor.durationMs || 0));
 
+  const mcpServersList = await listMcpServers();
+
   return {
     ok: true,
     durationMs: Date.now() - startedAt,
@@ -2203,7 +2139,7 @@ export async function getServiceStatus() {
       git,
       web,
     },
-    mcpServers: await listMcpServers(),
+    mcpServers: mcpServersList,
   };
 }
 
@@ -2212,4 +2148,5 @@ export {
   lightpandaStatus,
   openHeadfulBrowser,
   getLightpandaConfig,
+  mcp__ops__mcp_architecture_status,
 };
