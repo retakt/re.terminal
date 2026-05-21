@@ -1339,17 +1339,26 @@ export async function listMcpServers() {
   const externalStatuses = await listExternalMcpStatuses();
   return [
     ...builtin,
-    ...external.map((cfg) => ({
-      id: cfg.id,
-      title: cfg.name || cfg.id,
-      type: "external",
-      transport: cfg.transport,
-      enabled: cfg.enabled,
-      description: cfg.description || "",
-      status: externalStatuses.find(s => s.id === cfg.id)?.status || "unknown",
-      toolCount: 0,
-      responseMs: null,
-    })),
+    ...external.map((cfg) => {
+      const status = externalStatuses.find(s => s.id === cfg.id) || {};
+      const tools = getExternalMcpCachedTools(cfg.id);
+      return {
+        id: cfg.id,
+        title: cfg.title || cfg.id,
+        type: "external",
+        transport: cfg.transport,
+        enabled: cfg.enabled,
+        description: cfg.description || "",
+        status: status.status || "unknown",
+        toolCount: tools?.length ?? 0,
+        responseMs: null,
+        source: "external",
+        protocol: "mcp",
+        external: true,
+        mcpNative: true,
+        connected: Boolean(status.running && status.initialized),
+      };
+    }),
   ];
 }
 
@@ -1358,7 +1367,7 @@ function externalMcpToolRecords(config, tools = []) {
   return tools.map((tool) => ({
     name: `mcp__${config.id}__${tool.name}`,
     serverId: config.id,
-    serverTitle: config.name || config.id,
+    serverTitle: config.title || config.id,
     source: "external",
     type: "mcp",
     transport: config.transport,
