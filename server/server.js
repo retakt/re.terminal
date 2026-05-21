@@ -36,6 +36,11 @@ import {
   getGraphSnapshot,
 } from "./lib/memory-client.js";
 import {
+  getHealthStatus,
+  getReadinessStatus,
+  validateServerEnvironment,
+} from "./lib/readiness.js";
+import {
   callMcpTool,
   getExtensionCatalog,
   getMcpLogs,
@@ -641,17 +646,22 @@ app.use((_req, res, next) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.json({
-    status:   "ok",
-    uptime:   process.uptime(),
-    sessions: globalSessions.size,
-    stats,
-    memory:   getMemoryStatus(),
-    mcp:      {
-      servers: listMcpServers().length,
-      tools:   listMcpTools().length,
-    },
-  });
+  // Simple liveness check - returns immediately
+  res.json(getHealthStatus());
+});
+
+// Detailed readiness check
+app.get("/readiness", async (_req, res) => {
+  try {
+    res.json(await getReadinessStatus());
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      status: "error",
+      error: err.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Detailed stats endpoint
