@@ -9373,96 +9373,162 @@ body,
   }
 }
 
-/* MCP: phone layout is page-scrolled, desktop layout keeps the split lists scrollable. */
-.mcp-stacked-row {
-  display: grid;
-  grid-column: 1 / -1;
-  gap: 8px;
-  min-width: 0;
+/* ─── MCP Tool Gateway UI Updates ───────────────────────────────────── */
+/* Honest labeling, mobile-first vertical layout, clean separation */
+
+/* MCP Inspect Card - collapsible on mobile */
+.mcp-inspect-card {
+  transition: max-height 0.2s ease, padding 0.2s ease;
 }
 
-.mcp-page .mcp-list-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+.mcp-inspect-card--collapsed {
+  max-height: 48px;
+  overflow: hidden;
 }
 
-.mcp-page .mcp-list-card > .tool-card-title {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  flex: 0 0 auto;
-  margin: -8px -8px 8px;
-  border-bottom: 1px solid var(--ui-border-soft, var(--border-subtle));
-  background: var(--ui-card, var(--bg-surface));
-  padding: 8px;
+.mcp-inspect-card--collapsed pre {
+  display: none;
 }
 
-@media (min-width: 768px) {
-  .mcp-page,
+/* JSON/schema blocks - prevent horizontal page scroll */
+.mcp-inspect-card pre,
+.mcp-tool-row code,
+.mcp-log-row code,
+.run-tool-preview code {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Builtin pill badge */
+.mcp-pill--builtin {
+  border-color: color-mix(in srgb, var(--accent-cyan) 45%, var(--border));
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+}
+
+/* Mobile-first vertical layout for MCP page */
+@media (max-width: 768px) {
   .mcp-page .tool-compact-body {
-    min-height: 0 !important;
-  }
-
-  .mcp-page .mcp-resizable-row {
-    height: min(620px, calc(100dvh - 320px)) !important;
-    min-height: 360px !important;
-    overflow: hidden !important;
-  }
-
-  .mcp-page .mcp-list-card {
-    height: 100% !important;
-    overflow: hidden !important;
-  }
-
-  .mcp-page .mcp-tool-list,
-  .mcp-page .mcp-log-list {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none !important;
-    overflow: auto !important;
-  }
-}
-
-@media (max-width: 767px) {
-  .mcp-page {
-    height: 100% !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-  }
-
-  .mcp-page .tool-compact-body {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) !important;
-    align-content: start !important;
-    height: 100% !important;
-    min-height: 0 !important;
-    overflow-x: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: 1fr !important;
+    padding: 6px !important;
     overflow-y: auto !important;
-    overscroll-behavior-y: contain;
-    -webkit-overflow-scrolling: touch;
-    padding: 6px 6px 18px !important;
+    overflow-x: hidden !important;
   }
 
-  .mcp-page .mcp-resizable-row {
+  /* Toolbar stacks vertically */
+  .mcp-toolbar {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .mcp-toolbar__stats {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Filter bar stacks */
+  .catalog-filter-bar {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .catalog-search {
+    width: 100% !important;
+  }
+
+  /* Server grids become vertical stacks, not horizontal scroll */
+  .mcp-server-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .mcp-server-card {
+    min-width: auto !important;
+    width: 100% !important;
+    scroll-snap-align: none !important;
+  }
+
+  .mcp-server-card p {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Resizable row becomes vertical stack on mobile */
+  .mcp-resizable-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-column: 1 / -1 !important;
+    gap: 8px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .mcp-resizable-row > [data-panel],
+  .mcp-resizable-row > [data-panel] > [data-panel-size] {
+    width: 100% !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    flex: none !important;
+  }
+
+  .mcp-resizable-row .chat-resize-handle {
     display: none !important;
   }
 
-  .mcp-page .mcp-stacked-row {
-    display: grid !important;
+  /* Stacked row for tools/logs on mobile */
+  .mcp-stacked-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
   }
 
-  .mcp-page .mcp-list-card {
-    min-height: 0 !important;
-    overflow: visible !important;
+  .mcp-list-card {
+    min-height: 220px !important;
   }
 
-  .mcp-page .mcp-tool-list,
-  .mcp-page .mcp-log-list {
-    max-height: none !important;
-    overflow: visible !important;
+  .mcp-tool-list,
+  .mcp-log-list {
+    max-height: 300px !important;
+  }
+
+  /* Inspect panel - full width, collapsible */
+  .mcp-inspect-card {
+    width: 100% !important;
+  }
+
+  .mcp-inspect-card pre {
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  /* Card actions wrap on mobile */
+  .catalog-card-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+  }
+
+  /* Remove non-functional buttons on mobile - keep only copy/inspect */
+  .mcp-server-card .catalog-card-actions a,
+  .mcp-server-card .catalog-card-actions button:nth-child(2) {
+    display: none;
   }
 }
+
+
 
 /* Lightpanda header parity with AI chat: title/meta first, controls second. */
 .lightpanda-toolbar {
