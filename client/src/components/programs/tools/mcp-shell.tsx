@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Blocks,
   Clipboard,
@@ -13,7 +13,6 @@ import {
   TerminalSquare,
   ChevronDown,
   ChevronUp,
-  Info,
 } from "lucide-react";
 import {
   callMcpTool,
@@ -40,7 +39,6 @@ function statusLabel(server: McpServer) {
 }
 
 function healthInfo(server: McpServer): string {
-  // Show response time when known, otherwise "not checked" or "error"
   if (server.status === "error") return "error";
   if (typeof server.responseMs === "number") return `${server.responseMs}ms`;
   return "not checked";
@@ -156,12 +154,68 @@ function isBuiltinTool(
   return builtinIds.has(tool.serverId);
 }
 
+// ============ SHARED COMPONENTS ============
+
+// Activity Logs - SINGLE compact component, near top
+function ActivityLogsCompact({
+  logs,
+  groupedLogs,
+  showLogs,
+  setShowLogs,
+}: {
+  logs: McpLog[];
+  groupedLogs: Array<McpLog & { count: number }>;
+  showLogs: boolean;
+  setShowLogs: (s: boolean) => void;
+}) {
+  return (
+    <section className="tool-compact-card tool-compact-card--wide mcp-logs-card">
+      <button
+        type="button"
+        className="mcp-logs-header"
+        onClick={() => setShowLogs(!showLogs)}
+      >
+        <div className="mcp-logs-header-left">
+          <ScrollText size={12} />
+          <span>Activity Logs</span>
+          {logs.length > 0 && <span className="mcp-logs-count">· {logs.length} entries</span>}
+        </div>
+        {showLogs ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+      </button>
+      {showLogs && (
+        <div className="mcp-log-list">
+          {logs.length === 0 ? (
+            <div className="mcp-empty-row">No activity yet</div>
+          ) : (
+            groupedLogs.slice(0, 5).map((log) => (
+              <article key={log.id} className={`mcp-log-row mcp-log-row--${log.status}`}>
+                <div className="mcp-log-row-header">
+                  <span className="mcp-log-tool-name">{log.tool}</span>
+                  <span className="mcp-log-meta">
+                    {log.durationMs}ms · {log.status === "complete" ? "success" : log.status}
+                    {log.count > 1 && ` ×${log.count}`}
+                  </span>
+                </div>
+                <code className="mcp-log-preview">{preview(log.args, 80)}</code>
+              </article>
+            ))
+          )}
+          {logs.length > 5 && (
+            <div className="mcp-log-note">showing latest 5 logs. use terminal for full history.</div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ============ MOBILE COMPONENT ============
 function MobileMcpShell({
   tools, logs, loading, filter, query, setFilter, setQuery, notice, refresh,
   builtinServers, externalServers, filteredBuiltinServers, filteredExternalServers,
   filteredTools, groupedLogs, copyText, inspectServer, testTool,
   inspectTitle, inspectBody, inspectExpanded, setInspectExpanded, setInspectTitle, setInspectBody,
+  developerActions,
 }: {
   tools: Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>;
   logs: McpLog[]; loading: boolean; filter: string; query: string;
@@ -178,14 +232,16 @@ function MobileMcpShell({
   testTool: (tool: McpTool) => Promise<void>;
   inspectTitle: string; inspectBody: string; inspectExpanded: boolean; setInspectExpanded: (e: boolean) => void;
   setInspectTitle: (title: string) => void; setInspectBody: (body: string) => void;
+  developerActions: boolean;
 }) {
   const builtinReadyCount = builtinServers.filter((s) => s.status === "ready").length;
   const builtinToolCount = tools.filter((t) => isBuiltinTool(t) && t.enabled).length;
 
-  // Mobile-specific state for collapsible sections
   const [mobileLogsOpen, setMobileLogsOpen] = useState(false);
   const [mobileToolsExpanded, setMobileToolsExpanded] = useState(false);
-  const visibleMobileTools = mobileToolsExpanded ? filteredTools.filter(isBuiltinTool) : filteredTools.filter(isBuiltinTool).slice(0, 3);
+  const visibleMobileTools = mobileToolsExpanded
+    ? filteredTools.filter(isBuiltinTool)
+    : filteredTools.filter(isBuiltinTool).slice(0, 5);
 
   return (
     <div className="program-shell tool-compact-page mcp-page mcp-page--mobile">
@@ -225,31 +281,13 @@ function MobileMcpShell({
           </div>
         </section>
 
-        {/* Activity Logs - Collapsed by Default, Near Top on Mobile */}
-        <section className="mcp-logs-card mcp-logs-card--mobile">
-          <button type="button" className="mcp-logs-header mcp-logs-header--mobile" onClick={() => setMobileLogsOpen(!mobileLogsOpen)}>
-            <div className="mcp-logs-header-left">
-              <ScrollText size={12} /><span>Activity Logs</span>
-              {logs.length > 0 && <span className="mcp-logs-count">· {logs.length} entry{logs.length !== 1 ? 's' : ''}</span>}
-            </div>
-            {mobileLogsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          </button>
-          {mobileLogsOpen && (
-            <div className="mcp-log-list mcp-log-list--mobile">
-              {logs.length === 0 ? <div className="mcp-empty-row">No activity yet</div> : (
-                groupedLogs.slice(0, 3).map((log) => (
-                  <article key={log.id} className={`mcp-log-row mcp-log-row--mobile mcp-log-row--${log.status}`}>
-                    <div className="mcp-log-row-header">
-                      <span className="mcp-log-tool-name">{log.tool}</span>
-                      <span className="mcp-log-meta">{log.durationMs}ms · {log.status === "complete" ? "success" : log.status}{log.count > 1 && ` ×${log.count}`}</span>
-                    </div>
-                    <code className="mcp-log-preview">{preview(log.args, 100)}</code>
-                  </article>
-                ))
-              )}
-            </div>
-          )}
-        </section>
+        {/* Activity Logs - Compact, Near Top (SINGLE component) */}
+        <ActivityLogsCompact
+          logs={logs}
+          groupedLogs={groupedLogs}
+          showLogs={mobileLogsOpen}
+          setShowLogs={setMobileLogsOpen}
+        />
 
         {/* Builtin Tool Groups - Compact Rows */}
         <section className="mcp-section mcp-section--mobile">
@@ -262,8 +300,8 @@ function MobileMcpShell({
               <button key={server.id} type="button" className="mcp-server-row mcp-server-row--mobile"
                 onClick={() => inspectServer(server)}>
                 <div className="mcp-server-row-left">
-                <span className="mcp-server-row-title">{server.title}</span>
-                <span className="mcp-server-row-meta">{server.transport} · {server.toolCount} tools · {healthInfo(server)}</span>
+                  <span className="mcp-server-row-title">{server.title}</span>
+                  <span className="mcp-server-row-meta">{server.transport} · {server.toolCount} tools · {healthInfo(server)}</span>
                 </div>
                 <span className={`mcp-status-pill mcp-status-pill--${server.status}`}>{statusLabel(server)}</span>
               </button>
@@ -305,7 +343,7 @@ function MobileMcpShell({
           )}
         </section>
 
-        {/* Available Tools - Collapsible, 3 items by default on mobile */}
+        {/* Available Tools - Collapsible, 5 items by default */}
         <section className="mcp-section mcp-section--mobile">
           <header className="mcp-section-header mcp-section-header--mobile">
             <button type="button" className="mcp-section-title-expand" onClick={() => setMobileToolsExpanded(!mobileToolsExpanded)} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit' }}>
@@ -327,26 +365,30 @@ function MobileMcpShell({
                 <p className="mcp-tool-card-desc">{tool.description}</p>
                 <div className="mcp-tool-card-actions">
                   <button type="button" className="mcp-icon-btn mcp-icon-btn--mobile"
-                    onClick={() => void copyText(JSON.stringify(tool, null, 2), "copied")} title="Copy">
-                    <Clipboard size={11} />
-                  </button>
-                  <button type="button" className="mcp-icon-btn mcp-icon-btn--mobile"
                     onClick={() => { setInspectTitle(`inspect ${tool.name}`); setInspectBody(JSON.stringify(tool, null, 2)); setInspectExpanded(true); }}
                     title="Inspect"><TerminalSquare size={11} /></button>
-                  {isSafeAutoTestTool(tool) && (
-                    <button type="button" className="mcp-icon-btn mcp-icon-btn--mobile mcp-icon-btn--test"
-                      onClick={() => void testTool(tool)} title="Test"><Stethoscope size={11} /></button>
+                  {developerActions && (
+                    <>
+                      <button type="button" className="mcp-icon-btn mcp-icon-btn--mobile"
+                        onClick={() => void copyText(tool.name, "tool name copied")} title="Copy name">
+                        <Clipboard size={11} />
+                      </button>
+                      {isSafeAutoTestTool(tool) && (
+                        <button type="button" className="mcp-icon-btn mcp-icon-btn--mobile mcp-icon-btn--test"
+                          onClick={() => void testTool(tool)} title="Test"><Stethoscope size={11} /></button>
+                      )}
+                    </>
                   )}
                 </div>
               </article>
             ))}
             {filteredTools.filter(isBuiltinTool).length === 0 && <div className="mcp-empty-row">No tools match filters</div>}
-            {filteredTools.filter(isBuiltinTool).length > 3 && !mobileToolsExpanded && (
+            {filteredTools.filter(isBuiltinTool).length > 5 && !mobileToolsExpanded && (
               <button type="button" className="mcp-show-more-tools" onClick={() => setMobileToolsExpanded(true)}>
                 Show all {filteredTools.filter(isBuiltinTool).length} tools
               </button>
             )}
-            {mobileToolsExpanded && filteredTools.filter(isBuiltinTool).length > 3 && (
+            {mobileToolsExpanded && filteredTools.filter(isBuiltinTool).length > 5 && (
               <button type="button" className="mcp-show-less-tools" onClick={() => setMobileToolsExpanded(false)}>
                 Show less
               </button>
@@ -354,7 +396,7 @@ function MobileMcpShell({
           </div>
         </section>
 
-        {/* Inspect - Modal/Bottom Sheet */}
+        {/* Inspect - Modal/Bottom Sheet, HIDDEN BY DEFAULT */}
         {inspectExpanded && inspectTitle !== "inspect" && (
           <div className="mcp-inspect-modal mcp-inspect-modal--mobile" onClick={() => setInspectExpanded(false)}>
             <div className="mcp-inspect-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -377,9 +419,11 @@ function DesktopMcpShell({
   servers, tools, logs, loading, filter, query, setFilter, setQuery, notice, refresh,
   builtinServers, externalServers, filteredBuiltinServers, filteredExternalServers,
   filteredTools, groupedLogs, copyText, testServer, inspectServer, testTool,
-  expandedToolSchemas, setExpandedToolSchemas, showLogs, setShowLogs,
-  inspectTitle, inspectBody, setInspectExpanded, setInspectTitle, setInspectBody, setNotice,
-  externalConfiguredCount,
+  showLogs, setShowLogs,
+  inspectTitle, inspectBody, inspectExpanded, setInspectExpanded, setInspectTitle, setInspectBody,
+  developerActions, setDeveloperActions,
+  expandedTools,
+  setExpandedTools,
 }: {
   servers: Array<McpServer & { source?: string; mcpNative?: boolean }>;
   tools: Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>;
@@ -396,10 +440,12 @@ function DesktopMcpShell({
   testServer: (server: McpServer) => Promise<void>;
   inspectServer: (server: McpServer) => void;
   testTool: (tool: McpTool) => Promise<void>;
-  expandedToolSchemas: Set<string>; setExpandedToolSchemas: Dispatch<SetStateAction<Set<string>>>; showLogs: boolean; setShowLogs: (s: boolean) => void;
-  inspectTitle: string; inspectBody: string; setInspectExpanded: (e: boolean) => void;
-  setInspectTitle: (title: string) => void; setInspectBody: (body: string) => void; setNotice: (notice: string) => void;
-  externalConfiguredCount: number;
+  showLogs: boolean; setShowLogs: (s: boolean) => void;
+  inspectTitle: string; inspectBody: string; inspectExpanded: boolean; setInspectExpanded: (e: boolean) => void;
+  setInspectTitle: (title: string) => void; setInspectBody: (body: string) => void;
+  developerActions: boolean; setDeveloperActions: (d: boolean) => void;
+  expandedTools: boolean;
+  setExpandedTools: (e: boolean) => void;
 }) {
   function externalServerStatus(server: McpServer) {
     if (!server.enabled) return "disabled";
@@ -426,15 +472,19 @@ function DesktopMcpShell({
           <span className="mcp-meta-item"><span className="mcp-meta-label">latency:</span> {healthInfo(server)}</span>
         </footer>
         <div className="mcp-server-card-actions">
-          <button type="button" className="mcp-action-btn" onClick={() => void copyText(JSON.stringify(server, null, 2), "config copied")} title="Copy config">
-            <Clipboard size={14} /><span>Copy</span>
-          </button>
           <button type="button" className="mcp-action-btn" onClick={() => inspectServer(server)} title="Inspect details">
             <TerminalSquare size={14} /><span>Inspect</span>
           </button>
-          <button type="button" className="mcp-action-btn" onClick={() => void testServer(server)} title="Test a safe tool from this group">
-            <Stethoscope size={14} /><span>Test</span>
-          </button>
+          {developerActions && (
+            <>
+              <button type="button" className="mcp-action-btn" onClick={() => void copyText(server.id, "server id copied")} title="Copy id">
+                <Clipboard size={14} /><span>Copy</span>
+              </button>
+              <button type="button" className="mcp-action-btn" onClick={() => void testServer(server)} title="Test a safe tool from this group">
+                <Stethoscope size={14} /><span>Test</span>
+              </button>
+            </>
+          )}
         </div>
       </article>
     );
@@ -459,15 +509,19 @@ function DesktopMcpShell({
         <div className="mcp-server-card-actions">
           {server.enabled && server.status === "ready" && (
             <>
-              <button type="button" className="mcp-action-btn" onClick={() => void copyText(JSON.stringify(server, null, 2), "config copied")} title="Copy config">
-                <Clipboard size={14} /><span>Copy</span>
-              </button>
               <button type="button" className="mcp-action-btn" onClick={() => inspectServer(server)} title="Inspect details">
                 <TerminalSquare size={14} /><span>Inspect</span>
               </button>
-              <button type="button" className="mcp-action-btn" onClick={() => void testServer(server)} title="Test a safe tool from this server">
-                <Stethoscope size={14} /><span>Test</span>
-              </button>
+              {developerActions && (
+                <>
+                  <button type="button" className="mcp-action-btn" onClick={() => void copyText(server.id, "server id copied")} title="Copy id">
+                    <Clipboard size={14} /><span>Copy</span>
+                  </button>
+                  <button type="button" className="mcp-action-btn" onClick={() => void testServer(server)} title="Test a safe tool from this server">
+                    <Stethoscope size={14} /><span>Test</span>
+                  </button>
+                </>
+              )}
             </>
           )}
           {!server.enabled && <span className="mcp-pill mcp-pill--disabled">disabled</span>}
@@ -477,7 +531,6 @@ function DesktopMcpShell({
   }
 
   function renderToolRow(tool: McpTool) {
-    const isSchemaExpanded = expandedToolSchemas.has(tool.name);
     return (
       <article key={tool.name} className={`mcp-tool-row ${!tool.enabled ? "mcp-tool-row--disabled" : ""}`}>
         <header className="mcp-tool-row-header">
@@ -488,57 +541,18 @@ function DesktopMcpShell({
           <span className="mcp-tool-server">{tool.serverTitle}</span>
         </header>
         <p className="mcp-tool-description">{tool.description}</p>
-        <details className="mcp-tool-schema" open={isSchemaExpanded}
-          onToggle={(e) => {
-            if ((e.target as HTMLDetailsElement).open) setExpandedToolSchemas((prev) => new Set(prev).add(tool.name));
-            else setExpandedToolSchemas((prev) => { const next = new Set(prev); next.delete(tool.name); return next; });
-          }}>
-          <summary className="mcp-tool-schema-toggle">
-            <span>{isSchemaExpanded ? "Hide schema" : "Show schema"}</span>
-            {isSchemaExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          </summary>
-          <pre className="mcp-tool-schema-content">{preview(tool.inputSchema, 400)}</pre>
-        </details>
         <div className="mcp-tool-actions">
-          <button type="button" className="mcp-action-btn mcp-action-btn--small" onClick={() => void copyText(JSON.stringify(tool, null, 2), "schema copied")} title="Copy tool definition"><Clipboard size={12} /></button>
           <button type="button" className="mcp-action-btn mcp-action-btn--small" onClick={() => { setInspectTitle(`inspect ${tool.name}`); setInspectBody(JSON.stringify(tool, null, 2)); setInspectExpanded(true); }} title="Inspect tool"><TerminalSquare size={12} /></button>
-          {isSafeAutoTestTool(tool) && <button type="button" className="mcp-action-btn mcp-action-btn--small mcp-action-btn--test" onClick={() => void testTool(tool)} title="Test tool"><Stethoscope size={12} /></button>}
+          {developerActions && (
+            <>
+              <button type="button" className="mcp-action-btn mcp-action-btn--small" onClick={() => void copyText(tool.name, "tool name copied")} title="Copy name"><Clipboard size={12} /></button>
+              {isSafeAutoTestTool(tool) && <button type="button" className="mcp-action-btn mcp-action-btn--small mcp-action-btn--test" onClick={() => void testTool(tool)} title="Test tool"><Stethoscope size={12} /></button>}
+            </>
+          )}
         </div>
       </article>
     );
   }
-
-  const logListCard = (
-    <section className="tool-compact-card mcp-list-card mcp-logs-card">
-      <button type="button" className="mcp-logs-header" onClick={() => setShowLogs(!showLogs)}>
-        <div className="mcp-logs-header-left">
-          <ScrollText size={12} /><h2>Activity Logs</h2>
-          {logs.length > 0 && <span className="mcp-logs-count">{logs.length} entries</span>}
-        </div>
-        <div className="mcp-logs-header-right">{showLogs ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</div>
-      </button>
-      {showLogs && (
-        <div className="mcp-log-list">
-          {logs.length === 0 ? (
-            <div className="mcp-empty-state"><Info size={14} /><span>Tool activity appears here after a chat call</span></div>
-          ) : (
-            groupedLogs.slice(0, 10).map((log) => (
-              <article key={log.id} className={`mcp-log-row mcp-log-row--${log.status}`}>
-                <header className="mcp-log-row-header">
-                  <span className="mcp-log-tool">{log.tool}</span>
-                  <strong className="mcp-log-meta">{log.durationMs}ms · {log.status === "complete" ? "success" : log.status}</strong>
-                  {log.count > 1 && <em className="mcp-repeat-badge">×{log.count}</em>}
-                </header>
-                <code className="mcp-log-args">{preview(log.args, 140)}</code>
-                <p className="mcp-log-result">{preview(log.result, 260)}</p>
-              </article>
-            ))
-          )}
-          {logs.length > 10 && <button type="button" className="mcp-show-more-logs" onClick={() => setNotice("Showing latest 10 logs. Use terminal for full history.")}>Show more...</button>}
-        </div>
-      )}
-    </section>
-  );
 
   const builtinReadyCount = builtinServers.filter((s) => s.status === "ready").length;
   const builtinToolCount = tools.filter((t) => isBuiltinTool(t) && t.enabled).length;
@@ -547,21 +561,28 @@ function DesktopMcpShell({
   return (
     <div className="program-shell tool-compact-page mcp-page">
       <main className="tool-compact-body mcp-dashboard">
-        <section className="tool-compact-card tool-compact-card--wide mcp-toolbar">
-          <div className="mcp-toolbar-header">
-            <div className="mcp-toolbar-title"><PlugZap size={14} /><h1>Tool Gateway</h1></div>
-            {notice && <span className="mcp-toolbar-notice" role="status">{notice}</span>}
+        {/* Header - Matches Chat/Logs/Files style */}
+        <header className="log-toolbar">
+          <div className="log-toolbar-left">
+            <PlugZap size={14} className="log-icon" />
+            <span className="log-toolbar-title">tool gateway</span>
+            {notice && <span className="log-status log-info">{notice}</span>}
           </div>
-          <div className="mcp-toolbar-stats">
-            <div className="mcp-stat-group"><span className="mcp-stat-value">{builtinReadyCount}</span><span className="mcp-stat-label">of {builtinServers.length} builtin ready</span></div>
-            <div className="mcp-stat-group"><span className="mcp-stat-value">{builtinToolCount}</span><span className="mcp-stat-label">builtin tools</span></div>
-            {externalConfiguredCount > 0 && <div className="mcp-stat-group"><span className="mcp-stat-value">{externalConnectedCount}</span><span className="mcp-stat-label">of {externalConfiguredCount} external connected</span></div>}
-            {externalConfiguredCount === 0 && <div className="mcp-stat-group"><span className="mcp-stat-value">0</span><span className="mcp-stat-label">external MCP configured</span></div>}
-            <button type="button" className="mcp-icon-button" onClick={() => void refresh()} title="Refresh" aria-label="Refresh data">
-              <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
+          <div className="log-toolbar-right">
+            <span className="log-status log-muted">
+              {builtinReadyCount} groups · {builtinToolCount} tools · {externalConnectedCount} external
+            </span>
+            <label className="log-btn" title="Developer actions" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', width: 'auto', padding: '0 6px', fontSize: '10px' }}>
+              <span>Dev</span>
+              <input type="checkbox" checked={developerActions} onChange={(e) => setDeveloperActions(e.target.checked)} style={{ accentColor: 'var(--accent-blue)', cursor: 'pointer' }} />
+            </label>
+            <button type="button" className="log-btn" onClick={() => void refresh()} title="Refresh" aria-label="Refresh data">
+              <RefreshCcw size={12} className={loading ? "animate-spin" : ""} />
             </button>
           </div>
-        </section>
+        </header>
+
+        {/* Filters */}
         <section className="tool-compact-card tool-compact-card--wide mcp-filters">
           <div className="mcp-filter-bar">
             <div className="mcp-filter-chips">
@@ -572,6 +593,16 @@ function DesktopMcpShell({
             <label className="mcp-search"><Search size={14} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tools and servers..." aria-label="Search" /></label>
           </div>
         </section>
+
+        {/* Activity Logs - Compact, Near Top (SINGLE component) */}
+        <ActivityLogsCompact
+          logs={logs}
+          groupedLogs={groupedLogs}
+          showLogs={showLogs}
+          setShowLogs={setShowLogs}
+        />
+
+        {/* Builtin Tool Groups */}
         <section className="tool-compact-card tool-compact-card--wide mcp-section">
           <header className="mcp-section-header">
             <div className="mcp-section-title"><ServerCog size={14} /><h2>Builtin Tool Groups</h2></div>
@@ -584,6 +615,8 @@ function DesktopMcpShell({
             {filteredBuiltinServers.length === 0 && builtinServers.length > 0 && <div className="mcp-empty-state mcp-empty-state--full"><Blocks size={16} /><span>No builtin tool groups match your filter</span></div>}
           </div>
         </section>
+
+        {/* External MCP Servers */}
         <section className="tool-compact-card tool-compact-card--wide mcp-section">
           <header className="mcp-section-header">
             <div className="mcp-section-title"><ExternalLink size={14} /><h2>External MCP Servers</h2></div>
@@ -596,30 +629,51 @@ function DesktopMcpShell({
             {filteredExternalServers.map(renderExternalServerCard)}
           </div>
         </section>
-        {(inspectTitle !== "inspect") && (
-          <section className={`tool-compact-card tool-compact-card--wide mcp-inspect-card`}>
+
+        {servers.length === 0 && tools.length === 0 && !loading && !notice && (
+          <section className="tool-compact-card tool-compact-card--wide">
+            <div className="mcp-empty-state mcp-empty-state--full"><Blocks size={16} /><span>No tool gateway data loaded. This usually means the backend is not running, not restarted, or /api/mcp/servers failed.</span></div>
+          </section>
+        )}
+
+        {/* Available Tools - Collapsible, 5 items by default */}
+        <section className="tool-compact-card tool-compact-card--wide mcp-section">
+          <header className="mcp-section-header">
+            <button type="button" className="mcp-section-title-expand" onClick={() => setExpandedTools(!expandedTools)} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', width: '100%', justifyContent: 'space-between' }}>
+              <div className="mcp-section-title"><ListTree size={14} /><h2>Available Tools</h2></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="mcp-section-count">{filteredTools.filter(isBuiltinTool).length} tools</span>
+                {expandedTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </div>
+            </button>
+          </header>
+          <div className="mcp-tool-list">
+            {(expandedTools ? filteredTools.filter(isBuiltinTool) : filteredTools.filter(isBuiltinTool).slice(0, 5)).map(renderToolRow)}
+            {filteredTools.filter(isBuiltinTool).length === 0 && <div className="mcp-empty-state mcp-empty-state--full"><Blocks size={16} /><span>No tools match your current filters</span></div>}
+            {!expandedTools && filteredTools.filter(isBuiltinTool).length > 5 && (
+              <button type="button" className="mcp-show-more-tools" onClick={() => setExpandedTools(true)}>
+                Show all {filteredTools.filter(isBuiltinTool).length} tools
+              </button>
+            )}
+            {expandedTools && filteredTools.filter(isBuiltinTool).length > 5 && (
+              <button type="button" className="mcp-show-less-tools" onClick={() => setExpandedTools(false)}>
+                Show less
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* Inspect Details - HIDDEN BY DEFAULT, only shown when selected */}
+        {(inspectTitle !== "inspect" && inspectExpanded) && (
+          <section className="tool-compact-card tool-compact-card--wide mcp-inspect-card">
             <header className="mcp-inspect-header">
               <div className="mcp-inspect-title"><TerminalSquare size={14} /><h2>{inspectTitle}</h2></div>
             </header>
             <pre className="mcp-inspect-content">{inspectBody}</pre>
           </section>
         )}
-        {servers.length === 0 && tools.length === 0 && !loading && !notice && (
-          <section className="tool-compact-card tool-compact-card--wide">
-            <div className="mcp-empty-state mcp-empty-state--full"><Blocks size={16} /><span>No tool gateway data loaded. This usually means the backend is not running, not restarted, or /api/mcp/servers failed.</span></div>
-          </section>
-        )}
-        <section className="tool-compact-card tool-compact-card--wide mcp-section">
-          <header className="mcp-section-header">
-            <div className="mcp-section-title"><ListTree size={14} /><h2>Available Tools</h2></div>
-            <span className="mcp-section-count">{filteredTools.filter(isBuiltinTool).length} tools</span>
-          </header>
-          <div className="mcp-tool-list">
-            {filteredTools.filter(isBuiltinTool).map(renderToolRow)}
-            {filteredTools.filter(isBuiltinTool).length === 0 && <div className="mcp-empty-state mcp-empty-state--full"><Blocks size={16} /><span>No tools match your current filters</span></div>}
-          </div>
-        </section>
-        {logListCard}
+
+
       </main>
     </div>
   );
@@ -636,9 +690,11 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
   const [notice, setNotice] = useState("");
   const [inspectTitle, setInspectTitle] = useState("inspect");
   const [inspectBody, setInspectBody] = useState("select a tool group or tool to inspect details.");
-  const [inspectExpanded, setInspectExpanded] = useState(!isPhone);
+  const [inspectExpanded, setInspectExpanded] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const [expandedToolSchemas, setExpandedToolSchemas] = useState<Set<string>>(new Set());
+  const [expandedTools, setExpandedTools] = useState(false);
+
+  const [developerActions, setDeveloperActions] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -665,7 +721,6 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
 
   const builtinServers = useMemo(() => servers.filter(isBuiltinServer), [servers]);
   const externalServers = useMemo(() => servers.filter(isExternalServer), [servers]);
-  const externalConfiguredCount = useMemo(() => externalServers.length, [externalServers]);
 
   const filteredBuiltinServers = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -739,6 +794,34 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
     setInspectTitle(`inspect ${server.id}`); setInspectBody(JSON.stringify({ server, tools: serverTools }, null, 2)); setInspectExpanded(true);
   };
   const testTool = async (tool: McpTool) => {
+    // Check if tool has required args - don't auto-test with {}
+    const inputSchema = tool.inputSchema as any;
+    if (inputSchema?.required?.length) {
+      // Check for known tools that need prefill
+      let args: Record<string, unknown> | null = null;
+      if (tool.name === "mcp__ops__external_mcp_refresh" || tool.name === "mcp__ops__external_mcp_tools") {
+        args = { serverId: "playwright" };
+      }
+      if (!args) {
+        const missing = inputSchema.required.join(", ");
+        setNotice(`Missing required argument: ${missing}`);
+        setInspectTitle(`test ${tool.name}`);
+        setInspectBody(`tool: ${tool.name}\nstatus: needs args\nmissing: ${missing}\n\nuse Inspect to see full schema`);
+        return;
+      }
+      // Use prefilled args
+      setNotice("testing..."); setInspectTitle(`test ${tool.name}`); setInspectBody(`calling ${tool.name}\nargs: ${JSON.stringify(args, null, 2)}`);
+      try {
+        const result = await callMcpTool(tool.name, args);
+        setNotice("test ok"); setInspectBody(`tool: ${tool.name}\nstatus: ok\nargs:\n${JSON.stringify(args, null, 2)}\n\nresult:\n${result}`);
+        void refresh();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "test failed";
+        setNotice(message.slice(0, 80));
+        setInspectBody(`tool: ${tool.name}\nstatus: error\nargs:\n${JSON.stringify(args, null, 2)}\n\nerror:\n${message}`);
+      }
+      return;
+    }
     const args = sampleArgsForTool(tool);
     if (!args) { setNotice("write/edit tools need manual args"); setInspectTitle(`test ${tool.name}`); setInspectBody("write/edit tools need manual args"); return; }
     setNotice("testing..."); setInspectTitle(`test ${tool.name}`); setInspectBody(`calling ${tool.name}\nargs: ${JSON.stringify(args, null, 2)}`);
@@ -752,22 +835,26 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
       setInspectBody(`tool: ${tool.name}\nstatus: error\nargs:\n${JSON.stringify(args, null, 2)}\n\nerror:\n${message}`);
     }
   };
-  // Conditional render: mobile gets simplified layout, desktop gets full layout
+  
   if (isPhone) {
     return <MobileMcpShell tools={tools} logs={logs} loading={loading} filter={filter} query={query}
       setFilter={setFilter} setQuery={setQuery} notice={notice} refresh={refresh} builtinServers={builtinServers}
       externalServers={externalServers} filteredBuiltinServers={filteredBuiltinServers} filteredExternalServers={filteredExternalServers}
       filteredTools={filteredTools} groupedLogs={groupedLogs} copyText={copyText} inspectServer={inspectServer}
       testTool={testTool} inspectTitle={inspectTitle} inspectBody={inspectBody} inspectExpanded={inspectExpanded}
-      setInspectExpanded={setInspectExpanded} setInspectTitle={setInspectTitle} setInspectBody={setInspectBody} />;
+      setInspectExpanded={setInspectExpanded} setInspectTitle={setInspectTitle} setInspectBody={setInspectBody}
+      developerActions={developerActions} />;
   }
 
   return <DesktopMcpShell servers={servers} tools={tools} logs={logs} loading={loading} filter={filter} query={query}
     setFilter={setFilter} setQuery={setQuery} notice={notice} refresh={refresh} builtinServers={builtinServers}
     externalServers={externalServers} filteredBuiltinServers={filteredBuiltinServers} filteredExternalServers={filteredExternalServers}
     filteredTools={filteredTools} groupedLogs={groupedLogs} copyText={copyText} testServer={testServer} inspectServer={inspectServer}
-    testTool={testTool} expandedToolSchemas={expandedToolSchemas} setExpandedToolSchemas={setExpandedToolSchemas} showLogs={showLogs}
+    testTool={testTool} showLogs={showLogs}
     setShowLogs={setShowLogs} inspectTitle={inspectTitle} inspectBody={inspectBody}
+    inspectExpanded={inspectExpanded}
     setInspectExpanded={setInspectExpanded} setInspectTitle={setInspectTitle} setInspectBody={setInspectBody}
-    setNotice={setNotice} externalConfiguredCount={externalConfiguredCount} />;
+    developerActions={developerActions} setDeveloperActions={setDeveloperActions}
+    expandedTools={expandedTools}
+    setExpandedTools={setExpandedTools} />;
 }
