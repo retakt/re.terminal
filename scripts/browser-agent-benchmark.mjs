@@ -16,6 +16,20 @@ const artifactsDir = path.join(repoRoot, "artifacts");
 
 const DUMMY_EMAIL = "browser.benchmark@example.com";
 
+function loadServerEnv() {
+  const envPath = path.join(repoRoot, "server", ".env");
+  if (!fs.existsSync(envPath)) return;
+  const raw = fs.readFileSync(envPath, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const index = trimmed.indexOf("=");
+    const key = trimmed.slice(0, index).trim();
+    const value = trimmed.slice(index + 1).trim();
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
 function nowStamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
@@ -310,6 +324,7 @@ function markdownTable(rows) {
 }
 
 async function main() {
+  loadServerEnv();
   fs.mkdirSync(artifactsDir, { recursive: true });
   const removedBefore = cleanupBenchmarkState();
   const results = [];
@@ -328,7 +343,7 @@ async function main() {
   const removedAfter = cleanupBenchmarkState();
   const output = {
     generatedAt: new Date().toISOString(),
-    note: "Browser mode direct MCP path returns browser-agent output directly. Main model token usage is 0 for these runs because no final model rewrite is invoked.",
+    note: "Browser mode now uses the mandatory browser-agent LLM planner and reporter. Token usage is reported from Ollama-compatible prompt_eval_count/eval_count when the provider returns them.",
     cleanup: {
       removedBefore,
       removedAfter,
@@ -341,7 +356,7 @@ async function main() {
   process.stdout.write("\nBrowser Agent Benchmark\n");
   process.stdout.write(`${markdownTable(results)}\n\n`);
   process.stdout.write(`wrote ${outputPath}\n`);
-  process.stdout.write("token note: watcher=0 and main_model=0 because this path is deterministic JS + MCP tool execution, not an LLM call.\n");
+  process.stdout.write("token note: planner/reporter token counts come from the browser-agent LLM response when available.\n");
 }
 
 main().catch((err) => {

@@ -103,21 +103,19 @@ async function getJson<T>(url: string, fallback: T): Promise<ApiResult<T>> {
   }
 }
 
-export async function listMcpServers(): Promise<ApiResult<McpServer[]>> {
-  const result = await getJson<{ servers: McpServer[] }>("/api/mcp/servers", { servers: [] });
-  if (!result.ok) return result;
-  return { ok: true, data: result.data.servers ?? [] };
+export async function listMcpServers(): Promise<McpServer[]> {
+  const data = await getJson<McpServer[] | { servers: McpServer[] }>("/api/mcp/servers", []);
+  return Array.isArray(data) ? data : data.servers ?? [];
 }
 
-export async function listMcpTools(): Promise<ApiResult<McpTool[]>> {
-  const result = await getJson<{ tools: McpTool[] }>("/api/mcp/tools", { tools: [] });
-  if (!result.ok) return result;
-  return { ok: true, data: result.data.tools ?? [] };
+export async function listMcpTools(): Promise<McpTool[]> {
+  const data = await getJson<McpTool[] | { tools: McpTool[] }>("/api/mcp/tools", []);
+  return Array.isArray(data) ? data : data.tools ?? [];
 }
 
 export async function listMcpToolDefinitions(): Promise<OllamaTool[]> {
-  const data = await getJson<{ tools: OllamaTool[] }>("/api/mcp/tool-definitions", { tools: [] });
-  return data.tools ?? [];
+  const data = await getJson<OllamaTool[] | { tools: OllamaTool[] }>("/api/mcp/tool-definitions", []);
+  return Array.isArray(data) ? data : data.tools ?? [];
 }
 
 export async function listMcpLogs(): Promise<ApiResult<McpLog[]>> {

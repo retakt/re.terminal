@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+
 /**
  * Smoke test for MCP architecture refactoring
  * 
@@ -213,4 +213,5 @@ async function runTests() {
 runTests().catch(err => {
   console.error("Unhandled error in smoke tests:", err);
   process.exit(1);
+
 });
