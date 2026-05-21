@@ -152,20 +152,21 @@ export async function loadExternalMcpConfigs() {
       const validation = validateServerConfig(id, serverConfig);
       
       if (validation.valid) {
-        // Only include servers that are explicitly enabled or have no enabled flag (default enabled)
-        if (serverConfig.enabled !== false) {
-          servers.push({
-            ...redactSensitiveValues(serverConfig),
-            // Add runtime status fields for external servers
-            protocol: serverConfig.protocol || "mcp",
-            external: true,
-            mcpNative: true,
-            status: "configured",
-            connected: false,
-            toolCount: null,
-            responseMs: null,
-          });
-        }
+        // Include all valid servers in status, even if disabled
+        // Disabled servers should show status: "disabled" for visibility
+        const isEnabled = serverConfig.enabled !== false;
+        servers.push({
+          ...redactSensitiveValues(serverConfig),
+          // Add runtime status fields for external servers
+          protocol: serverConfig.protocol || "mcp",
+          external: true,
+          mcpNative: true,
+          status: isEnabled ? "configured" : "disabled",
+          connected: false,
+          toolCount: null,
+          responseMs: null,
+          enabled: isEnabled,
+        });
       } else {
         validationErrors.push(...validation.errors);
         console.warn(`MCP config validation errors for "${id}":`, validation.errors);

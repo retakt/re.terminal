@@ -55,7 +55,7 @@ async function runTests() {
   console.log("\nTest 2: listMcpServers returns honest builtin fields");
   try {
     const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    const servers = gateway.listMcpServers();
+    const servers = await gateway.listMcpServers();
     
     assert(Array.isArray(servers), "listMcpServers returns an array");
     assert(servers.length > 0, "At least one builtin server exists");
@@ -169,26 +169,30 @@ async function runTests() {
     failed += 8;
   }
 
-  // Test 7: Admin status helper exists (if implemented)
-  console.log("\nTest 7: Admin/status helper availability");
+  // Test 7: Admin status helper is callable as MCP tool
+  console.log("\nTest 7: Admin status helper is callable as MCP tool");
   try {
     const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
+    const tools = gateway.listMcpTools();
     
-    // Check if the admin tool function exists
-    const hasAdminTool = typeof gateway.mcpArchitectureStatus === "function" || 
-                        typeof gateway.getMcpArchitectureStatus === "function";
+    // Check that the admin tool appears in the tool list with correct name
+    const hasAdminTool = tools.some(t => t.name === "mcp__ops__mcp_architecture_status");
+    assert(hasAdminTool, "mcp__ops__mcp_architecture_status appears in listMcpTools()");
     
-    if (hasAdminTool) {
-      console.log("  ✓ Admin status helper function is available");
+    // Try calling the admin tool
+    try {
+      const result = await gateway.callMcpTool("mcp__ops__mcp_architecture_status", {});
+      assert(result && result.builtinToolGroups && result.externalMcpServers, 
+        "mcp__ops__mcp_architecture_status returns expected structure");
+      console.log("  ✓ Admin tool is callable and returns correct structure");
       passed++;
-    } else {
-      console.log("  ℹ Admin status helper not yet implemented (optional)");
-      passed++; // Not a failure, just informational
+    } catch (callErr) {
+      console.error(`  ✗ Failed to call admin tool: ${callErr.message}`);
+      failed++;
     }
   } catch (err) {
     console.error(`Failed admin tool test: ${err.message}`);
-    // Don't fail for this optional feature
-    passed++;
+    failed++;
   }
 
   // Summary

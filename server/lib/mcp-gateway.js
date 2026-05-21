@@ -5,6 +5,11 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import {
+  loadExternalMcpConfigs,
+  getMcpConfigPath,
+  hasExternalMcpConfig,
+} from "./external-mcp-config.js";
+import {
   checkMemoryHealth,
   getGraphSnapshot,
   getMemoryStatus,
@@ -1225,18 +1230,17 @@ const builtinToolGroups = [
         inputSchema: { type: "object", properties: {} },
         execute: monitorHealthCheck,
       },
+      {
+        name: "mcp_architecture_status",
+        description: "Show builtin/internal tool groups vs configured external MCP servers. Read-only diagnostic.",
+        inputSchema: { type: "object", properties: {} },
+        execute: mcpArchitectureStatusTool,
+      },
     ],
   },
 ];
 
-// ============================================================================
-// EXTERNAL MCP SERVER CONFIGURATION
-// ============================================================================
-import {
-  loadExternalMcpConfigs,
-  getMcpConfigPath,
-  hasExternalMcpConfig,
-} from "./external-mcp-config.js";
+
 
 const extensionCatalog = [
   { name: "OpenWebUI MCP Streamable HTTP", type: "MCP", target: "MCP", risk: "medium", source: "https://docs.openwebui.com/features/mcp", description: "Connect Streamable HTTP MCP servers to OpenWebUI-style clients." },
@@ -1906,11 +1910,12 @@ export async function callMcpTool(name, args = {}) {
 }
 
 /**
- * Admin/ops helper: Returns MCP architecture status overview.
+ * Internal helper for mcp_architecture_status tool.
+ * Returns MCP architecture status overview.
  * Read-only diagnostic tool for understanding builtin vs external server state.
  * @returns {Promise<object>} Architecture status summary
  */
-export async function mcp__ops__mcp_architecture_status() {
+async function mcpArchitectureStatusTool() {
   const builtinList = builtinToolGroups.map((server) => ({
     id: server.id,
     title: server.title,
@@ -1938,6 +1943,15 @@ export async function mcp__ops__mcp_architecture_status() {
       hasConfigFile: hasExternalMcpConfig(),
     },
   };
+}
+
+/**
+ * Exported admin/ops helper: Returns MCP architecture status overview.
+ * @deprecated Use the MCP tool mcp__ops__mcp_architecture_status instead.
+ * @returns {Promise<object>} Architecture status summary
+ */
+export async function mcp__ops__mcp_architecture_status() {
+  return mcpArchitectureStatusTool();
 }
 
 async function measureTool(name, args = {}) {

@@ -708,8 +708,12 @@ app.post("/api/ezhrm-skill/import-observation", (req, res) => {
 });
 
 // MCP gateway API
-app.get("/api/mcp/servers", (_req, res) => {
-  res.json({ servers: listMcpServers() });
+app.get("/api/mcp/servers", async (_req, res) => {
+  try {
+    res.json({ servers: await listMcpServers() });
+  } catch (err) {
+    res.status(500).json({ servers: [], error: err.message });
+  }
 });
 
 app.get("/api/mcp/tools", (_req, res) => {
