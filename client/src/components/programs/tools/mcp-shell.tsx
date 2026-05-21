@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Blocks, Clipboard, ExternalLink, ListTree, PlugZap, RefreshCcw, Search, ScrollText, ServerCog, Stethoscope, TerminalSquare } from "lucide-react";
-import { callMcpTool, listMcpLogs, listMcpServers, listMcpTools, type McpLog, type McpServer, type McpTool } from "@/chat/api/mcp";
+import { callMcpTool, listMcpLogs, listMcpServers, listMcpTools, type ApiResult, type McpLog, type McpServer, type McpTool } from "@/chat/api/mcp";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 
 const PHONE_QUERY = "(max-width: 767px), (hover: none) and (pointer: coarse)";
@@ -53,21 +53,61 @@ function useIsPhoneLayout() {
   return isPhone;
 }
 
-// Classification helpers - use metadata fields when available
-function isBuiltinServer(server: McpServer & { source?: string; mcpNative?: boolean }): boolean {
-  return server.source === "builtin" || server.mcpNative === false;
+// Classification helpers - backward compatible with old backend shapes
+function isBuiltinServer(server: McpServer & { source?: string; mcpNative?: boolean; external?: boolean; type?: string; transport?: string }): boolean {
+  // New metadata fields take precedence
+  if (server.source === "builtin" || server.mcpNative === false || server.external === false) return true;
+  if (server.source === "external" || server.mcpNative === true || server.external === true) return false;
+
+  // Backward compatibility for old backend shape
+  if (server.type === "builtin") return true;
+  if (server.transport === "internal" || server.transport === "cdp") return true;
+
+  // Fallback to known builtin server IDs
+  const builtinIds = new Set([
+    "local",
+    "git",
+    "memory",
+    "web",
+    "browser_agent",
+    "browser",
+    "extensions",
+    "ops",
+  ]);
+
+  return builtinIds.has(server.id);
 }
 
-function isExternalServer(server: McpServer & { source?: string; mcpNative?: boolean }): boolean {
-  return server.source === "external" || server.mcpNative === true;
+function isExternalServer(server: McpServer & { source?: string; mcpNative?: boolean; external?: boolean }): boolean {
+  // New metadata fields take precedence
+  if (server.source === "external" || server.mcpNative === true || server.external === true) return true;
+  return false;
 }
 
-function isBuiltinTool(tool: McpTool & { source?: string; external?: boolean; mcpNative?: boolean }): boolean {
-  return tool.source === "builtin" || tool.external === false || tool.mcpNative === false;
+function isBuiltinTool(tool: McpTool & { source?: string; external?: boolean; mcpNative?: boolean; serverId?: string }): boolean {
+  // New metadata fields take precedence
+  if (tool.source === "builtin" || tool.external === false || tool.mcpNative === false) return true;
+  if (tool.source === "external" || tool.external === true || tool.mcpNative === true) return false;
+
+  // Fallback to known builtin server IDs
+  const builtinIds = new Set([
+    "local",
+    "git",
+    "memory",
+    "web",
+    "browser_agent",
+    "browser",
+    "extensions",
+    "ops",
+  ]);
+
+  return builtinIds.has(tool.serverId);
 }
 
 function isExternalTool(tool: McpTool & { source?: string; external?: boolean; mcpNative?: boolean }): boolean {
-  return tool.source === "external" || tool.external === true || tool.mcpNative === true;
+  // New metadata fields take precedence
+  if (tool.source === "external" || tool.external === true || tool.mcpNative === true) return true;
+  return false;
 }
 
 export function McpShell({ isActive = true }: { isActive?: boolean }) {
@@ -86,14 +126,34 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
   async function refresh() {
     setLoading(true);
     try {
-      const [nextServers, nextTools, nextLogs] = await Promise.all([
+      const [serversResult, toolsResult, logsResult] = await Promise.all([
         listMcpServers(),
         listMcpTools(),
         listMcpLogs(),
       ]);
-      setServers(nextServers as Array<McpServer & { source?: string; mcpNative?: boolean }>);
-      setTools(nextTools as Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>);
-      setLogs(nextLogs);
+      
+      // Handle API errors - show visible message instead of silently showing 0
+      if (!serversResult.ok) {
+        setNotice(`Failed to load servers: ${serversResult.error.slice(0, 50)}`);
+        console.error("Failed to load MCP servers:", serversResult.error);
+      } else {
+        setServers(serversResult.data as Array<McpServer & { source?: string; mcpNative?: boolean }>);
+      }
+      
+      if (!toolsResult.ok) {
+        setNotice(`Failed to load tools: ${toolsResult.error.slice(0, 50)}`);
+        console.error("Failed to load MCP tools:", toolsResult.error);
+      } else {
+        setTools(toolsResult.data as Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>);
+      }
+      
+      if (logsResult.ok) {
+        setLogs(logsResult.data);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setNotice(`Failed to load tool gateway data: ${message.slice(0, 60)}`);
+      console.error("MCP UI refresh error:", err);
     } finally {
       setLoading(false);
     }
@@ -102,7 +162,11 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
   useEffect(() => {
     if (!isActive) return;
     void refresh();
-    const interval = window.setInterval(() => void listMcpLogs().then(setLogs), 2500);
+    const interval = window.setInterval(() => {
+      void listMcpLogs().then((result) => {
+        if (result.ok) setLogs(result.data);
+      });
+    }, 2500);
     return () => window.clearInterval(interval);
   }, [isActive]);
 
@@ -444,7 +508,13 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
           </p>
           <div className="mcp-server-grid">
             {filteredBuiltinServers.map(renderBuiltinServerCard)}
-            {filteredBuiltinServers.length === 0 && (
+            {filteredBuiltinServers.length === 0 && builtinServers.length === 0 && (
+              <div className="mcp-empty-log">
+                <Blocks size={14} />
+                <span>no builtin tool groups loaded</span>
+              </div>
+            )}
+            {filteredBuiltinServers.length === 0 && builtinServers.length > 0 && (
               <div className="mcp-empty-log">
                 <Blocks size={14} />
                 <span>no builtin tool groups match your filter</span>
@@ -500,6 +570,16 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
             {(isPhone ? inspectExpanded : true) && (
               <pre style={{ maxWidth: "100%", overflowX: "auto" }}>{inspectBody}</pre>
             )}
+          </section>
+        )}
+
+        {/* Debug: show message if truly empty after API load */}
+        {servers.length === 0 && tools.length === 0 && !loading && (
+          <section className="tool-compact-card tool-compact-card--wide">
+            <div className="mcp-empty-log">
+              <Blocks size={14} />
+              <span>No tool gateway data loaded. This usually means the backend is not running, not restarted, or /api/mcp/servers failed.</span>
+            </div>
           </section>
         )}
 

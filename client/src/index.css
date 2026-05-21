@@ -9419,6 +9419,16 @@ body,
     overflow-x: hidden !important;
   }
 
+  /* Ensure page order on mobile: Header → Search → Filters → Summary → Builtin → External → Inspect → Tools → Logs */
+  .mcp-page .mcp-toolbar,
+  .mcp-page .catalog-filter-bar,
+  .mcp-page section:nth-child(3), /* Builtin Tool Groups */
+  .mcp-page section:nth-child(4), /* External MCP Servers */
+  .mcp-page .mcp-inspect-card,
+  .mcp-page .mcp-stacked-row {
+    order: initial !important;
+  }
+
   /* Toolbar stacks vertically */
   .mcp-toolbar {
     align-items: flex-start !important;
@@ -9450,6 +9460,25 @@ body,
     gap: 8px !important;
     overflow: visible !important;
     padding: 0 !important;
+  }
+
+  /* Prevent horizontal page scroll */
+  .mcp-page,
+  .mcp-page .tool-compact-body,
+  .mcp-page .tool-compact-card,
+  .mcp-page .mcp-server-card,
+  .mcp-page pre,
+  .mcp-page code {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* JSON/schema blocks - prevent horizontal page scroll */
+  .mcp-page pre,
+  .mcp-page code {
+    overflow-x: auto !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
   }
 
   .mcp-server-card {
