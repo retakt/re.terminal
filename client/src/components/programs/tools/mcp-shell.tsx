@@ -53,17 +53,35 @@ function useIsPhoneLayout() {
   return isPhone;
 }
 
+// Classification helpers - use metadata fields when available
+function isBuiltinServer(server: McpServer & { source?: string; mcpNative?: boolean }): boolean {
+  return server.source === "builtin" || server.mcpNative === false;
+}
+
+function isExternalServer(server: McpServer & { source?: string; mcpNative?: boolean }): boolean {
+  return server.source === "external" || server.mcpNative === true;
+}
+
+function isBuiltinTool(tool: McpTool & { source?: string; external?: boolean; mcpNative?: boolean }): boolean {
+  return tool.source === "builtin" || tool.external === false || tool.mcpNative === false;
+}
+
+function isExternalTool(tool: McpTool & { source?: string; external?: boolean; mcpNative?: boolean }): boolean {
+  return tool.source === "external" || tool.external === true || tool.mcpNative === true;
+}
+
 export function McpShell({ isActive = true }: { isActive?: boolean }) {
   const isPhone = useIsPhoneLayout();
-  const [servers, setServers] = useState<McpServer[]>([]);
-  const [tools, setTools] = useState<McpTool[]>([]);
+  const [servers, setServers] = useState<Array<McpServer & { source?: string; mcpNative?: boolean }>>([]);
+  const [tools, setTools] = useState<Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>>([]);
   const [logs, setLogs] = useState<McpLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
   const [inspectTitle, setInspectTitle] = useState("inspect");
-  const [inspectBody, setInspectBody] = useState("select inspect or run a test to view raw MCP data.");
+  const [inspectBody, setInspectBody] = useState("select a tool group or tool to inspect details.");
+  const [inspectExpanded, setInspectExpanded] = useState(!isPhone);
 
   async function refresh() {
     setLoading(true);
@@ -73,8 +91,8 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
         listMcpTools(),
         listMcpLogs(),
       ]);
-      setServers(nextServers);
-      setTools(nextTools);
+      setServers(nextServers as Array<McpServer & { source?: string; mcpNative?: boolean }>);
+      setTools(nextTools as Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>);
       setLogs(nextLogs);
     } finally {
       setLoading(false);
@@ -88,20 +106,42 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
     return () => window.clearInterval(interval);
   }, [isActive]);
 
-  const readyCount = useMemo(() => servers.filter((server) => server.status === "ready").length, [servers]);
-  const filteredServers = useMemo(() => {
+  // Classify servers
+  const builtinServers = useMemo(() => servers.filter(isBuiltinServer), [servers]);
+  const externalServers = useMemo(() => servers.filter(isExternalServer), [servers]);
+
+  // Counts
+  const builtinReadyCount = useMemo(() => builtinServers.filter((s) => s.status === "ready").length, [builtinServers]);
+  const builtinToolCount = useMemo(() => tools.filter((t) => isBuiltinTool(t) && t.enabled).length, [tools]);
+  const externalConnectedCount = useMemo(() => externalServers.filter((s) => s.status === "ready").length, [externalServers]);
+  const externalConfiguredCount = useMemo(() => externalServers.length, [externalServers]);
+
+  const filteredBuiltinServers = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return servers.filter((server) => {
+    return builtinServers.filter((server) => {
       const haystack = `${server.id} ${server.title} ${server.type} ${server.transport} ${server.status} ${server.description}`.toLowerCase();
       if (needle && !haystack.includes(needle)) return false;
       if (filter === "enabled") return server.enabled;
       if (filter === "disabled") return !server.enabled;
-      if (filter === "mcp") return true;
+      if (filter === "builtin") return true;
       if (filter === "browser") return /browser|lightpanda/.test(haystack);
       if (filter === "high risk") return server.type === "remote";
       return true;
     });
-  }, [filter, query, servers]);
+  }, [filter, query, builtinServers]);
+
+  const filteredExternalServers = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return externalServers.filter((server) => {
+      const haystack = `${server.id} ${server.title} ${server.type} ${server.transport} ${server.status} ${server.description}`.toLowerCase();
+      if (needle && !haystack.includes(needle)) return false;
+      if (filter === "enabled") return server.enabled;
+      if (filter === "disabled") return !server.enabled;
+      if (filter === "external" || filter === "mcp") return true;
+      return true;
+    });
+  }, [filter, query, externalServers]);
+
   const filteredTools = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return tools.filter((tool) => {
@@ -110,10 +150,11 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
       if (filter === "enabled") return tool.enabled;
       if (filter === "disabled") return !tool.enabled;
       if (filter === "browser") return /browser|lightpanda/.test(haystack);
-      if (filter === "tools" || filter === "all" || filter === "mcp") return true;
+      if (filter === "tools" || filter === "all" || filter === "builtin") return true;
       return false;
     });
   }, [filter, query, tools]);
+
   const groupedLogs = useMemo(() => {
     const groups: Array<McpLog & { count: number }> = [];
     for (const log of logs) {
@@ -170,6 +211,7 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
     const serverTools = tools.filter((tool) => tool.serverId === server.id);
     setInspectTitle(`inspect ${server.id}`);
     setInspectBody(JSON.stringify({ server, tools: serverTools }, null, 2));
+    setInspectExpanded(true);
   };
 
   const testTool = async (tool: McpTool) => {
@@ -196,14 +238,17 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
     }
   };
 
+  // Tool list card
   const toolListCard = (
     <section className="tool-compact-card mcp-list-card">
       <div className="tool-card-title">
         <ListTree size={14} />
-        <h2>tools</h2>
+        <h2>builtin tools</h2>
       </div>
       <div className="mcp-tool-list">
-        {filteredTools.map((tool) => (
+        {filteredTools
+          .filter(isBuiltinTool)
+          .map((tool) => (
           <article key={tool.name} className={`mcp-tool-row ${!tool.enabled ? "mcp-tool-row--disabled" : ""}`}>
             <header>
               <span>{tool.name}</span>
@@ -223,6 +268,7 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
               <button type="button" onClick={() => {
                 setInspectTitle(`inspect ${tool.name}`);
                 setInspectBody(JSON.stringify(tool, null, 2));
+                setInspectExpanded(true);
               }}>
                 <TerminalSquare size={11} />
                 inspect
@@ -234,6 +280,7 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
     </section>
   );
 
+  // Log list card
   const logListCard = (
     <section className="tool-compact-card mcp-list-card">
       <div className="tool-card-title">
@@ -263,32 +310,112 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
     </section>
   );
 
+  // External server status badge
+  function externalServerStatus(server: McpServer) {
+    if (!server.enabled) return "disabled";
+    if (server.status === "needs_config") return "configured / not connected";
+    if (server.status === "ready") return "ready / connected";
+    if (server.status === "error") return "error";
+    return server.status;
+  }
+
+  // Render builtin server card
+  function renderBuiltinServerCard(server: McpServer) {
+    return (
+      <article key={server.id} className={`mcp-server-card mcp-server-card--${server.status} ${!server.enabled ? "is-disabled" : ""}`}>
+        <header>
+          <strong>{server.title}</strong>
+          <span className="mcp-pill mcp-pill--builtin">builtin</span>
+        </header>
+        <p>{server.description}</p>
+        <footer>
+          <span>{server.transport}</span>
+          <span>{server.toolCount} tools</span>
+          <span>{typeof server.responseMs === "number" ? `${server.responseMs}ms` : "no ping"}</span>
+        </footer>
+        <div className="catalog-card-actions">
+          <button type="button" onClick={() => void copyText(JSON.stringify(server, null, 2), "config copied")}>
+            <Clipboard size={11} />
+            copy
+          </button>
+          <button type="button" onClick={() => inspectServer(server)}>
+            <TerminalSquare size={11} />
+            inspect
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  // Render external server card
+  function renderExternalServerCard(server: McpServer) {
+    return (
+      <article key={server.id} className={`mcp-server-card mcp-server-card--${server.status} ${!server.enabled ? "is-disabled" : ""}`}>
+        <header>
+          <strong>{server.title}</strong>
+          <span className={`mcp-pill mcp-pill--${server.status === "ready" ? "ready" : "needs_config"}`}>
+            {externalServerStatus(server)}
+          </span>
+        </header>
+        <p>{server.description}</p>
+        <footer>
+          <span>{server.transport}</span>
+          <span>{server.toolCount} tools</span>
+          <span>{typeof server.responseMs === "number" ? `${server.responseMs}ms` : "no ping"}</span>
+        </footer>
+        <div className="catalog-card-actions">
+          {server.enabled && server.status === "ready" && (
+            <button type="button" onClick={() => void copyText(JSON.stringify(server, null, 2), "config copied")}>
+              <Clipboard size={11} />
+              copy
+            </button>
+          )}
+          {server.enabled && server.status === "ready" && (
+            <button type="button" onClick={() => inspectServer(server)}>
+              <TerminalSquare size={11} />
+              inspect
+            </button>
+          )}
+          {!server.enabled && (
+            <span className="mcp-pill mcp-pill--needs_config">disabled</span>
+          )}
+        </div>
+      </article>
+    );
+  }
+
   return (
     <div className="program-shell tool-compact-page mcp-page">
       <main className="tool-compact-body mcp-dashboard">
+        {/* Header / Toolbar */}
         <section className="tool-compact-card tool-compact-card--wide mcp-toolbar">
           <div className="tool-card-title">
             <PlugZap size={14} />
-            <h2>mcp gateway</h2>
+            <h2>tool gateway</h2>
             {notice && <span className="tool-card-title__note">{notice}</span>}
           </div>
           <div className="mcp-toolbar__stats">
-            <span>{readyCount}/{servers.length} servers ready</span>
-            <span>{tools.filter((tool) => tool.enabled).length} enabled tools</span>
-            <button type="button" className="mcp-icon-button" onClick={() => void refresh()} title="Refresh MCP gateway">
+            <span>{builtinReadyCount}/{builtinServers.length} builtin groups ready</span>
+            <span>{builtinToolCount} builtin tools</span>
+            {externalConfiguredCount > 0 && (
+              <span>
+                {externalConnectedCount}/{externalConfiguredCount} external MCP connected
+              </span>
+            )}
+            {externalConfiguredCount === 0 && (
+              <span>0 external MCP configured</span>
+            )}
+            <button type="button" className="mcp-icon-button" onClick={() => void refresh()} title="Refresh">
               <RefreshCcw size={13} className={loading ? "animate-spin" : ""} />
             </button>
           </div>
         </section>
 
+        {/* Search and Filters */}
         <section className="tool-compact-card tool-compact-card--wide">
-          <div className="tool-card-title">
-            <ServerCog size={14} />
-            <h2>servers</h2>
-          </div>
           <div className="catalog-filter-bar">
             <div className="catalog-filter-chips">
-              {["all", "mcp", "tools", "browser", "high risk", "enabled", "disabled"].map((entry) => (
+              {["all", "builtin", "external", "enabled", "disabled", "browser"].map((entry) => (
                 <button
                   key={entry}
                   type="button"
@@ -301,66 +428,93 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
             </div>
             <label className="catalog-search">
               <Search size={12} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="search mcp" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="search tools" />
             </label>
           </div>
-          <div className="mcp-server-grid">
-            {filteredServers.map((server) => (
-              <article key={server.id} className={`mcp-server-card mcp-server-card--${server.status} ${!server.enabled ? "is-disabled" : ""}`}>
-                <header>
-                  <strong>{server.title}</strong>
-                  <span className={`mcp-pill mcp-pill--${server.status}`}>{statusLabel(server)}</span>
-                </header>
-                <p>{server.description}</p>
-                <footer>
-                  <span>{server.transport}</span>
-                  <span>{server.toolCount} tools</span>
-                  <span>{typeof server.responseMs === "number" ? `${server.responseMs}ms` : "no ping"}</span>
-                </footer>
-                <div className="catalog-card-actions">
-                  <button type="button" onClick={() => void copyText(JSON.stringify(server, null, 2), "config copied")}>
-                    <Clipboard size={11} />
-                    copy
-                  </button>
-                  <button type="button" onClick={() => void testServer(server)}>
-                    <Stethoscope size={11} />
-                    test
-                  </button>
-                  <button type="button" onClick={() => inspectServer(server)}>
-                    <TerminalSquare size={11} />
-                    inspect
-                  </button>
-                  <button type="button" onClick={() => window.open("https://modelcontextprotocol.io/docs/learn/server-concepts", "_blank", "noopener,noreferrer")}>
-                    <ExternalLink size={11} />
-                    docs
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
         </section>
 
-        <section className="tool-compact-card tool-compact-card--wide mcp-inspect-card">
+        {/* Section A: Builtin Tool Groups */}
+        <section className="tool-compact-card tool-compact-card--wide">
           <div className="tool-card-title">
-            <TerminalSquare size={14} />
-            <h2>{inspectTitle}</h2>
+            <ServerCog size={14} />
+            <h2>builtin tool groups</h2>
           </div>
-          <pre>{inspectBody}</pre>
+          <p style={{ color: "var(--fg-muted)", fontSize: "12px", marginBottom: "8px" }}>
+            Internal JavaScript tools exposed through MCP-style names. These are not external MCP protocol servers.
+          </p>
+          <div className="mcp-server-grid">
+            {filteredBuiltinServers.map(renderBuiltinServerCard)}
+            {filteredBuiltinServers.length === 0 && (
+              <div className="mcp-empty-log">
+                <Blocks size={14} />
+                <span>no builtin tool groups match your filter</span>
+              </div>
+            )}
+          </div>
         </section>
 
+        {/* Section B: External MCP Servers */}
+        <section className="tool-compact-card tool-compact-card--wide">
+          <div className="tool-card-title">
+            <ServerCog size={14} />
+            <h2>external MCP servers</h2>
+          </div>
+          <p style={{ color: "var(--fg-muted)", fontSize: "12px", marginBottom: "8px" }}>
+            Native MCP servers connected over stdio/SSE/HTTP. Tools appear only after real MCP discovery.
+          </p>
+          <div className="mcp-server-grid">
+            {filteredExternalServers.length === 0 && externalServers.length === 0 && (
+              <div className="mcp-empty-log">
+                <Blocks size={14} />
+                <span>no external MCP servers configured.</span>
+              </div>
+            )}
+            {filteredExternalServers.length === 0 && externalServers.length > 0 && (
+              <div className="mcp-empty-log">
+                <Blocks size={14} />
+                <span>no external MCP servers match your filter</span>
+              </div>
+            )}
+            {filteredExternalServers.map(renderExternalServerCard)}
+          </div>
+        </section>
+
+        {/* Inspect Panel - collapsible on mobile */}
+        {(inspectTitle !== "inspect" || !isPhone) && (
+          <section className={`tool-compact-card tool-compact-card--wide mcp-inspect-card ${isPhone && !inspectExpanded ? "mcp-inspect-card--collapsed" : ""}`}>
+            <div className="tool-card-title">
+              <TerminalSquare size={14} />
+              <h2>{inspectTitle}</h2>
+              {isPhone && (
+                <button
+                  type="button"
+                  className="mcp-icon-button"
+                  onClick={() => setInspectExpanded(!inspectExpanded)}
+                  title={inspectExpanded ? "collapse" : "expand"}
+                  style={{ marginLeft: "auto" }}
+                >
+                  {inspectExpanded ? "−" : "+"}
+                </button>
+              )}
+            </div>
+            {(isPhone ? inspectExpanded : true) && (
+              <pre style={{ maxWidth: "100%", overflowX: "auto" }}>{inspectBody}</pre>
+            )}
+          </section>
+        )}
+
+        {/* Tools and Logs - stacked on mobile */}
         {isPhone ? (
           <div className="mcp-stacked-row">
-            {logListCard}
             {toolListCard}
+            {logListCard}
           </div>
         ) : (
           <ResizablePanelGroup orientation="horizontal" className="mcp-resizable-row">
             <ResizablePanel minSize="360px">
               {toolListCard}
             </ResizablePanel>
-
             <ResizableHandle className="chat-resize-handle" />
-
             <ResizablePanel
               defaultSize="420px"
               minSize="320px"
