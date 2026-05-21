@@ -31,6 +31,7 @@ import { ollamaChatNonStream, ollamaChatStream, ollamaListModels, warmupModels, 
 import { listMcpToolDefinitions, routeMcpIntent } from "../api/mcp";
 import { extractMemories, saveFact, searchMemory } from "../api/memory";
 import type { AttachedFile, SessionOptions, ToolLog, ChatContextValue, ReasoningLog, ChatActivityStatus, ChatMode, RuntimeContext, AssistantRunLog } from "../types";
+import { aggregateAuditUsage, emitAuditEvent, normalizeAuditUsage, type AuditUsage } from "@/lib/logs-api";
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -433,6 +434,46 @@ function cleanOneLine(value: unknown, limit = 180) {
     .slice(0, limit);
 }
 
+function usageDurationMs(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const durationMs = Number(source.durationMs ?? 0);
+  if (Number.isFinite(durationMs) && durationMs > 0) return durationMs;
+  const totalDuration = Number(source.total_duration ?? 0);
+  if (Number.isFinite(totalDuration) && totalDuration > 0) {
+    return Math.round(totalDuration / 1_000_000);
+  }
+  return undefined;
+}
+
+function normalizeUsageWithDuration(
+  value: unknown,
+  defaults: Partial<AuditUsage> = {},
+): AuditUsage | null {
+  const usage = normalizeAuditUsage(value, defaults);
+  const durationMs = usageDurationMs(value) ?? defaults.durationMs;
+  if (!usage) {
+    if (!defaults.stage && !defaults.model && durationMs == null) return null;
+    return {
+      stage: defaults.stage || "",
+      model: defaults.model || "",
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      ...(durationMs != null ? { durationMs } : {}),
+    };
+  }
+  return durationMs != null ? { ...usage, durationMs } : usage;
+}
+
+function extractToolUsage(result: string, defaults: Partial<AuditUsage> = {}) {
+  const parsed = parseToolJsonResult(result);
+  if (parsed && typeof parsed === "object") {
+    return normalizeUsageWithDuration((parsed as Record<string, unknown>).usage ?? parsed, defaults);
+  }
+  return null;
+}
+
 function listObservedLabels(values: any[] = [], limit = 8) {
   return values
     .map((item) => cleanOneLine(item?.text || item?.label || item?.name || item?.href || item?.selector || ""))
@@ -471,7 +512,7 @@ function formatBrowserAgentDirectResponse(payload: any) {
   const observation = observationFromBrowserAgent(payload);
   const currentUrl = cleanOneLine(payload?.currentUrl || observation?.url || "unknown", 260);
   const currentTitle = cleanOneLine(payload?.currentTitle || observation?.title || "untitled", 180);
-  const summary = cleanOneLine(payload?.summary || "", 360);
+  const summary = cleanOneLine(payload?.browserSummary || payload?.summary || "", 360);
   const status = cleanOneLine(payload?.status || "", 80);
   const engine = cleanOneLine(payload?.engine || observation?.engine || "", 80);
   const observationFailed = !observation && /failed|needs_engine_fallback/i.test(status || payload?.blockedReason || payload?.error || "");
@@ -822,7 +863,10 @@ async function routeToolUse(args: {
       },
     ],
   });
-  return parseRouterJson(response.message?.content || "");
+  return {
+    route: parseRouterJson(response.message?.content || ""),
+    raw: response,
+  };
 }
 
 function memorySummaryForLog(memory: any) {
@@ -1061,16 +1105,80 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
 
       const runId = generateUUID();
       const runStartedAt = Date.now();
+      const runPrompt = lastText.trim().slice(0, 220);
+      const runTitle = runPrompt || sessionName || "assistant run";
+      const llmUsageStages: AuditUsage[] = [];
+      const emitAudit = (event: Parameters<typeof emitAuditEvent>[0]) => {
+        void emitAuditEvent(event);
+      };
+      const pushUsageStage = (usage: AuditUsage | null | undefined) => {
+        if (!usage) return null;
+        llmUsageStages.push(usage);
+        return usage;
+      };
+      const currentRunUsage = (durationMs?: number) => aggregateAuditUsage(llmUsageStages, {
+        model: currentModel,
+        stage: "run.total",
+        ...(durationMs != null ? { durationMs } : {}),
+      });
+      const emitLlmStage = (
+        action: string,
+        summary: string,
+        rawUsage: unknown,
+        payload: Record<string, unknown> = {},
+      ) => {
+        const usage = pushUsageStage(normalizeUsageWithDuration(rawUsage, {
+          model: currentModel,
+          stage: action.replace(/^llm\./, ""),
+        }));
+        emitAudit({
+          source: "client.chat",
+          category: "llm",
+          action,
+          status: "success",
+          title: runTitle,
+          summary,
+          refs: {
+            runId,
+            sessionId,
+            mode: promptMode,
+            model: currentModel,
+          },
+          usage,
+          payload,
+        });
+        return usage;
+      };
       appendRunLog({
         id: runId,
         status: "running",
         model: currentModel,
         startedAt: runStartedAt,
         updatedAt: runStartedAt,
-        userPrompt: lastText.trim().slice(0, 220),
+        userPrompt: runPrompt,
         toolCount: 0,
         errorCount: 0,
         toolsUsed: [],
+        usage: null,
+        usageStages: [],
+      });
+      emitAudit({
+        source: "client.chat",
+        category: "chat",
+        action: "chat.run.started",
+        status: "success",
+        title: runTitle,
+        summary: `started ${promptMode} run`,
+        refs: {
+          runId,
+          sessionId,
+          mode: promptMode,
+          model: currentModel,
+          hasAttachment: !!file,
+        },
+        payload: {
+          userPrompt: lastText.trim(),
+        },
       });
       const syncRunFromTools = (status: AssistantRunLog["status"]) => {
         const runTools = toolLogsRef.current.filter((log) => log.runId === runId);
@@ -1080,6 +1188,40 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
           toolCount: runTools.length,
           errorCount: runTools.filter((log) => log.status === "error").length,
           toolsUsed: Array.from(new Set(runTools.map((log) => log.tool))),
+          usage: currentRunUsage(Date.now() - runStartedAt),
+          usageStages: [...llmUsageStages],
+        });
+      };
+      const emitRunFinished = (
+        status: "success" | "failed",
+        action: "chat.run.completed" | "chat.run.failed",
+        summary: string,
+        payload: Record<string, unknown> = {},
+      ) => {
+        const durationMs = Date.now() - runStartedAt;
+        const usage = currentRunUsage(durationMs);
+        syncRunFromTools(status);
+        emitAudit({
+          source: "client.chat",
+          category: "chat",
+          action,
+          status: status === "success" ? "success" : "error",
+          title: runTitle,
+          summary,
+          refs: {
+            runId,
+            sessionId,
+            mode: promptMode,
+            model: currentModel,
+            durationMs,
+          },
+          usage,
+          payload: {
+            toolCount: toolLogsRef.current.filter((log) => log.runId === runId).length,
+            errorCount: toolLogsRef.current.filter((log) => log.runId === runId && log.status === "error").length,
+            usageStages: [...llmUsageStages],
+            ...payload,
+          },
         });
       };
 
@@ -1127,6 +1269,23 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
             memoryLog.memory = saved.memory;
             memoryLog.result = memorySummaryForLog(saved.memory) || "explicit memory saved";
             persistToolLogs();
+            emitAudit({
+              source: "client.chat",
+              category: "chat",
+              action: "chat.tool.completed",
+              status: "success",
+              title: "memory.save_explicit",
+              summary: memoryLog.result,
+              refs: {
+                runId,
+                sessionId,
+                tool: "memory.save_explicit",
+                mode: promptMode,
+              },
+              payload: {
+                summary: explicitMemory.summary,
+              },
+            });
             syncRunFromTools("running");
             memoryContext += `\n\nJust saved user memory:\n${JSON.stringify(saved.memory)}`;
           } else {
@@ -1134,6 +1293,23 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
             memoryLog.durationMs = Date.now() - startedAt;
             memoryLog.result = saved.reason || "explicit memory save failed";
             persistToolLogs();
+            emitAudit({
+              source: "client.chat",
+              category: "chat",
+              action: "chat.tool.failed",
+              status: "error",
+              title: "memory.save_explicit",
+              summary: memoryLog.result,
+              refs: {
+                runId,
+                sessionId,
+                tool: "memory.save_explicit",
+                mode: promptMode,
+              },
+              payload: {
+                summary: explicitMemory.summary,
+              },
+            });
             syncRunFromTools("running");
             memoryContext += `\n\nExplicit memory save failed. Tell the user exactly: ${memoryLog.result}`;
           }
@@ -1142,6 +1318,23 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
           memoryLog.durationMs = Date.now() - startedAt;
           memoryLog.result = err instanceof Error ? err.message : "explicit memory save failed";
           persistToolLogs();
+          emitAudit({
+            source: "client.chat",
+            category: "chat",
+            action: "chat.tool.failed",
+            status: "error",
+            title: "memory.save_explicit",
+            summary: memoryLog.result,
+            refs: {
+              runId,
+              sessionId,
+              tool: "memory.save_explicit",
+              mode: promptMode,
+            },
+            payload: {
+              summary: explicitMemory.summary,
+            },
+          });
           syncRunFromTools("running");
           memoryContext += `\n\nExplicit memory save failed. Tell the user exactly: ${memoryLog.result}`;
         }
@@ -1266,13 +1459,27 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
 
       if (allowToolRouting && (!toolCalls || toolCalls.length === 0)) {
         try {
-          const routed = await routeToolUse({
+          const routedResult = await routeToolUse({
             model: currentModel,
             text: lastText + factcheckHint,
             tools: activeTools,
             projectId: sessionId,
             signal: abortSignal,
           });
+          const routed = routedResult?.route;
+          if (routedResult?.raw) {
+            emitLlmStage(
+              "llm.tool.route",
+              `tool router evaluated ${activeTools.length} tools`,
+              routedResult.raw,
+              {
+                mustCallTools: Boolean(routed?.must_call_tools),
+                candidateCount: Array.isArray(routed?.tool_candidates) ? routed.tool_candidates.length : 0,
+                risk: routed?.risk || "",
+                reason: routed?.reason || "",
+              },
+            );
+          }
           const candidates = Array.isArray(routed?.tool_candidates) ? routed.tool_candidates : [];
           const routedCalls = candidates
             .filter((candidate: any) => activeToolNames.has(candidate?.name))
@@ -1323,6 +1530,14 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
             projectId: sessionId,
             signal: abortSignal,
           });
+          emitLlmStage(
+            "llm.tool.check",
+            `tool check reviewed ${toolCheckMessages.length} messages`,
+            toolCheckRes,
+            {
+              toolCallCount: Array.isArray(toolCheckRes?.message?.tool_calls) ? toolCheckRes.message.tool_calls.length : 0,
+            },
+          );
           toolCalls = toolCheckRes?.message?.tool_calls?.map((call) => ({
             function: {
               name: call.function.name,
@@ -1380,6 +1595,26 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
           model: currentModel,
         }));
         appendToolLogs(toolLogEntries);
+        emitAudit({
+          source: "client.chat",
+          category: "chat",
+          action: "chat.tools.selected",
+          status: "success",
+          title: runTitle,
+          summary: `selected ${toolCalls.length} tool${toolCalls.length === 1 ? "" : "s"}`,
+          refs: {
+            runId,
+            sessionId,
+            mode: promptMode,
+            model: currentModel,
+          },
+          payload: {
+            tools: toolCalls.map((call) => ({
+              name: call.function.name,
+              arguments: asToolArgs(call.function.arguments),
+            })),
+          },
+        });
         syncRunFromTools("running");
 
         const toolResults = await Promise.all(
@@ -1392,12 +1627,54 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
               const result = await executeTool(tc.function.name, tc.function.arguments);
               if (logEntry) { logEntry.result = result; logEntry.status = "complete"; logEntry.durationMs = Date.now() - startedAt; }
               persistToolLogs();
+              const usage = pushUsageStage(extractToolUsage(result, {
+                stage: `tool.${tc.function.name}`,
+                model: currentModel,
+                durationMs: Date.now() - startedAt,
+              }));
+              emitAudit({
+                source: "client.chat",
+                category: "chat",
+                action: "chat.tool.completed",
+                status: "success",
+                title: tc.function.name,
+                summary: `${tc.function.name} completed`,
+                refs: {
+                  runId,
+                  sessionId,
+                  tool: tc.function.name,
+                  mode: promptMode,
+                },
+                usage,
+                payload: {
+                  args: asToolArgs(tc.function.arguments),
+                  resultPreview: cleanOneLine(result, 280),
+                },
+              });
               syncRunFromTools("running");
               return { name: tc.function.name, result, error: false };
             } catch (err: any) {
               const error = err instanceof Error ? err.message : String(err);
               if (logEntry) { logEntry.result = error; logEntry.status = "error"; logEntry.durationMs = Date.now() - startedAt; }
               persistToolLogs();
+              emitAudit({
+                source: "client.chat",
+                category: "chat",
+                action: "chat.tool.failed",
+                status: "error",
+                title: tc.function.name,
+                summary: `${tc.function.name} failed`,
+                refs: {
+                  runId,
+                  sessionId,
+                  tool: tc.function.name,
+                  mode: promptMode,
+                },
+                payload: {
+                  args: asToolArgs(tc.function.arguments),
+                  error,
+                },
+              });
               syncRunFromTools("running");
               return { name: tc.function.name, result: `Error: ${error}`, error: true };
             }
@@ -1413,7 +1690,10 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
           const parsed = parseToolJsonResult(browserAgentResult.result);
           const responseText = formatBrowserAgentDirectResponse(parsed);
 
-          syncRunFromTools("success");
+          emitRunFinished("success", "chat.run.completed", "browser tool returned direct response", {
+            directTool: browserAgentResult.name,
+            responsePreview: cleanOneLine(responseText, 320),
+          });
           setActivityStatus("idle");
 
           yield {
@@ -1437,7 +1717,12 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
             ]),
             "If this is a browser-agent failure after the backend is reachable, run `browser agent status` or `browser_agent.diagnose` with the error text.",
           ].join("\n").trim();
-          syncRunFromTools("failed");
+          emitRunFinished("failed", "chat.run.failed", "required tool failed", {
+            toolErrors: toolErrors.map((tr) => ({
+              tool: tr.name,
+              error: String(tr.result).replace(/^Error:\s*/i, ""),
+            })),
+          });
           setActivityStatus("idle");
           yield {
             content: [
@@ -1462,6 +1747,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       let reasoningText = "";
       let responseText = "";
       let reasoningLog: ReasoningLog | null = null;
+      let finalResponseChunk: unknown = null;
 
       try {
         for await (const chunk of ollamaChatStream({
@@ -1474,6 +1760,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
         })) {
           const thinking = chunk?.message?.thinking;
           const content = chunk?.message?.content;
+          if (chunk?.done) finalResponseChunk = chunk;
 
           if (thinking) {
             setActivityStatus("reasoning");
@@ -1511,8 +1798,15 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
         }
       } catch (err) {
         setActivityStatus("idle");
-        if (err instanceof Error && err.name === "AbortError") return;
-        syncRunFromTools("failed");
+        if (err instanceof Error && err.name === "AbortError") {
+          emitRunFinished("failed", "chat.run.failed", "run aborted", {
+            aborted: true,
+          });
+          return;
+        }
+        emitRunFinished("failed", "chat.run.failed", "run failed before final response", {
+          error: err instanceof Error ? err.message : String(err),
+        });
         throw err;
       }
 
@@ -1520,7 +1814,34 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
         reasoningLog.status = "complete";
         reasoningLog.updatedAt = Date.now();
         persistReasoningLogs();
+        emitAudit({
+          source: "client.chat",
+          category: "chat",
+          action: "chat.reasoning.completed",
+          status: "success",
+          title: reasoningLog.title,
+          summary: `captured ${reasoningText.length} reasoning characters`,
+          refs: {
+            runId,
+            sessionId,
+            model: currentModel,
+          },
+          payload: {
+            preview: cleanOneLine(reasoningText, 400),
+          },
+        });
       }
+
+      emitLlmStage(
+        "llm.response.final",
+        `final response streamed ${responseText.length} characters`,
+        finalResponseChunk ?? { model: currentModel, durationMs: Date.now() - runStartedAt },
+        {
+          messageCount: finalMessages.length,
+          reasoningChars: reasoningText.length,
+          responseChars: responseText.length,
+        },
+      );
 
       syncRunFromTools(
         toolLogsRef.current.some((log) => log.runId === runId && log.status === "error") ? "failed" : "success"
@@ -1546,29 +1867,73 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
         appendToolLogs([memoryLog]);
         syncRunFromTools("running");
 
-        void extractMemories(sessionId, currentModel, lastText.trim(), responseText.trim())
-          .then((result) => {
-            const memories = Array.isArray(result.memories) ? result.memories : [];
-            memoryLog.status = "complete";
-            memoryLog.durationMs = Date.now() - (memoryLog.timestamp || Date.now());
-            memoryLog.memory = memories[0] || null;
-            memoryLog.result = memories.length > 0
-              ? `${memories.length} autonomous ${memories.length === 1 ? "memory" : "memories"} saved`
-              : "no durable memory selected";
-            persistToolLogs();
-            syncRunFromTools(
-              toolLogsRef.current.some((log) => log.runId === runId && log.status === "error") ? "failed" : "success"
-            );
-            setActivityStatus("idle");
-          })
-          .catch((err) => {
-            memoryLog.status = "error";
-            memoryLog.durationMs = Date.now() - (memoryLog.timestamp || Date.now());
-            memoryLog.result = err instanceof Error ? err.message : "memory extraction failed";
-            persistToolLogs();
-            syncRunFromTools("failed");
-            setActivityStatus("idle");
+        try {
+          const result = await extractMemories(sessionId, currentModel, lastText.trim(), responseText.trim());
+          const memories = Array.isArray(result.memories) ? result.memories : [];
+          memoryLog.status = "complete";
+          memoryLog.durationMs = Date.now() - (memoryLog.timestamp || Date.now());
+          memoryLog.memory = memories[0] || null;
+          memoryLog.result = memories.length > 0
+            ? `${memories.length} autonomous ${memories.length === 1 ? "memory" : "memories"} saved`
+            : "no durable memory selected";
+          const usage = emitLlmStage(
+            "llm.memory.extract",
+            `memory extractor reviewed ${responseText.length} response characters`,
+            result?.usage || { model: currentModel, durationMs: memoryLog.durationMs },
+            {
+              memoryCount: memories.length,
+              memoryPreview: memories.slice(0, 3),
+            },
+          );
+          persistToolLogs();
+          emitAudit({
+            source: "client.chat",
+            category: "chat",
+            action: "chat.tool.completed",
+            status: "success",
+            title: "memory.extract",
+            summary: memoryLog.result,
+            refs: {
+              runId,
+              sessionId,
+              tool: "memory.extract",
+              mode: promptMode,
+            },
+            usage,
+            payload: {
+              memoryCount: memories.length,
+              preview: memories.slice(0, 3),
+            },
           });
+          syncRunFromTools(
+            toolLogsRef.current.some((log) => log.runId === runId && log.status === "error") ? "failed" : "success"
+          );
+          setActivityStatus("idle");
+        } catch (err) {
+          memoryLog.status = "error";
+          memoryLog.durationMs = Date.now() - (memoryLog.timestamp || Date.now());
+          memoryLog.result = err instanceof Error ? err.message : "memory extraction failed";
+          persistToolLogs();
+          emitAudit({
+            source: "client.chat",
+            category: "chat",
+            action: "chat.tool.failed",
+            status: "error",
+            title: "memory.extract",
+            summary: "memory extraction failed",
+            refs: {
+              runId,
+              sessionId,
+              tool: "memory.extract",
+              mode: promptMode,
+            },
+            payload: {
+              error: memoryLog.result,
+            },
+          });
+          syncRunFromTools("failed");
+          setActivityStatus("idle");
+        }
       } else {
         setActivityStatus("idle");
       }
@@ -1588,8 +1953,20 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
           ],
         };
       }
+
+      if (toolLogsRef.current.some((log) => log.runId === runId && log.status === "error")) {
+        emitRunFinished("failed", "chat.run.failed", "run completed with tool errors", {
+          responsePreview: cleanOneLine(responseText, 320),
+          reasoningChars: reasoningText.length,
+        });
+      } else {
+        emitRunFinished("success", "chat.run.completed", "run completed", {
+          responsePreview: cleanOneLine(responseText, 320),
+          reasoningChars: reasoningText.length,
+        });
+      }
     },
-  }), [appendReasoningLog, appendRunLog, appendToolLogs, persistReasoningLogs, persistToolLogs, sessionId, setChatMode, updateRunLog, updateSessionOptions]);
+  }), [appendReasoningLog, appendRunLog, appendToolLogs, persistReasoningLogs, persistToolLogs, sessionId, sessionName, setChatMode, updateRunLog, updateSessionOptions]);
 
   const dictationAdapter = useMemo(() => new PauseDictationAdapter({ lang: "en-US" }), []);
   const historyAdapter = useMemo(() => createLocalHistoryAdapter(historyKey(sessionId)), [sessionId]);

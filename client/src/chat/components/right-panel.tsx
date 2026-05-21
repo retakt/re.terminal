@@ -94,6 +94,11 @@ function durationText(ms?: number) {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 }
 
+function tokenText(total?: number) {
+  if (!total) return "0 tok";
+  return `${total.toLocaleString()} tok`;
+}
+
 export function ModelSection() {
   const {
     selectedModel,
@@ -596,6 +601,7 @@ function RunCard({
             <strong>{status}</strong>
             <span>{shortModelName(run.model)}</span>
             <span>{durationText(run.durationMs)}</span>
+            <span>{tokenText(run.usage?.totalTokens)}</span>
             <span>{logs.length || run.toolCount} tools</span>
             <span>{errorCount} errors</span>
           </span>
@@ -604,6 +610,26 @@ function RunCard({
       </button>
       {expanded && (
         <div className="run-card__details">
+          {(run.usage || (run.usageStages && run.usageStages.length > 0)) && (
+            <div className="run-reasoning-block">
+              <div className="run-reasoning-block__head">
+                <CpuIcon className="size-3 text-primary" />
+                <span>usage</span>
+                <em>{tokenText(run.usage?.totalTokens)}</em>
+              </div>
+              <pre>
+                {[
+                  `prompt=${run.usage?.promptTokens || 0}`,
+                  `completion=${run.usage?.completionTokens || 0}`,
+                  `total=${run.usage?.totalTokens || 0}`,
+                  "",
+                  ...(run.usageStages || []).map((stage) =>
+                    `${stage.stage || "stage"} :: total=${stage.totalTokens || 0} prompt=${stage.promptTokens || 0} completion=${stage.completionTokens || 0}${stage.durationMs ? ` duration=${stage.durationMs}ms` : ""}`,
+                  ),
+                ].join("\n")}
+              </pre>
+            </div>
+          )}
           {reasoning?.text && (
             <div className="run-reasoning-block">
               <div className="run-reasoning-block__head">

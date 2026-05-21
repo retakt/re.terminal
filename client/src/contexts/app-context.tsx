@@ -7,6 +7,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getBaseName, getViewerKind, type ProgramKind } from "@/lib/file-routing";
 import { generateUUID } from "@/chat/engine/config";
+import { emitAuditEvent, type AuditEventInput } from "@/lib/logs-api";
 
 export type PageType =
   | "terminal"
@@ -136,6 +137,7 @@ function loadActiveId(): string | null {
 const PROGRAM_TITLES: Record<ProgramKind, string> = {
   browser: "lightpanda",
   chat: "ai chat",
+  logs: "Logs",
   forum: "forum",
   community: "community",
   mcp: "mcp",
@@ -154,6 +156,41 @@ function filePageTitle(filePath: string, title?: string) {
   return title || getBaseName(filePath);
 }
 
+function pageAuditRefs(page: Page) {
+  return {
+    pageId: page.id,
+    pageType: page.type,
+    title: page.title,
+    pinned: !!page.pinned,
+    ...(page.type === "terminal" ? { sessionId: page.sessionId } : {}),
+    ...(page.type === "files" ? { dir: page.dir } : {}),
+    ...("filePath" in page ? { filePath: page.filePath } : {}),
+    ...(page.type !== "terminal" && page.type !== "files" && "sessionId" in page && page.sessionId ? { sessionId: page.sessionId } : {}),
+  };
+}
+
+function makePageAuditEvent(
+  page: Page,
+  action: string,
+  summary: string,
+  refs: Record<string, unknown> = {},
+  payload?: unknown,
+): AuditEventInput {
+  return {
+    source: "client.ui",
+    category: "ui",
+    action,
+    status: "success",
+    title: page.title || page.type,
+    summary,
+    refs: {
+      ...pageAuditRefs(page),
+      ...refs,
+    },
+    payload,
+  };
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -162,23 +199,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Callback injected by TerminalPage to kill PTY when terminal tab closes
   const onCloseTerminalRef = useRef<((sessionId: string) => void) | null>(null);
+  const pagesRef = useRef<Page[]>(pages);
+  const activePageIdRef = useRef<string | null>(activePageId);
+  const pendingAuditEventsRef = useRef<AuditEventInput[]>([]);
+
+  const queueAuditEvent = useCallback((event: AuditEventInput | AuditEventInput[]) => {
+    pendingAuditEventsRef.current.push(...(Array.isArray(event) ? event : [event]));
+  }, []);
 
   useEffect(() => {
+    pagesRef.current = pages;
+    activePageIdRef.current = activePageId;
     savePages(pages, activePageId);
   }, [pages, activePageId]);
+
+  useEffect(() => {
+    if (pendingAuditEventsRef.current.length === 0) return;
+    const events = pendingAuditEventsRef.current.splice(0, pendingAuditEventsRef.current.length);
+    const deduped = Array.from(new Map(
+      events.map((event) => [
+        `${event.action}|${event.title}|${event.summary}|${JSON.stringify(event.refs || {})}|${JSON.stringify(event.payload ?? null)}`,
+        event,
+      ]),
+    ).values());
+    void emitAuditEvent(deduped);
+  }, [activePageId, pages]);
 
   const openTerminal = useCallback((sessionId: string, title: string) => {
     setPages(prev => {
       const existing = prev.find(p => p.type === "terminal" && p.sessionId === sessionId);
       if (existing) {
+        if (activePageIdRef.current !== existing.id) {
+          queueAuditEvent(
+            makePageAuditEvent(existing, "page.switch", `switched to ${existing.title}`, { toPageId: existing.id }),
+          );
+        }
         setActivePageId(existing.id);
         return prev.map(p => p.id === existing.id && p.type === "terminal" && p.title !== title ? { ...p, title } : p);
       }
       const page: TerminalPage = { id: uid(), type: "terminal", sessionId, title };
+      queueAuditEvent([
+        makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+      ]);
       setActivePageId(page.id);
       return [...prev, page];
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const openFiles = useCallback((dir = "/") => {
     setPages(prev => {
@@ -189,15 +256,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         title: `files ${prev.filter(p => p.type === "files").length + 1}`,
         dir,
       };
+      queueAuditEvent([
+        makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+      ]);
       setActivePageId(page.id);
       return [...prev, page];
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const openEditor = useCallback((filePath: string, title?: string) => {
     setPages(prev => {
       const existing = prev.find(p => p.type === "editor" && p.filePath === filePath);
       if (existing) {
+        if (activePageIdRef.current !== existing.id) {
+          queueAuditEvent(
+            makePageAuditEvent(existing, "page.switch", `switched to ${existing.title}`, { toPageId: existing.id }),
+          );
+        }
         setActivePageId(existing.id);
         return prev;
       }
@@ -207,15 +283,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         filePath,
         title: filePageTitle(filePath, title),
       };
+      queueAuditEvent([
+        makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+      ]);
       setActivePageId(page.id);
       return [...prev, page];
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const openImage = useCallback((filePath: string, title?: string) => {
     setPages(prev => {
       const existing = prev.find(p => p.type === "image" && p.filePath === filePath);
       if (existing) {
+        if (activePageIdRef.current !== existing.id) {
+          queueAuditEvent(
+            makePageAuditEvent(existing, "page.switch", `switched to ${existing.title}`, { toPageId: existing.id }),
+          );
+        }
         setActivePageId(existing.id);
         return prev;
       }
@@ -225,15 +310,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         filePath,
         title: viewerTitle(filePath, title),
       };
+      queueAuditEvent([
+        makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+      ]);
       setActivePageId(page.id);
       return [...prev, page];
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const openPdf = useCallback((filePath: string, title?: string) => {
     setPages(prev => {
       const existing = prev.find(p => p.type === "pdf" && p.filePath === filePath);
       if (existing) {
+        if (activePageIdRef.current !== existing.id) {
+          queueAuditEvent(
+            makePageAuditEvent(existing, "page.switch", `switched to ${existing.title}`, { toPageId: existing.id }),
+          );
+        }
         setActivePageId(existing.id);
         return prev;
       }
@@ -243,15 +337,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         filePath,
         title: viewerTitle(filePath, title),
       };
+      queueAuditEvent([
+        makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+      ]);
       setActivePageId(page.id);
       return [...prev, page];
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const openSpreadsheet = useCallback((filePath: string, title?: string) => {
     setPages(prev => {
       const existing = prev.find(p => p.type === "spreadsheet" && p.filePath === filePath);
       if (existing) {
+        if (activePageIdRef.current !== existing.id) {
+          queueAuditEvent(
+            makePageAuditEvent(existing, "page.switch", `switched to ${existing.title}`, { toPageId: existing.id }),
+          );
+        }
         setActivePageId(existing.id);
         return prev;
       }
@@ -261,15 +364,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         filePath,
         title: viewerTitle(filePath, title),
       };
+      queueAuditEvent([
+        makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+      ]);
       setActivePageId(page.id);
       return [...prev, page];
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const openDoc = useCallback((filePath: string, title?: string) => {
     setPages(prev => {
       const existing = prev.find(p => p.type === "doc" && p.filePath === filePath);
       if (existing) {
+        if (activePageIdRef.current !== existing.id) {
+          queueAuditEvent(
+            makePageAuditEvent(existing, "page.switch", `switched to ${existing.title}`, { toPageId: existing.id }),
+          );
+        }
         setActivePageId(existing.id);
         return prev;
       }
@@ -279,10 +391,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         filePath,
         title: viewerTitle(filePath, title),
       };
+      queueAuditEvent([
+        makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+      ]);
       setActivePageId(page.id);
       return [...prev, page];
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const openProgram = useCallback((kind: ProgramKind, title?: string) => {
     setPages(prev => {
@@ -296,12 +412,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           sessionId,
           title: title || `ai chat ${chatCount + 1}`,
         };
+        queueAuditEvent([
+          makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+          makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+        ]);
         setActivePageId(page.id);
         return [...prev, page];
       }
 
       const existing = prev.find(p => p.type === kind);
       if (existing) {
+        if (activePageIdRef.current !== existing.id) {
+          queueAuditEvent(
+            makePageAuditEvent(existing, "page.switch", `switched to ${existing.title}`, { toPageId: existing.id }),
+          );
+        }
         setActivePageId(existing.id);
         return prev;
       }
@@ -310,10 +435,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         type: kind,
         title: title || PROGRAM_TITLES[kind],
       };
+      queueAuditEvent([
+        makePageAuditEvent(page, "page.open", `opened ${page.title}`),
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, { toPageId: page.id }),
+      ]);
       setActivePageId(page.id);
       return [...prev, page];
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const openPath = useCallback((filePath: string) => {
     const kind = getViewerKind(filePath);
@@ -340,12 +469,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const closePage = useCallback((id: string) => {
     setPages(prev => {
       const page = prev.find(p => p.id === id);
+      if (!page) return prev;
       // If closing a terminal tab, kill the PTY on the server
-      if (page?.type === "terminal") {
+      if (page.type === "terminal") {
         onCloseTerminalRef.current?.(page.sessionId);
       }
       const idx = prev.findIndex(p => p.id === id);
       const next = prev.filter(p => p.id !== id);
+      const fallbackNextId = activePageIdRef.current === id && next.length > 0
+        ? next[Math.min(idx, next.length - 1)]?.id || null
+        : activePageIdRef.current;
+      const fallbackNextPage = fallbackNextId ? next.find(p => p.id === fallbackNextId) || null : null;
+      queueAuditEvent(makePageAuditEvent(page, "page.close", `closed ${page.title}`));
+      if (activePageIdRef.current === id && fallbackNextPage) {
+        queueAuditEvent(
+          makePageAuditEvent(fallbackNextPage, "page.switch", `switched to ${fallbackNextPage.title}`, {
+            toPageId: fallbackNextPage.id,
+            fromPageId: id,
+          }),
+        );
+      }
       setActivePageId(cur => {
         if (cur !== id) return cur;
         if (next.length === 0) return null;
@@ -353,17 +496,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
       return next;
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const switchPage = useCallback((id: string) => {
+    const page = pagesRef.current.find(entry => entry.id === id);
+    if (page && activePageIdRef.current !== id) {
+      queueAuditEvent(
+        makePageAuditEvent(page, "page.switch", `switched to ${page.title}`, {
+          fromPageId: activePageIdRef.current,
+          toPageId: id,
+        }),
+      );
+    }
     setActivePageId(id);
-  }, []);
+  }, [queueAuditEvent]);
 
   const renamePage = useCallback((id: string, title: string) => {
     const clean = title.trim().slice(0, 80);
     if (!clean) return;
-    setPages(prev => prev.map(p => p.id === id ? { ...p, title: clean } as Page : p));
-  }, []);
+    setPages(prev => prev.map(p => {
+      if (p.id !== id || p.title === clean) return p;
+      queueAuditEvent(
+        makePageAuditEvent(p, "page.rename", `renamed ${p.title} to ${clean}`, { previousTitle: p.title, nextTitle: clean }),
+      );
+      return { ...p, title: clean } as Page;
+    }));
+  }, [queueAuditEvent]);
 
   const reorderPage = useCallback((sourceId: string, targetId: string, placement: "before" | "after" = "before") => {
     if (!sourceId || !targetId || sourceId === targetId) return;
@@ -371,18 +529,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const sourceIndex = prev.findIndex(p => p.id === sourceId);
       const targetIndex = prev.findIndex(p => p.id === targetId);
       if (sourceIndex < 0 || targetIndex < 0) return prev;
+      const sourcePage = prev[sourceIndex];
+      const targetPage = prev[targetIndex];
       const next = [...prev];
       const [source] = next.splice(sourceIndex, 1);
       const targetAfterRemoval = next.findIndex(p => p.id === targetId);
       const insertAt = placement === "after" ? targetAfterRemoval + 1 : targetAfterRemoval;
       next.splice(Math.max(0, Math.min(insertAt, next.length)), 0, source);
+      queueAuditEvent(
+        makePageAuditEvent(sourcePage, "page.reorder", `moved ${sourcePage.title} ${placement} ${targetPage.title}`, {
+          targetPageId: targetPage.id,
+          targetTitle: targetPage.title,
+          placement,
+          order: next.map(page => ({ id: page.id, title: page.title, type: page.type })),
+        }),
+      );
       return next;
     });
-  }, []);
+  }, [queueAuditEvent]);
 
   const togglePagePin = useCallback((id: string) => {
-    setPages(prev => prev.map(p => p.id === id ? { ...p, pinned: !p.pinned } as Page : p));
-  }, []);
+    setPages(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      const nextPinned = !p.pinned;
+      queueAuditEvent(
+        makePageAuditEvent(p, "page.pin", nextPinned ? `pinned ${p.title}` : `unpinned ${p.title}`, {
+          pinned: nextPinned,
+        }),
+      );
+      return { ...p, pinned: nextPinned } as Page;
+    }));
+  }, [queueAuditEvent]);
 
   const updateDir = useCallback((id: string, dir: string) => {
     setPages(prev => prev.map(p =>

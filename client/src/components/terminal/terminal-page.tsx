@@ -27,6 +27,7 @@ import { SpreadsheetViewer } from "@/components/viewers/spreadsheet/spreadsheet-
 import { DocViewer } from "@/components/viewers/doc/doc-viewer";
 import { BrowserShell } from "@/components/programs/browser/browser-shell";
 import { ChatShell } from "@/components/programs/chat/chat-shell";
+import { LogsShell } from "@/components/programs/logs/logs-shell";
 import { ForumShell } from "@/components/programs/forum/forum-shell";
 import { CommunityShell } from "@/components/programs/community/community-shell";
 import { McpShell } from "@/components/programs/tools/mcp-shell";
@@ -42,7 +43,7 @@ import {
   Plus, X, Terminal, FolderOpen,
   WifiOff, Loader2, ChevronRight, Settings,
   GitBranch, Bell, Moon, Sun, Globe, MessageSquare, Users, Image as ImageIcon,
-  Blocks, Puzzle, Package, SquareTerminal, FlaskConical, Network, Search, ClipboardCheck, RotateCw, Stethoscope,
+  Blocks, Puzzle, Package, SquareTerminal, FlaskConical, Network, Search, ClipboardCheck, RotateCw, Stethoscope, ScrollText,
   Server, Pin, PinOff, Check
 } from "lucide-react";
 
@@ -53,6 +54,7 @@ const PRIMARY_TAB_TYPES = new Set<Page["type"]>([
   "image",
   "browser",
   "chat",
+  "logs",
   "forum",
   "community",
   "mcp",
@@ -483,6 +485,7 @@ function PrimaryTabBar() {
               {page.type === "image" && <ImageIcon size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               {page.type === "browser" && <Globe size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               {page.type === "chat" && <MessageSquare size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
+              {page.type === "logs" && <ScrollText size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               {page.type === "forum" && <MessageSquare size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               {page.type === "community" && <Users size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
               {page.type === "mcp" && <Blocks size={13} strokeWidth={1.9} className="reterm-tab-icon" />}
@@ -592,6 +595,14 @@ function PrimaryTabBar() {
         title="open file explorer"
       >
         <FolderOpen size={14} strokeWidth={1.9} />
+      </button>
+
+      <button
+        className="reterm-tab-new"
+        onClick={() => openProgram("logs")}
+        title="open logs"
+      >
+        <ScrollText size={14} strokeWidth={1.9} />
       </button>
 
       <button
@@ -829,6 +840,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
     { id: "mcp", label: "Open MCP page", hint: "servers, tools, logs", icon: Blocks, run: () => openProgram("mcp") },
     { id: "extensions", label: "Open extensions page", hint: "catalog and imports", icon: Puzzle, run: () => openProgram("extensions") },
     { id: "chat", label: "Open AI chat", hint: "agent console", icon: MessageSquare, run: () => openProgram("chat") },
+    { id: "logs", label: "Open Logs page", hint: "live audit trail", icon: ScrollText, run: () => openProgram("logs") },
     { id: "browser", label: "Open Lightpanda browser", hint: "shared AI/browser inspector", icon: Globe, run: () => openProgram("browser") },
     { id: "terminal", label: "Open terminal", hint: "new shell session", icon: Terminal, run: () => createSession(`terminal ${Date.now()}`) },
     { id: "clear-activity", label: "Clear activity", hint: "run inspector logs", icon: ClipboardCheck, run: () => clearStoredActivity() },
@@ -910,6 +922,7 @@ function PageContent({ page, isActive }: { page: Page; isActive: boolean }) {
   if (page.type === "doc")       return <DocViewer filePath={page.filePath} />;
   if (page.type === "browser")   return <BrowserShell isActive={isActive} />;
   if (page.type === "chat")      return <ChatShell isActive={isActive} />;
+  if (page.type === "logs")      return <LogsShell isActive={isActive} />;
   if (page.type === "forum")     return <ForumShell />;
   if (page.type === "community") return <CommunityShell />;
   if (page.type === "mcp")       return <McpShell isActive={isActive} />;

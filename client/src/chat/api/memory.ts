@@ -1,3 +1,5 @@
+import type { AuditUsage } from "@/lib/logs-api";
+
 const API_BASE = window.location.origin;
 
 export type MemoryType = "command" | "error" | "fix" | "preference" | "fact";
@@ -89,13 +91,13 @@ export async function extractMemories(
   model: string,
   userMessage: string,
   assistantMessage: string,
-): Promise<{ success?: boolean; memories?: MemoryRecord[]; error?: string }> {
+): Promise<{ success?: boolean; memories?: MemoryRecord[]; usage?: AuditUsage | null; error?: string }> {
   const res = await fetch(`${API_BASE}/api/memory/extract`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ projectId, model, userMessage, assistantMessage })
   });
-  return readJson<{ success?: boolean; memories?: MemoryRecord[]; error?: string }>(res);
+  return readJson<{ success?: boolean; memories?: MemoryRecord[]; usage?: AuditUsage | null; error?: string }>(res);
 }
 
 export async function searchMemory(projectId: string, query: string): Promise<MemoryRecord[]> {

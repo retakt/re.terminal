@@ -1,4 +1,7 @@
 import {
+  chromeCdpUrl,
+  ensureChromeCdpBrowser,
+  hasChromeBrowser,
   lightpandaClickBySelector,
   lightpandaClickByText,
   lightpandaFillAndSubmit,
@@ -80,7 +83,9 @@ function engineNameFromEnv() {
 
 function chromeCdpConfigured() {
   const requested = engineNameFromEnv();
-  return requested === "chrome" || Boolean(process.env.CHROME_CDP_URL || process.env.BROWSER_CDP_URL);
+  return requested === "chrome" ||
+    Boolean(process.env.CHROME_CDP_URL || process.env.BROWSER_CHROME_CDP_URL) ||
+    hasChromeBrowser();
 }
 
 function configuredEnginePriority(mode = "browser") {
@@ -125,7 +130,7 @@ function configuredEnginePriority(mode = "browser") {
 
 function cdpUrlForEngine(engine) {
   if (engine === "chrome_cdp") {
-    return String(process.env.CHROME_CDP_URL || process.env.BROWSER_CDP_URL || DEFAULT_CDP_URL).trim();
+    return chromeCdpUrl();
   }
   if (engine === "lightpanda_cdp") {
     return String(process.env.LIGHTPANDA_CDP_URL || process.env.BROWSER_CDP_URL || DEFAULT_CDP_URL).trim();
@@ -153,6 +158,21 @@ async function cdpEngineHealth(engine) {
   const cdpUrl = cdpUrlForEngine(engine);
   if (!cdpUrl) {
     return { ok: false, engine, status: "down", error: "No CDP URL configured." };
+  }
+
+  if (engine === "chrome_cdp") {
+    const chrome = await ensureChromeCdpBrowser({
+      timeoutMs: Number(process.env.BROWSER_CHROME_START_TIMEOUT_MS || 9000),
+    });
+    if (!chrome.ok) {
+      return {
+        ok: false,
+        engine,
+        status: "down",
+        error: chrome.error || "Chrome CDP fallback is unavailable.",
+        cdpUrl: chrome.cdpUrl || cdpUrl,
+      };
+    }
   }
 
   const status = await lightpandaStatus({
@@ -278,6 +298,7 @@ function normalizeObservation(result = {}, context = {}) {
 export function isValidObservation(observation = {}) {
   const url = String(observation.url || "").trim();
   const requestedUrl = String(observation.requestedUrl || "").trim();
+  const text = safeText(`${observation.title || ""} ${observation.textPreview || observation.text || ""}`, 7000);
   const hasUrl = isHttpUrl(url) || (observation.navigationVerified && isHttpUrl(requestedUrl));
   const aboutBlank = !url || /^about:blank$/i.test(url) || /^about:blank$/i.test(requestedUrl);
   const dataCount =
@@ -302,8 +323,16 @@ export function isValidObservation(observation = {}) {
     !observation.buttons?.length &&
     !observation.forms?.length &&
     !observation.interactiveElements?.length;
+  const loadingFailedTextOnly =
+    /\bloading failed\b/i.test(text) &&
+    /\b(retry|please try again)\b/i.test(text);
+  const transientLoadingTextOnly =
+    !observation.inputs?.length &&
+    !observation.forms?.length &&
+    /(?:^|\s)--\s*\d{1,3}\s*%\s*--(?:\s|$)|\b(loading|please wait|initializing)\b/i.test(text) &&
+    safeText(text, 1000).length < 500;
 
-  return Boolean(hasUrl && !aboutBlank && hasReadableData && !fatalTextOnly);
+  return Boolean(hasUrl && !aboutBlank && hasReadableData && !fatalTextOnly && !loadingFailedTextOnly && !transientLoadingTextOnly);
 }
 
 function resultPreview(observation = {}) {
@@ -318,12 +347,18 @@ function resultPreview(observation = {}) {
 }
 
 function attemptFromResult(engine, result = {}, valid = false) {
+  const observationText = safeText(`${result.observation?.title || ""} ${result.observation?.textPreview || ""}`, 1000);
+  const inferredError = /\bloading failed\b/i.test(observationText)
+    ? "Page reported loading failed. The runtime should retry or use a browser engine that can complete the page load."
+    : /(?:^|\s)--\s*\d{1,3}\s*%\s*--(?:\s|$)|\b(loading|please wait|initializing)\b/i.test(observationText)
+    ? "Page was still showing a transient loading/progress screen when the browser snapshot was taken."
+    : "";
   return {
     engine,
     ok: Boolean(result.ok),
     valid: Boolean(valid),
     status: result.status || (valid ? "success" : "invalid_observation"),
-    error: result.error || result.observation?.error || result.observation?.snapshotError || result.mismatch || "",
+    error: result.error || result.observation?.error || result.observation?.snapshotError || result.mismatch || inferredError || "",
     requestedUrl: result.requestedUrl || result.observation?.requestedUrl || "",
     currentUrl: result.observation?.url || "",
   };
@@ -376,13 +411,20 @@ function successResponse(action, result, attempts, extra = {}) {
 
 function failedResponse(action, attempts, extra = {}) {
   const last = [...attempts].reverse().find((attempt) => attempt.currentUrl || attempt.error) || attempts[attempts.length - 1] || {};
+  const loadingFailure = attempts.find((attempt) => /\bloading failed\b/i.test(attempt.error || ""))?.error || "";
+  const attemptErrors = attempts
+    .filter((attempt) => attempt.error)
+    .map((attempt) => `${attempt.engine}: ${attempt.error}`)
+    .slice(0, 4)
+    .join("; ");
+  const baseError = loadingFailure || extra.error || last.error || "Browser observation failed.";
   return {
     ok: false,
     status: "failed",
     action,
     engine: last.engine || "",
     requestedUrl: extra.requestedUrl || last.requestedUrl || "",
-    currentUrl: "",
+    currentUrl: extra.currentUrl || last.currentUrl || "",
     currentTitle: "",
     observation: extra.observation || null,
     attempts,
@@ -396,8 +438,10 @@ function failedResponse(action, attempts, extra = {}) {
       requestedUrl: attempt.requestedUrl || "",
       currentUrl: attempt.currentUrl || "",
     })),
-    error: extra.error || last.error || "Browser observation failed.",
     ...extra,
+    error: attemptErrors && !baseError.includes(attemptErrors)
+      ? `${baseError} (${attemptErrors})`
+      : baseError,
   };
 }
 
@@ -421,6 +465,9 @@ async function observeWithCdpEngine(engine, args = {}) {
       ? { url: requestedUrl, navigate: args.navigate !== false }
       : { currentUrl: requestedUrl }),
     waitMs: args.waitMs || "900",
+    pageSettleMs: args.pageSettleMs,
+    pageSettlePollMs: args.pageSettlePollMs,
+    freshTarget: engine === "chrome_cdp" && args.navigate !== false,
     cdpUrl: cdpUrlForEngine(engine),
     engineName: engine,
   });

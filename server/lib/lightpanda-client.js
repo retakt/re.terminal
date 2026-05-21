@@ -6,6 +6,7 @@ import { spawn } from "child_process";
 
 const DEFAULT_CDP_URL = "ws://127.0.0.1:9222";
 const DEFAULT_TIMEOUT_MS = 12000;
+const DEFAULT_PAGE_SETTLE_TIMEOUT_MS = 45000;
 
 function cdpUrl(options = {}) {
   return String(options.cdpUrl || process.env.BROWSER_CDP_URL || process.env.CHROME_CDP_URL || process.env.LIGHTPANDA_CDP_URL || DEFAULT_CDP_URL).trim();
@@ -81,6 +82,88 @@ function chromeExecutable() {
   return candidates.find((entry) => fs.existsSync(entry));
 }
 
+export function hasChromeBrowser() {
+  return Boolean(chromeExecutable());
+}
+
+export function chromeCdpUrl() {
+  const explicit = String(process.env.CHROME_CDP_URL || process.env.BROWSER_CHROME_CDP_URL || "").trim();
+  if (explicit) return explicit;
+  const port = Number(process.env.BROWSER_CHROME_CDP_PORT || process.env.CHROME_CDP_PORT || 9223);
+  return `ws://127.0.0.1:${port}`;
+}
+
+async function waitForCdpVersion(rawUrl, timeoutMs = 7000) {
+  const versionUrl = httpVersionUrlFromCdp(rawUrl);
+  if (!versionUrl) return false;
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    try {
+      const response = await fetch(versionUrl, { signal: AbortSignal.timeout(1200) });
+      if (response.ok) return true;
+    } catch {}
+    await wait(250);
+  }
+  return false;
+}
+
+export async function ensureChromeCdpBrowser(args = {}) {
+  const url = normalizeUrl(args.url || "about:blank");
+  const executable = chromeExecutable();
+  if (!executable) {
+    return { ok: false, error: "Chrome executable was not found.", cdpUrl: chromeCdpUrl() };
+  }
+
+  const cdp = chromeCdpUrl();
+  if (await waitForCdpVersion(cdp, 500)) {
+    return { ok: true, status: "ready", cdpUrl: cdp, existing: true };
+  }
+
+  let port = 9223;
+  try {
+    port = Number(new URL(cdp).port || 9223);
+  } catch {}
+
+  const userDataDir = process.env.CHROME_USER_DATA_DIR || path.join(os.tmpdir(), "reterm-chrome-cdp");
+  fs.mkdirSync(userDataDir, { recursive: true });
+
+  const headless = args.headless !== false && !envVisibleChrome();
+  const chromeArgs = [
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${userDataDir}`,
+    "--remote-allow-origins=*",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-background-networking",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--no-sandbox",
+    ...(headless ? ["--headless=new"] : []),
+    url,
+  ];
+
+  const child = spawn(executable, chromeArgs, {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: headless,
+  });
+  child.unref();
+
+  const ready = await waitForCdpVersion(cdp, Number(args.timeoutMs || 9000));
+  return {
+    ok: ready,
+    status: ready ? "started" : "start_timeout",
+    cdpUrl: cdp,
+    pid: child.pid,
+    headless,
+    error: ready ? "" : "Chrome CDP did not become ready in time.",
+  };
+}
+
+function envVisibleChrome() {
+  return ["1", "true", "yes", "on"].includes(String(process.env.BROWSER_CHROME_VISIBLE || "").trim().toLowerCase());
+}
+
 function normalizeUrl(input = "") {
   const raw = String(input || "").trim();
   if (!raw) throw new Error("browser url is required");
@@ -108,6 +191,64 @@ function safeText(value, limit = 16000) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function clampNumber(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(number, max));
+}
+
+function snapshotCounts(snapshot = {}) {
+  const stats = snapshot.stats || {};
+  return {
+    links: Array.isArray(snapshot.links) ? snapshot.links.length : Number(stats.links || 0),
+    buttons: Array.isArray(snapshot.buttons) ? snapshot.buttons.length : Number(stats.buttons || 0),
+    inputs: Array.isArray(snapshot.inputs) ? snapshot.inputs.length : Number(stats.inputs || 0),
+    forms: Array.isArray(snapshot.forms) ? snapshot.forms.length : Number(stats.forms || 0),
+    interactiveElements: Array.isArray(snapshot.interactiveElements) ? snapshot.interactiveElements.length : 0,
+  };
+}
+
+function isTransientLoadingSnapshot(snapshot = {}) {
+  const text = String(snapshot.textPreview || snapshot.text || "").replace(/\s+/g, " ").trim();
+  const title = String(snapshot.title || "").trim();
+  const counts = snapshotCounts(snapshot);
+  const hasFormControl = counts.inputs > 0 || counts.forms > 0;
+  const progressOnly = /(?:^|\s)--\s*\d{1,3}\s*%\s*--(?:\s|$)/i.test(text);
+  const retryLoading = /\bloading failed\b/i.test(text) && /\b(retry|please try again)\b/i.test(text);
+  const genericLoading = /\b(loading|please wait|initializing)\b/i.test(text) && !hasFormControl && text.length < 500;
+  return Boolean(!hasFormControl && (progressOnly || retryLoading || genericLoading || (!title && text.length > 0 && text.length < 120 && counts.buttons <= 1)));
+}
+
+function isUsefulSettledSnapshot(snapshot = {}) {
+  const text = String(snapshot.textPreview || snapshot.text || "").replace(/\s+/g, " ").trim();
+  const title = String(snapshot.title || "").trim();
+  const counts = snapshotCounts(snapshot);
+  if (isTransientLoadingSnapshot(snapshot)) return false;
+  if (counts.inputs > 0 || counts.forms > 0) return true;
+  if (counts.buttons > 1 || counts.links > 1 || counts.interactiveElements > 2) return true;
+  return Boolean(title && text.length > 40);
+}
+
+function betterSnapshot(left = {}, right = {}) {
+  const leftCounts = snapshotCounts(left);
+  const rightCounts = snapshotCounts(right);
+  const leftScore =
+    (left.title ? 20 : 0) +
+    String(left.textPreview || left.text || "").length +
+    leftCounts.inputs * 120 +
+    leftCounts.forms * 160 +
+    leftCounts.buttons * 40 +
+    leftCounts.links * 20;
+  const rightScore =
+    (right.title ? 20 : 0) +
+    String(right.textPreview || right.text || "").length +
+    rightCounts.inputs * 120 +
+    rightCounts.forms * 160 +
+    rightCounts.buttons * 40 +
+    rightCounts.links * 20;
+  return leftScore >= rightScore ? left : right;
 }
 
 
@@ -744,6 +885,86 @@ async function evaluateSemanticSnapshot(session, sid) {
   return evaluated?.result?.value || {};
 }
 
+async function capturePageSnapshot(session, sid) {
+  let snapshot;
+  let snapshotError = "";
+
+  try {
+    snapshot = await evaluateSemanticSnapshot(session, sid);
+  } catch (err) {
+    snapshotError = err instanceof Error ? err.message : String(err);
+    snapshot = await evaluateBasicSnapshot(session, sid);
+  }
+
+  if (!snapshot?.url && !snapshot?.title && !snapshot?.text && !snapshot?.links?.length && !snapshot?.buttons?.length) {
+    const basic = await evaluateBasicSnapshot(session, sid);
+    if (basic?.url || basic?.title || basic?.text || basic?.links?.length || basic?.buttons?.length) {
+      snapshot = basic;
+      snapshotError = snapshotError || "semantic snapshot returned no observable page data";
+    }
+  }
+
+  return { snapshot: snapshot || {}, snapshotError };
+}
+
+async function waitForSettledPageSnapshot(session, sid, args = {}) {
+  const settleTimeoutMs = clampNumber(args.pageSettleMs || args.settleMs || process.env.BROWSER_PAGE_SETTLE_MS, DEFAULT_PAGE_SETTLE_TIMEOUT_MS, 1000, 90000);
+  const pollMs = clampNumber(args.pageSettlePollMs || process.env.BROWSER_PAGE_SETTLE_POLL_MS, 1500, 300, 5000);
+  const startedAt = Date.now();
+  let best = {};
+  let bestError = "";
+  let attempts = 0;
+
+  while (Date.now() - startedAt <= settleTimeoutMs) {
+    attempts += 1;
+    const { snapshot, snapshotError } = await capturePageSnapshot(session, sid);
+    best = betterSnapshot(snapshot || {}, best || {});
+    bestError = snapshotError || bestError;
+
+    if (isUsefulSettledSnapshot(snapshot)) {
+      return {
+        page: {
+          ...snapshot,
+          settle: {
+            status: "settled",
+            attempts,
+            elapsedMs: Date.now() - startedAt,
+          },
+        },
+        snapshotError,
+      };
+    }
+
+    if (!isTransientLoadingSnapshot(snapshot)) {
+      return {
+        page: {
+          ...snapshot,
+          settle: {
+            status: "stable_without_controls",
+            attempts,
+            elapsedMs: Date.now() - startedAt,
+          },
+        },
+        snapshotError,
+      };
+    }
+
+    await wait(pollMs);
+  }
+
+  return {
+    page: {
+      ...best,
+      settle: {
+        status: "timeout_transient_loading",
+        attempts,
+        elapsedMs: Date.now() - startedAt,
+      },
+    },
+    snapshotError: bestError,
+  };
+}
+
 async function openPageTarget(session, url, waitMs) {
   const target = await session.call("Target.createTarget", { url: "about:blank" });
   const targetId = target?.targetId;
@@ -764,6 +985,7 @@ async function attachToCurrentPageTarget(session, args = {}) {
   const waitMs = Math.max(150, Math.min(Number(args.waitMs || 900), 8000));
   const requestedUrl = normalizeOptionalUrl(args.url || args.currentUrl || "");
   let shouldNavigate = Boolean(args.navigate && requestedUrl);
+  const freshTarget = Boolean(args.freshTarget && requestedUrl);
   const targets = await session.call("Target.getTargets", {}).catch(() => ({ targetInfos: [] }));
   const pages = Array.isArray(targets?.targetInfos)
     ? targets.targetInfos.filter((target) => target.type === "page")
@@ -772,13 +994,13 @@ async function attachToCurrentPageTarget(session, args = {}) {
   const normalizedRequested = requestedUrl.toLowerCase().replace(/\/+$/, "");
   let selected = null;
 
-  if (normalizedRequested) {
+  if (normalizedRequested && !freshTarget) {
     selected = pages.find((target) =>
       String(target.url || "").toLowerCase().replace(/\/+$/, "") === normalizedRequested
     ) || null;
   }
 
-  if (!selected) {
+  if (!selected && !freshTarget) {
     selected = pages.find((target) =>
       /^https?:\/\//i.test(String(target.url || "")) && !/devtools/i.test(String(target.url || ""))
     ) || pages.find((target) =>
@@ -793,6 +1015,7 @@ async function attachToCurrentPageTarget(session, args = {}) {
     const target = await session.call("Target.createTarget", { url: requestedUrl || "about:blank" });
     targetId = target?.targetId || "";
     created = true;
+    shouldNavigate = Boolean(requestedUrl);
   }
 
   const selectedUrl = String(selected?.url || "").trim();
@@ -859,6 +1082,23 @@ async function fillPageFields(session, sid, fields) {
   const expression = `(() => {
     const fields = ${JSON.stringify(safeFields)};
     const pick = (value) => String(value || "").replace(/\\s+/g, " ").trim().toLowerCase();
+    const hasPasswordField = fields.some((field) => /\\b(password|pass|pwd)\\b/i.test([field.label, field.name, field.id, field.placeholder, field.type].filter(Boolean).join(" ")) || field.secret);
+    const passwordInputLooksLikeCode = () => {
+      const input = document.querySelector("input[type='password'], input#password");
+      if (!input) return false;
+      const text = pick([input.getAttribute("placeholder"), input.getAttribute("aria-label"), input.getAttribute("name"), input.getAttribute("id")].join(" "));
+      return /\\b(google|otp|code|verification|auth|token|pin)\\b/i.test(text) || /验证码|认证码/.test(text);
+    };
+    if (hasPasswordField && passwordInputLooksLikeCode()) {
+      const switches = Array.from(document.querySelectorAll("button[role='switch'], button.ant-switch, [role='switch']"));
+      const passwordSwitch = switches.find((entry) => {
+        const text = pick(entry.innerText || entry.textContent || entry.getAttribute("aria-label") || entry.className);
+        return entry.getAttribute("aria-checked") !== "true" || /\\b(pw|password|pass)\\b/i.test(text) || /密码/.test(text);
+      });
+      if (passwordSwitch) {
+        passwordSwitch.click();
+      }
+    }
 
     const labelTextFor = (el) => {
       const id = el.getAttribute("id");
@@ -882,12 +1122,21 @@ async function fillPageFields(session, sid, fields) {
         labelTextFor(el)
       ].join(" "));
 
-      const needles = [
+      const baseNeedles = [
         field.name,
         field.id,
         field.label,
         field.placeholder
       ].map(pick).filter(Boolean);
+      const aliases = [];
+      for (const needle of baseNeedles) {
+        if (/\\b(user name|username|user id|login id|employee id|employee|staff id|operator)\\b/i.test(needle)) {
+          aliases.push("user", "username", "login", "operator", "operatorname", "account", "employee", "employee id", "staff");
+        }
+        if (/\\b(password|pass|pwd)\\b/i.test(needle)) aliases.push("password", "pass", "pwd");
+        if (/\\b(email|e mail)\\b/i.test(needle)) aliases.push("email", "e-mail");
+      }
+      const needles = Array.from(new Set([...baseNeedles, ...aliases.map(pick).filter(Boolean)]));
 
       if (!needles.length) return false;
       return needles.some((needle) => haystack.includes(needle));
@@ -896,6 +1145,19 @@ async function fillPageFields(session, sid, fields) {
     const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     const filled = [];
     const missing = [];
+    const setElementValue = (el, value) => {
+      const proto = el.tagName.toLowerCase() === "textarea"
+        ? HTMLTextAreaElement.prototype
+        : el.tagName.toLowerCase() === "select"
+          ? HTMLSelectElement.prototype
+          : HTMLInputElement.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
+      if (descriptor && descriptor.set) descriptor.set.call(el, value);
+      else el.value = value;
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      el.dispatchEvent(new Event("blur", { bubbles: true }));
+    };
 
     for (const field of fields) {
       let el = null;
@@ -922,14 +1184,10 @@ async function fillPageFields(session, sid, fields) {
         const option = Array.from(el.options || []).find((entry) =>
           pick(entry.value) === pick(value) || pick(entry.textContent) === pick(value)
         );
-        if (option) el.value = option.value;
-        else el.value = value;
+        setElementValue(el, option ? option.value : value);
       } else {
-        el.value = value;
+        setElementValue(el, value);
       }
-
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
 
       const type = String(el.getAttribute("type") || el.tagName.toLowerCase()).toLowerCase();
       const secret = type === "password" || Boolean(field.secret) || /\\b(password|pass|pwd|otp|code|pin)\\b/i.test(String(field.label || field.name || field.id || ""));
@@ -941,7 +1199,7 @@ async function fillPageFields(session, sid, fields) {
       });
     }
 
-    return { ok: true, filled, missing };
+    return { ok: missing.length === 0, filled, missing };
   })()`;
 
   const evaluated = await session.call("Runtime.evaluate", {
@@ -1047,8 +1305,9 @@ async function submitPageForm(session, sid, args = {}) {
       return { ok: true, submitted: "button", text: pick(submitButton.innerText || submitButton.textContent || submitButton.value) };
     }
 
+    const formButtons = Array.from(form.querySelectorAll("button, input[type='submit'], input[type='button']"));
     if (payload.buttonText) {
-      const button = Array.from(form.querySelectorAll("button, input[type='submit'], input[type='button']")).find((entry) => {
+      const button = formButtons.find((entry) => {
         const text = pick(entry.innerText || entry.textContent || entry.value || entry.getAttribute("aria-label")).toLowerCase();
         return text.includes(payload.buttonText.toLowerCase());
       });
@@ -1056,6 +1315,15 @@ async function submitPageForm(session, sid, args = {}) {
         button.click();
         return { ok: true, submitted: "form-button", text: pick(button.innerText || button.textContent || button.value) };
       }
+    }
+
+    const defaultButton = formButtons.find((entry) => {
+      const type = String(entry.getAttribute("type") || "").toLowerCase();
+      return !type || type === "submit";
+    });
+    if (defaultButton) {
+      defaultButton.click();
+      return { ok: true, submitted: "form-button", text: pick(defaultButton.innerText || defaultButton.textContent || defaultButton.value) };
     }
 
     if (typeof form.requestSubmit === "function") form.requestSubmit();
@@ -1070,22 +1338,17 @@ async function submitPageForm(session, sid, args = {}) {
     awaitPromise: true,
   }, DEFAULT_TIMEOUT_MS, sid);
 
-  await Promise.race([session.waitForEvent("Page.loadEventFired", 8000), wait(Number(args.afterWaitMs || 1400))]);
-  await wait(Number(args.afterWaitMs || 1400));
+  await Promise.race([session.waitForEvent("Page.loadEventFired", 12000), wait(Number(args.afterWaitMs || 2500))]);
+  await wait(Number(args.afterWaitMs || 2500));
 
   return evaluated?.result?.value || { ok: false, error: "submit failed" };
 }
 
-async function snapshotAfterCurrentPageAction(session, sid) {
-  let page;
-  let snapshotError = "";
-  try {
-    page = await evaluateSemanticSnapshot(session, sid);
-  } catch (err) {
-    snapshotError = err instanceof Error ? err.message : String(err);
-    page = await evaluateBasicSnapshot(session, sid);
-  }
-  return { page, snapshotError };
+async function snapshotAfterCurrentPageAction(session, sid, args = {}) {
+  return waitForSettledPageSnapshot(session, sid, {
+    ...args,
+    pageSettleMs: args.pageSettleMs || args.afterSettleMs || process.env.BROWSER_AFTER_ACTION_SETTLE_MS || 12000,
+  });
 }
 
 export async function lightpandaAction(args = {}) {
@@ -1142,7 +1405,7 @@ export async function lightpandaFillFields(args = {}) {
 
   return withCurrentPage(async (session, sid, target) => {
     const fillResult = await fillPageFields(session, sid, args.fields || args.field || []);
-    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid);
+    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid, args);
 
     return {
       ok: Boolean(fillResult?.ok),
@@ -1181,7 +1444,7 @@ export async function lightpandaSubmitForm(args = {}) {
 
   return withCurrentPage(async (session, sid, target) => {
     const submitResult = await submitPageForm(session, sid, args);
-    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid);
+    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid, args);
 
     return {
       ok: Boolean(submitResult?.ok),
@@ -1221,7 +1484,7 @@ export async function lightpandaFillAndSubmit(args = {}) {
   return withCurrentPage(async (session, sid, target) => {
     const fillResult = await fillPageFields(session, sid, args.fields || args.field || []);
     const submitResult = await submitPageForm(session, sid, args);
-    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid);
+    const { page, snapshotError } = await snapshotAfterCurrentPageAction(session, sid, args);
 
     return {
       ok: Boolean(fillResult?.ok && submitResult?.ok),
@@ -1251,23 +1514,7 @@ export async function lightpandaFillAndSubmit(args = {}) {
 
 export async function lightpandaSnapshotCurrent(args = {}) {
   const page = await withCurrentPage(async (session, sid, target) => {
-    let snapshot;
-    let snapshotError = "";
-
-    try {
-      snapshot = await evaluateSemanticSnapshot(session, sid);
-    } catch (err) {
-      snapshotError = err instanceof Error ? err.message : String(err);
-      snapshot = await evaluateBasicSnapshot(session, sid);
-    }
-
-    if (!snapshot?.url && !snapshot?.title && !snapshot?.text && !snapshot?.links?.length && !snapshot?.buttons?.length) {
-      const basic = await evaluateBasicSnapshot(session, sid);
-      if (basic?.url || basic?.title || basic?.text || basic?.links?.length || basic?.buttons?.length) {
-        snapshot = basic;
-        snapshotError = snapshotError || "semantic snapshot returned no observable page data";
-      }
-    }
+    const { page: snapshot, snapshotError } = await waitForSettledPageSnapshot(session, sid, args);
 
     return {
       ok: true,

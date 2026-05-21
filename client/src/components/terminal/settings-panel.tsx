@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Globe,
   MessageSquare,
+  ScrollText,
   Users,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -45,6 +46,11 @@ const APP_ITEMS: ProgramMenuItem[] = [
     id: "browser",
     label: "lightpanda",
     icon: Globe,
+  },
+  {
+    id: "logs",
+    label: "Logs",
+    icon: ScrollText,
   },
   {
     id: "forum",

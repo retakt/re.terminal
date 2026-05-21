@@ -61,6 +61,13 @@ import {
   planExtensionAction,
   setExtensionEnabled,
 } from "./lib/extensions.js";
+import {
+  appendAuditEvent,
+  appendAuditEvents,
+  getAuditLogFile,
+  normalizeAuditUsage,
+  queryAuditEvents,
+} from "./lib/audit-log.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -75,6 +82,75 @@ for (const p of [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env"
 
 const LOG_FILE = process.env.LOG_FILE || path.join(__dirname, "re-term.log");
 const logStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
+const AUDIT_LOG_FILE = getAuditLogFile();
+
+function auditSummary(value, limit = 240) {
+  return String(value || "")
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, limit);
+}
+
+function auditPreview(value, limit = 500) {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? null);
+  return auditSummary(text, limit);
+}
+
+function auditStatusFromLevel(level) {
+  switch (String(level || "").toUpperCase()) {
+    case "ERROR":
+      return "error";
+    case "WARN":
+      return "warn";
+    case "EVENT":
+      return "success";
+    default:
+      return "info";
+  }
+}
+
+function auditUsageFromUnknown(value, defaults = {}) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed || !/^[\[{]/.test(trimmed)) return null;
+    try {
+      return auditUsageFromUnknown(JSON.parse(trimmed), defaults);
+    } catch {
+      return null;
+    }
+  }
+
+  if (typeof value !== "object") return null;
+  return normalizeAuditUsage(
+    value.tokenUsage && typeof value.tokenUsage === "object" ? value.tokenUsage : value,
+    defaults,
+  );
+}
+
+function appendServerAudit(category, level, message, meta = {}) {
+  appendAuditEvent({
+    source: "server",
+    category: "server",
+    action: `${String(category || "app")}.${String(level || "info").toLowerCase()}`,
+    status: auditStatusFromLevel(level),
+    title: message,
+    summary: auditPreview(meta, 360),
+    refs: {
+      serverCategory: String(category || "app"),
+      level: String(level || "INFO").toUpperCase(),
+    },
+    payload: {
+      serverCategory: category,
+      level,
+      message,
+      meta,
+    },
+  });
+}
 
 function log(level, category, message, meta = {}) {
   const ts   = new Date().toISOString();
@@ -85,6 +161,7 @@ function log(level, category, message, meta = {}) {
   console.log(`${colors[level] || ""}[${ts.slice(11,19)}] [${level}] [${category}] ${message}${reset}`, Object.keys(meta).length ? meta : "");
   // File (JSON lines)
   logStream.write(line + "\n");
+  appendServerAudit(category, level, message, meta);
 }
 
 // Stats tracked in memory
@@ -114,7 +191,13 @@ const BROWSER_AGENT_LLM_ENABLED = !["0", "false", "off", "no"].includes(String(p
 const BROWSER_AGENT_BASE_URL = (process.env.BROWSER_AGENT_BASE_URL || "").replace(/\/+$/, "").replace(/\/api$/, "");
 const BROWSER_AGENT_MODEL = process.env.BROWSER_AGENT_MODEL || "";
 
-log("INFO", "startup", "re.Term server starting", { port: PORT, shell: SHELL, maxSessions: MAX_SESSIONS, logFile: LOG_FILE });
+log("INFO", "startup", "re.Term server starting", {
+  port: PORT,
+  shell: SHELL,
+  maxSessions: MAX_SESSIONS,
+  logFile: LOG_FILE,
+  auditLogFile: AUDIT_LOG_FILE,
+});
 // Sessions live here, independent of any WebSocket connection.
 
 /**
@@ -135,6 +218,58 @@ const globalSessions = new Map();
 // Subscribers: sessionId → Set of WebSocket connections watching it
 /** @type {Map<string, Set<WebSocket>>} */
 const subscribers = new Map();
+const terminalOutputAuditBuffers = new Map();
+
+function flushTerminalAudit(sessionId) {
+  const buffered = terminalOutputAuditBuffers.get(sessionId);
+  if (!buffered || !buffered.data) return;
+  if (buffered.timer) clearTimeout(buffered.timer);
+  terminalOutputAuditBuffers.delete(sessionId);
+  appendAuditEvent({
+    source: "server.terminal",
+    category: "terminal",
+    action: "output",
+    status: "info",
+    title: buffered.title || sessionId,
+    summary: auditSummary(buffered.data, 320),
+    refs: {
+      sessionId,
+      direction: "out",
+      bytes: buffered.bytes,
+    },
+    payload: {
+      sessionId,
+      title: buffered.title || sessionId,
+      direction: "out",
+      bytes: buffered.bytes,
+      startedAt: buffered.startedAt,
+      flushedAt: Date.now(),
+      data: buffered.data,
+    },
+  });
+}
+
+function queueTerminalOutputAudit(sessionId, title, data) {
+  if (!data) return;
+  const existing = terminalOutputAuditBuffers.get(sessionId) || {
+    title,
+    data: "",
+    bytes: 0,
+    startedAt: Date.now(),
+    timer: null,
+  };
+
+  existing.title = title || existing.title || sessionId;
+  existing.data += data;
+  existing.bytes += Buffer.byteLength(data, "utf8");
+  if (existing.timer) clearTimeout(existing.timer);
+  existing.timer = setTimeout(() => flushTerminalAudit(sessionId), 120);
+  terminalOutputAuditBuffers.set(sessionId, existing);
+
+  if (existing.bytes >= 16 * 1024) {
+    flushTerminalAudit(sessionId);
+  }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -313,7 +448,9 @@ function shouldAttemptAutonomousMemory(userMessage, assistantMessage) {
 }
 
 async function extractDurableMemories({ projectId, model, userMessage, assistantMessage }) {
-  if (!shouldAttemptAutonomousMemory(userMessage, assistantMessage)) return [];
+  if (!shouldAttemptAutonomousMemory(userMessage, assistantMessage)) {
+    return { memories: [], usage: null };
+  }
 
   const prompt = [
     "Extract only durable, useful long-term memories from this chat turn.",
@@ -347,7 +484,7 @@ async function extractDurableMemories({ projectId, model, userMessage, assistant
 
     if (!upstream.ok) {
       log("WARN", "memory", "memory extraction model call failed", { status: upstream.status });
-      return [];
+      return { memories: [], usage: null };
     }
 
     const data = await upstream.json();
@@ -359,10 +496,16 @@ async function extractDurableMemories({ projectId, model, userMessage, assistant
       if (result?.success && result.memory) saved.push(result.memory);
     }
 
-    return saved;
+    return {
+      memories: saved,
+      usage: auditUsageFromUnknown(data, {
+        stage: "memory.extract",
+        model: MEMORY_EXTRACTION_MODEL || model,
+      }),
+    };
   } catch (err) {
     log("WARN", "memory", "memory extraction failed", { error: err.message });
-    return [];
+    return { memories: [], usage: null };
   }
 }
 
@@ -430,17 +573,40 @@ function createSession(opts = {}) {
     session.history.push(data);
     if (session.history.length > HISTORY_MAX) session.history.shift();
     broadcast(id, { type: "output", sessionId: id, data });
+    queueTerminalOutputAudit(id, title, data);
   });
 
   ptyProc.onExit(({ exitCode }) => {
+    flushTerminalAudit(id);
     const msg = `\r\n\x1b[33m[process exited with code ${exitCode}]\x1b[0m\r\n`;
     session.history.push(msg);
     broadcast(id, { type: "output", sessionId: id, data: msg });
+    queueTerminalOutputAudit(id, title, msg);
     broadcast(id, { type: "session-exit", sessionId: id, exitCode });
+    appendAuditEvent({
+      source: "server.terminal",
+      category: "terminal",
+      action: "session.exited",
+      status: exitCode === 0 ? "success" : "error",
+      title,
+      summary: `session ${title} exited with code ${exitCode}`,
+      refs: { sessionId: id, exitCode },
+      payload: { sessionId: id, title, exitCode },
+    });
     log("EVENT", "session", "PTY process exited", { sessionId: id, title, exitCode });
     // Keep session in map so user can see the exit message — they must close manually
   });
 
+  appendAuditEvent({
+    source: "server.terminal",
+    category: "terminal",
+    action: "session.created",
+    status: "success",
+    title,
+    summary: `created ${title} (${cols}x${rows})`,
+    refs: { sessionId: id, cols, rows },
+    payload: { sessionId: id, title, cols, rows, createdAt: session.createdAt },
+  });
   log("EVENT", "session", "session created", { sessionId: id, title, cols, rows, total: globalSessions.size });
   return session;
 }
@@ -448,9 +614,11 @@ function createSession(opts = {}) {
 function destroySession(id) {
   const session = globalSessions.get(id);
   if (!session) return;
+  flushTerminalAudit(id);
   try { session.pty.kill(); } catch (_) {}
   globalSessions.delete(id);
   subscribers.delete(id);
+  terminalOutputAuditBuffers.delete(id);
   log("EVENT", "session", "session destroyed", { sessionId: id, title: session.title, remaining: globalSessions.size });
 }
 
@@ -503,6 +671,7 @@ app.get("/api/stats", (_req, res) => {
     totalFilesRead:    stats.totalFilesRead,
     totalFilesWritten: stats.totalFilesWritten,
     logFile:           LOG_FILE,
+    auditLogFile:      AUDIT_LOG_FILE,
   });
 });
 
@@ -555,6 +724,37 @@ app.get("/api/mcp/tool-definitions", (_req, res) => {
   res.json({ tools: listMcpToolDefinitions() });
 });
 
+app.get("/api/logs/events", (req, res) => {
+  try {
+    res.json(queryAuditEvents({
+      afterSeq: req.query.afterSeq,
+      limit: req.query.limit,
+      category: req.query.category,
+      status: req.query.status,
+      q: req.query.q,
+    }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/logs/events", (req, res) => {
+  try {
+    const events = Array.isArray(req.body?.events)
+      ? req.body.events
+      : [req.body?.event ?? req.body];
+    const appended = appendAuditEvents(events.filter((entry) => entry && typeof entry === "object"));
+    res.json({
+      ok: true,
+      appended,
+      count: appended.length,
+      logFile: AUDIT_LOG_FILE,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/api/mcp/logs", (_req, res) => {
   res.json({ logs: getMcpLogs() });
 });
@@ -599,11 +799,51 @@ app.post("/api/mcp/route", (req, res) => {
 });
 
 app.post("/api/mcp/call", async (req, res) => {
+  const startedAt = Date.now();
+  const toolName = String(req.body?.name || "");
+  const toolArgs = req.body?.args || {};
   try {
-    const result = await callMcpTool(req.body?.name, req.body?.args || {});
+    const result = await callMcpTool(toolName, toolArgs);
+    appendAuditEvent({
+      source: "server.mcp",
+      category: "mcp",
+      action: "call",
+      status: "success",
+      title: toolName || "mcp call",
+      summary: auditPreview(result, 360),
+      refs: {
+        tool: toolName,
+        durationMs: Date.now() - startedAt,
+      },
+      usage: auditUsageFromUnknown(result, { stage: "mcp", model: "" }),
+      payload: {
+        tool: toolName,
+        args: toolArgs,
+        durationMs: Date.now() - startedAt,
+        result,
+      },
+    });
     res.json({ success: true, result });
   } catch (err) {
-    log("WARN", "mcp", "tool call failed", { tool: req.body?.name, error: err.message });
+    appendAuditEvent({
+      source: "server.mcp",
+      category: "mcp",
+      action: "call",
+      status: "error",
+      title: toolName || "mcp call",
+      summary: err.message,
+      refs: {
+        tool: toolName,
+        durationMs: Date.now() - startedAt,
+      },
+      payload: {
+        tool: toolName,
+        args: toolArgs,
+        durationMs: Date.now() - startedAt,
+        error: err.message,
+      },
+    });
+    log("WARN", "mcp", "tool call failed", { tool: toolName, error: err.message });
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -871,7 +1111,7 @@ app.post("/api/memory/extract", async (req, res) => {
     const model = String(req.body?.model || OLLAMA_MODEL);
     const userMessage = String(req.body?.userMessage || "");
     const assistantMessage = String(req.body?.assistantMessage || "");
-    const memories = await extractDurableMemories({ projectId, model, userMessage, assistantMessage });
+    const { memories, usage } = await extractDurableMemories({ projectId, model, userMessage, assistantMessage });
 
     if (memories.length > 0) {
       const payload = JSON.stringify({ type: "memory-update", projectId, timestamp: Date.now(), count: memories.length });
@@ -882,7 +1122,7 @@ app.post("/api/memory/extract", async (req, res) => {
       }
     }
 
-    res.json({ success: true, memories });
+    res.json({ success: true, memories, usage });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1143,6 +1383,16 @@ wss.on("connection", (ws, req) => {
           title: data?.title,
         });
         if (!session) return;
+        appendAuditEvent({
+          source: "server.terminal",
+          category: "terminal",
+          action: "session.opened",
+          status: "success",
+          title: session.title,
+          summary: `opened ${session.title}`,
+          refs: { sessionId: session.id, clientIp },
+          payload: { sessionId: session.id, title: session.title, cols: session.cols, rows: session.rows, clientIp },
+        });
         // Auto-subscribe creator
         subscribe(ws, session.id);
         // Notify ALL clients about the new session
@@ -1168,6 +1418,16 @@ wss.on("connection", (ws, req) => {
           return;
         }
         subscribe(ws, sessionId);
+        appendAuditEvent({
+          source: "server.terminal",
+          category: "terminal",
+          action: "session.attached",
+          status: "success",
+          title: session.title,
+          summary: `attached to ${session.title}`,
+          refs: { sessionId, clientIp },
+          payload: { sessionId, title: session.title, clientIp },
+        });
         // Send history replay
         send(ws, {
           type:      "history",
@@ -1180,6 +1440,16 @@ wss.on("connection", (ws, req) => {
       // ── Detach from session (stop receiving output) ────────────────────────
       case "detach": {
         unsubscribe(ws, sessionId);
+        appendAuditEvent({
+          source: "server.terminal",
+          category: "terminal",
+          action: "session.detached",
+          status: "info",
+          title: sessionId,
+          summary: `detached ${sessionId}`,
+          refs: { sessionId, clientIp },
+          payload: { sessionId, clientIp },
+        });
         break;
       }
 
@@ -1187,6 +1457,26 @@ wss.on("connection", (ws, req) => {
       case "input": {
         const session = globalSessions.get(sessionId);
         if (!session || typeof data !== "string") return;
+        appendAuditEvent({
+          source: "server.terminal",
+          category: "terminal",
+          action: "input",
+          status: "info",
+          title: session.title,
+          summary: auditSummary(data, 320),
+          refs: {
+            sessionId,
+            direction: "in",
+            bytes: Buffer.byteLength(data, "utf8"),
+          },
+          payload: {
+            sessionId,
+            title: session.title,
+            direction: "in",
+            bytes: Buffer.byteLength(data, "utf8"),
+            data,
+          },
+        });
         try { session.pty.write(data); } catch (_) {}
         break;
       }
@@ -1204,11 +1494,34 @@ wss.on("connection", (ws, req) => {
         } catch (_) {}
         // Notify all subscribers of the resize
         broadcast(sessionId, { type: "session-resized", sessionId, cols, rows });
+        appendAuditEvent({
+          source: "server.terminal",
+          category: "terminal",
+          action: "session.resized",
+          status: "success",
+          title: session.title,
+          summary: `${session.title} resized to ${cols}x${rows}`,
+          refs: { sessionId, cols, rows },
+          payload: { sessionId, title: session.title, cols, rows },
+        });
         break;
       }
 
       // ── Close (kill) session permanently ──────────────────────────────────
       case "close": {
+        const session = globalSessions.get(sessionId);
+        if (session) {
+          appendAuditEvent({
+            source: "server.terminal",
+            category: "terminal",
+            action: "session.closed",
+            status: "success",
+            title: session.title,
+            summary: `closed ${session.title}`,
+            refs: { sessionId, clientIp },
+            payload: { sessionId, title: session.title, clientIp },
+          });
+        }
         destroySession(sessionId);
         // Notify all clients
         for (const client of wss.clients) {
@@ -1223,7 +1536,18 @@ wss.on("connection", (ws, req) => {
       case "rename": {
         const session = globalSessions.get(sessionId);
         if (!session) return;
+        const previousTitle = session.title;
         session.title = String(data?.title || session.title).slice(0, 64);
+        appendAuditEvent({
+          source: "server.terminal",
+          category: "terminal",
+          action: "session.renamed",
+          status: "success",
+          title: session.title,
+          summary: `${previousTitle} renamed to ${session.title}`,
+          refs: { sessionId },
+          payload: { sessionId, previousTitle, title: session.title },
+        });
         // Notify all clients
         for (const client of wss.clients) {
           if (client.readyState === WebSocket.OPEN) {
@@ -1408,12 +1732,14 @@ httpServer.listen(PORT, "0.0.0.0", () => {
     tailscale: `http://${getTailscaleIP()}:${PORT}`,
     network:   `http://10.10.24.206:${PORT}`,
     logFile:   LOG_FILE,
+    auditLogFile: AUDIT_LOG_FILE,
   });
 });
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 
 function shutdown(signal) {
+  for (const sessionId of terminalOutputAuditBuffers.keys()) flushTerminalAudit(sessionId);
   log("INFO", "shutdown", `${signal} received — shutting down`, { sessions: globalSessions.size });
   for (const client of wss.clients) {
     try { client.close(1001, "Server shutting down"); } catch (_) {}

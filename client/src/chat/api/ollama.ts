@@ -55,6 +55,14 @@ export interface OllamaChunk {
     content?: string;
     tool_calls?: Array<{ function: { name: string; arguments: Record<string, string> } }>;
   };
+  model?: string;
+  created_at?: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_duration?: number;
+  eval_duration?: number;
   done?: boolean;
 }
 
@@ -63,6 +71,14 @@ export interface OllamaToolCheckResponse {
     content?: string;
     tool_calls?: Array<{ function: { name: string; arguments: Record<string, string> } }>;
   };
+  model?: string;
+  created_at?: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_duration?: number;
+  eval_duration?: number;
 }
 
 // ── Non-streaming request (for tool checks) ──────────────────────────────────
@@ -125,6 +141,16 @@ export async function* ollamaChatStream(options: OllamaChatOptions): AsyncGenera
       } catch {
         // skip malformed lines
       }
+    }
+  }
+
+  const trailing = buffer.trim();
+  if (trailing) {
+    try {
+      const chunk: OllamaChunk = JSON.parse(trailing);
+      yield chunk;
+    } catch {
+      // skip malformed trailing line
     }
   }
 }
