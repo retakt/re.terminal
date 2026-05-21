@@ -637,7 +637,7 @@ function RunCard({
                 <span>reasoning</span>
                 <em>{reasoning.status}</em>
               </div>
-              <pre>{compactPreview(reasoning.text, 900)}</pre>
+              <pre>{compactPreview(reasoning.text, 1800)}</pre>
             </div>
           )}
           {groupedTools.length === 0 ? (

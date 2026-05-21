@@ -87,18 +87,18 @@ async function getJson<T>(url: string, fallback: T): Promise<T> {
 }
 
 export async function listMcpServers(): Promise<McpServer[]> {
-  const data = await getJson<{ servers: McpServer[] }>("/api/mcp/servers", { servers: [] });
-  return data.servers ?? [];
+  const data = await getJson<McpServer[] | { servers: McpServer[] }>("/api/mcp/servers", []);
+  return Array.isArray(data) ? data : data.servers ?? [];
 }
 
 export async function listMcpTools(): Promise<McpTool[]> {
-  const data = await getJson<{ tools: McpTool[] }>("/api/mcp/tools", { tools: [] });
-  return data.tools ?? [];
+  const data = await getJson<McpTool[] | { tools: McpTool[] }>("/api/mcp/tools", []);
+  return Array.isArray(data) ? data : data.tools ?? [];
 }
 
 export async function listMcpToolDefinitions(): Promise<OllamaTool[]> {
-  const data = await getJson<{ tools: OllamaTool[] }>("/api/mcp/tool-definitions", { tools: [] });
-  return data.tools ?? [];
+  const data = await getJson<OllamaTool[] | { tools: OllamaTool[] }>("/api/mcp/tool-definitions", []);
+  return Array.isArray(data) ? data : data.tools ?? [];
 }
 
 export async function listMcpLogs(): Promise<McpLog[]> {
