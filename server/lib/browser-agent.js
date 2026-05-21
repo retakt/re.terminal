@@ -1109,20 +1109,30 @@ function normalizePlannerCommand(plan = {}, args = {}, state = defaultState()) {
   };
   const tool = normalized.command.tool || "";
   const commandArgs = normalized.command.args;
-  if (hints.extractedUrl && !commandArgs.url && tool === "browserNavigate") {
-    commandArgs.url = hints.extractedUrl;
+  if (hints.extractedUrl && ["browserObserve", "browserScrape"].includes(tool)) {
+    normalized.intent = "navigate";
+    normalized.command.tool = "browserNavigate";
+    normalized.command.args = {
+      ...commandArgs,
+      url: hints.extractedUrl,
+    };
   }
-  if (hints.extractedUrl && !commandArgs.url && browserCommandIsInteractive(normalized.command, args.instruction)) {
-    commandArgs.url = hints.extractedUrl;
+  const effectiveTool = normalized.command.tool || "";
+  const effectiveArgs = normalized.command.args || {};
+  if (hints.extractedUrl && !effectiveArgs.url && effectiveTool === "browserNavigate") {
+    effectiveArgs.url = hints.extractedUrl;
   }
-  if (commandNeedsCurrentUrl(tool) && !commandArgs.currentUrl) {
-    commandArgs.currentUrl = args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
+  if (hints.extractedUrl && !effectiveArgs.url && browserCommandIsInteractive(normalized.command, args.instruction)) {
+    effectiveArgs.url = hints.extractedUrl;
   }
-  if (normalized.backend === "lightpanda") commandArgs.enginePriority = ["lightpanda_cdp", "static_fetch"];
-  if (normalized.backend === "chrome_cdp") commandArgs.enginePriority = ["chrome_cdp", "lightpanda_cdp", "static_fetch"];
+  if (commandNeedsCurrentUrl(effectiveTool) && !effectiveArgs.currentUrl) {
+    effectiveArgs.currentUrl = args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
+  }
+  if (normalized.backend === "lightpanda") effectiveArgs.enginePriority = ["lightpanda_cdp", "static_fetch"];
+  if (normalized.backend === "chrome_cdp") effectiveArgs.enginePriority = ["chrome_cdp", "lightpanda_cdp", "static_fetch"];
   if (normalized.backend === "playwright_mcp") {
-    commandArgs.backend = "playwright_mcp";
-    delete commandArgs.enginePriority;
+    effectiveArgs.backend = "playwright_mcp";
+    delete effectiveArgs.enginePriority;
   }
   return normalized;
 }

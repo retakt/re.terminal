@@ -2,10 +2,6 @@ import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, use
 import { Pause, Play, RefreshCcw, Search, Trash2, Terminal } from "lucide-react";
 import { listAuditEvents, type AuditEvent } from "@/lib/logs-api";
 import {
-  formatTerminalOutput,
-  type FormattedLogEntry,
-  getLevelClass,
-  needsPrettyPrint,
   stripAnsiCodes,
   sanitizeControlChars
 } from "@/lib/terminal-formatter";
@@ -85,109 +81,188 @@ function getCategoryColor(category: string): string {
   }
 }
 
-/**
- * TerminalLogLine - Renders a single formatted log entry in Docker BuildKit style
- * Used ONLY for output that was pretty-printed (needsPrettyPrint returned true)
- */
-function TerminalLogLine({ entry }: { entry: FormattedLogEntry }) {
-  const levelClass = getLevelClass(entry.level);
-  
-  return (
-    <div className="log-line">
-      {/* Prefix: [+], =>, #0, ERROR, WARNING - only shown for pretty-printed output */}
-      {entry.prefix && (
-        <span className={`log-prefix ${levelClass}`}>
-          {entry.prefix}
-        </span>
-      )}
-      {/* Content with proper wrapping */}
-      <span className="log-content">{entry.content}</span>
-    </div>
-  );
+function compactSource(source: string) {
+  const parts = String(source || "").split(".").filter(Boolean);
+  if (parts.length === 0) return "--";
+  if (parts.length === 1) return parts[0];
+  return parts.slice(-2).join(".");
 }
 
-/**
- * TerminalLine - Renders an AuditEvent with conditional formatting
- * - Normal logs: rendered with original timestamped, tagged format
- * - Messy terminal blobs: converted to vertical Docker-style output
- */
-function TerminalLine({ event }: { event: AuditEvent }) {
-  // Extract raw output from event payload or summary
-  const rawOutput = useMemo(() => {
-    // Try to get raw terminal output from various payload locations
-    if (event.payload && typeof event.payload === 'object') {
-      const payload = event.payload as Record<string, unknown>;
-      if (typeof payload.output === 'string') return payload.output;
-      if (typeof payload.data === 'string') return payload.data;
-      if (typeof payload.message === 'string') return payload.message;
+function compactId(value: string, limit = 12) {
+  return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
+}
+
+function payloadRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? value as Record<string, unknown> : null;
+}
+
+function getDurationColor(durationMs: number | null) {
+  if (durationMs == null || durationMs <= 0) return "log-muted";
+  if (durationMs <= 250) return "log-success";
+  if (durationMs <= 1000) return "log-warning";
+  return "log-error";
+}
+
+function getHttpStatusColor(statusCode: number) {
+  if (statusCode >= 200 && statusCode < 300) return "log-success";
+  if (statusCode >= 300 && statusCode < 500) return "log-warning";
+  return "log-error";
+}
+
+function getPreviewMatchColor(segment: string) {
+  const normalized = segment.trim();
+  if (!normalized) return "";
+  if (/^args=/i.test(normalized)) return "log-cyan";
+  if (normalized === "=>") return "log-muted";
+
+  const durationMatch = normalized.match(/durationMs"?\s*[:=]\s*(\d+)/i);
+  if (durationMatch) return getDurationColor(Number(durationMatch[1]));
+
+  const statusMatch = normalized.match(/status"?\s*[:=]\s*(\d{3})/i);
+  if (statusMatch) return getHttpStatusColor(Number(statusMatch[1]));
+
+  if (/ok"?\s*[:=]\s*true/i.test(normalized)) return "log-success";
+  if (/ok"?\s*[:=]\s*false/i.test(normalized)) return "log-error";
+  if (/\bsuccess\b/i.test(normalized)) return "log-success";
+  if (/\bwarning\b/i.test(normalized)) return "log-warning";
+  if (/\berror\b/i.test(normalized) || /\bfailed\b/i.test(normalized)) return "log-error";
+
+  return "";
+}
+
+function renderPreview(preview: string) {
+  const pattern = /(args=.*?(?=\s=>|$)|=>|"?ok"?\s*[:=]\s*(?:true|false)|"?status"?\s*[:=]\s*\d{3}|"?durationMs"?\s*[:=]\s*\d+|\b(?:success|warning|error|failed)\b)/gi;
+  const pieces: JSX.Element[] = [];
+  let cursor = 0;
+
+  for (const match of preview.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      pieces.push(<span key={`plain-${index}`}>{preview.slice(cursor, index)}</span>);
     }
-    // Fallback to summary/title
-    return event.summary || event.title || '';
-  }, [event]);
-  
-  // Determine if this output needs pretty-printing
-  const shouldPrettyPrint = useMemo(() => {
-    return needsPrettyPrint(rawOutput);
-  }, [rawOutput]);
-  
-  // Format the output - conditional based on content
-  const formattedEntries = useMemo(() => {
-    if (!shouldPrettyPrint) {
-      // Return empty - we'll render with original format below
-      return [];
-    }
-    
-    return formatTerminalOutput(rawOutput, {
-      maxWidth: 120,
-      timestamp: event.ts,
-      category: event.category,
-      action: event.action,
-      status: event.status
-    });
-  }, [rawOutput, shouldPrettyPrint, event.ts, event.category, event.action, event.status]);
-  
-  // If output was pretty-printed, render formatted entries
-  if (shouldPrettyPrint && formattedEntries.length > 0) {
-    return (
-      <>
-        {formattedEntries.map((entry, index) => (
-          <TerminalLogLine key={`${event.seq}-${index}`} entry={entry} />
-        ))}
-      </>
+
+    const segment = match[0];
+    const className = getPreviewMatchColor(segment);
+    pieces.push(
+      <span key={`hit-${index}`} className={className || undefined}>
+        {segment}
+      </span>,
     );
+    cursor = index + segment.length;
   }
-  
-  // Otherwise, render with ORIGINAL format - preserving timestamps, tags, colors
-  const preview = summarizeEvent(event);
+
+  if (cursor < preview.length) {
+    pieces.push(<span key={`tail-${cursor}`}>{preview.slice(cursor)}</span>);
+  }
+
+  return pieces;
+}
+
+function buildPreview(event: AuditEvent, titleText: string, durationMs: number | null) {
+  const payload = payloadRecord(event.payload);
+  const rawOutput = [
+    payload && typeof payload.output === "string" ? payload.output : "",
+    payload && typeof payload.data === "string" ? payload.data : "",
+    payload && typeof payload.message === "string" ? payload.message : "",
+  ].find((value) => value && value.trim());
+
+  if (rawOutput) return previewText(rawOutput, 440);
+
+  const errorText = payload && typeof payload.error === "string"
+    ? previewText(payload.error, 440)
+    : "";
+  if (errorText) return errorText;
+
+  const argsText = payload && "args" in payload
+    ? previewText(payload.args, 110)
+    : "";
+  const resultText = payload && "result" in payload
+    ? previewText(payload.result, 320)
+    : "";
+
+  if (argsText || resultText) {
+    if (argsText && resultText) return `args=${argsText} => ${resultText}`;
+    return resultText || `args=${argsText}`;
+  }
+
+  let summary = summarizeEvent(event);
+  const serverId = typeof event.refs?.serverId === "string" ? event.refs.serverId : "";
+  const metricPrefix = durationMs != null && durationMs > 0 ? `${durationMs}ms` : "";
+  const redundantPrefixes = [
+    `${titleText} server=${serverId} ${metricPrefix}`,
+    `${titleText} server=${serverId}`,
+    `${titleText} ${metricPrefix}`,
+    titleText,
+  ].filter(Boolean);
+
+  for (const prefix of redundantPrefixes) {
+    if (summary.startsWith(prefix)) {
+      summary = summary.slice(prefix.length).trimStart();
+      break;
+    }
+  }
+
+  summary = summary.replace(/^args=\{\}\s*->\s*/i, "").replace(/^->\s*/i, "").trim();
+  return summary || previewText(event.title || event.action, 440);
+}
+
+function TerminalLine({ event }: { event: AuditEvent }) {
   const statusColor = getStatusColor(event.status);
   const categoryColor = getCategoryColor(event.category);
   const tool = typeof event.refs?.tool === "string" ? event.refs.tool : "";
+  const sessionId = typeof event.refs?.sessionId === "string" ? event.refs.sessionId : "";
+  const pageType = typeof event.refs?.pageType === "string" ? event.refs.pageType : "";
   const serverId = typeof event.refs?.serverId === "string" ? event.refs.serverId : "";
   const durationMs = typeof event.refs?.durationMs === "number"
     ? event.refs.durationMs
     : typeof event.payload === "object" && event.payload && typeof (event.payload as Record<string, unknown>).durationMs === "number"
       ? (event.payload as Record<string, unknown>).durationMs as number
       : null;
-  
+  const bytes = typeof event.refs?.bytes === "number" ? event.refs.bytes : null;
+  const cols = typeof event.refs?.cols === "number" ? event.refs.cols : null;
+  const rows = typeof event.refs?.rows === "number" ? event.refs.rows : null;
+  const rawTitle = tool || event.title || event.action || event.category;
+  const titleText = previewText(rawTitle, 52);
+  const scopeText = previewText(
+    serverId
+      || pageType
+      || (sessionId ? compactId(sessionId, 14) : "")
+      || compactSource(event.source),
+    22,
+  );
+  const metricText = durationMs != null && durationMs > 0
+    ? `${durationMs}ms`
+    : bytes != null && bytes > 0
+      ? `${bytes}b`
+      : cols != null && rows != null
+        ? `${cols}x${rows}`
+        : "";
+  const metricColor = durationMs != null ? getDurationColor(durationMs) : "log-muted";
+  const tokenText = event.usage?.totalTokens ? `${event.usage.totalTokens} tok` : "";
+  const preview = buildPreview(event, rawTitle, durationMs);
+  const rowTitle = [
+    `[${formatClock(event.ts)}]`,
+    `[${event.category}]`,
+    `[${event.action}]`,
+    `[${event.status}]`,
+    titleText,
+    scopeText,
+    metricText,
+    tokenText,
+    preview,
+  ].filter(Boolean).join(" ");
+
   return (
-    <div className="log-line">
-      <span className="log-segment log-time">[{formatClock(event.ts)}]</span>
-      <span className={`log-segment ${categoryColor}`}>[{event.category}]</span>
-      <span className="log-segment log-action">[{event.action}]</span>
-      <span className={`log-segment ${statusColor}`}>[{event.status}]</span>
-      {tool ? (
-        <span className="log-segment log-magenta">[{tool}]</span>
-      ) : null}
-      {serverId ? (
-        <span className="log-segment log-teal">[{serverId}]</span>
-      ) : null}
-      {typeof durationMs === "number" && durationMs > 0 ? (
-        <span className="log-segment log-muted">[{durationMs}ms]</span>
-      ) : null}
-      {event.usage?.totalTokens ? (
-        <span className="log-segment log-yellow">[tok={event.usage.totalTokens}]</span>
-      ) : null}
-      <span className="log-message">{preview}</span>
+    <div className="log-line" title={rowTitle}>
+      <span className="log-cell log-time">[{formatClock(event.ts)}]</span>
+      <span className={`log-cell ${categoryColor}`}>[{event.category}]</span>
+      <span className="log-cell log-action">[{event.action}]</span>
+      <span className={`log-cell ${statusColor}`}>[{event.status}]</span>
+      <span className="log-cell log-magenta">[{titleText}]</span>
+      <span className="log-cell log-teal">{scopeText ? `[${scopeText}]` : ""}</span>
+      <span className={`log-cell ${metricColor}`}>{metricText ? `[${metricText}]` : ""}</span>
+      <span className="log-cell log-yellow">{tokenText ? `[${tokenText}]` : ""}</span>
+      <span className="log-message">{renderPreview(preview)}</span>
     </div>
   );
 }
