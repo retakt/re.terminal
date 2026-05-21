@@ -39,6 +39,13 @@ function statusLabel(server: McpServer) {
   return server.status;
 }
 
+function healthInfo(server: McpServer): string {
+  // Show response time when known, otherwise "not checked" or "error"
+  if (server.status === "error") return "error";
+  if (typeof server.responseMs === "number") return `${server.responseMs}ms`;
+  return "not checked";
+}
+
 function isSafeAutoTestTool(tool: McpTool) {
   const name = tool.name.toLowerCase();
   return !/(write|replace|delete|remove|restart|start|stop|kill|deploy)/.test(
@@ -234,7 +241,7 @@ function MobileMcpShell({
                   <article key={log.id} className={`mcp-log-row mcp-log-row--mobile mcp-log-row--${log.status}`}>
                     <div className="mcp-log-row-header">
                       <span className="mcp-log-tool-name">{log.tool}</span>
-                      <span className="mcp-log-meta">{log.durationMs}ms{log.count > 1 && ` ×${log.count}`}</span>
+                      <span className="mcp-log-meta">{log.durationMs}ms · {log.status === "complete" ? "success" : log.status}{log.count > 1 && ` ×${log.count}`}</span>
                     </div>
                     <code className="mcp-log-preview">{preview(log.args, 100)}</code>
                   </article>
@@ -255,8 +262,8 @@ function MobileMcpShell({
               <button key={server.id} type="button" className="mcp-server-row mcp-server-row--mobile"
                 onClick={() => inspectServer(server)}>
                 <div className="mcp-server-row-left">
-                  <span className="mcp-server-row-title">{server.title}</span>
-                  <span className="mcp-server-row-meta">{server.toolCount} tools · {server.transport}</span>
+                <span className="mcp-server-row-title">{server.title}</span>
+                <span className="mcp-server-row-meta">{server.transport} · {server.toolCount} tools · {healthInfo(server)}</span>
                 </div>
                 <span className={`mcp-status-pill mcp-status-pill--${server.status}`}>{statusLabel(server)}</span>
               </button>
@@ -283,10 +290,14 @@ function MobileMcpShell({
                   onClick={() => inspectServer(server)}>
                   <div className="mcp-server-row-left">
                     <span className="mcp-server-row-title">{server.title}</span>
-                    <span className="mcp-server-row-meta">{server.protocol || "mcp"} · {server.toolCount ?? 0} tools</span>
+                    <span className="mcp-server-row-meta">{server.protocol || "mcp"} · {server.toolCount ?? 0} tools · {healthInfo(server)}</span>
                   </div>
-                  <span className={`mcp-status-pill mcp-status-pill--${server.status === "ready" ? "ready" : "needs-config"}`}>
-                    {server.status === "ready" ? "ready" : server.status === "needs_config" ? "configured / not connected" : server.status}
+                  <span className={`mcp-status-pill mcp-status-pill--${server.status === "ready" ? "ready" : "needs-config"}`} title={
+  "lastError" in server && typeof server.lastError === "string"
+    ? `Error: ${server.lastError}`
+    : undefined
+}>
+                    {server.connected ? "connected" : server.status === "needs_config" ? "configured" : server.status}
                   </span>
                 </button>
               ))}
@@ -412,7 +423,7 @@ function DesktopMcpShell({
         <footer className="mcp-server-card-meta">
           <span className="mcp-meta-item"><span className="mcp-meta-label">transport:</span> {server.transport}</span>
           <span className="mcp-meta-item"><span className="mcp-meta-label">tools:</span> {server.toolCount}</span>
-          <span className="mcp-meta-item"><span className="mcp-meta-label">latency:</span> {typeof server.responseMs === "number" ? `${server.responseMs}ms` : "no ping"}</span>
+          <span className="mcp-meta-item"><span className="mcp-meta-label">latency:</span> {healthInfo(server)}</span>
         </footer>
         <div className="mcp-server-card-actions">
           <button type="button" className="mcp-action-btn" onClick={() => void copyText(JSON.stringify(server, null, 2), "config copied")} title="Copy config">
@@ -443,7 +454,7 @@ function DesktopMcpShell({
         <footer className="mcp-server-card-meta">
           <span className="mcp-meta-item"><span className="mcp-meta-label">protocol:</span> {server.protocol || "mcp"}</span>
           <span className="mcp-meta-item"><span className="mcp-meta-label">tools:</span> {server.toolCount ?? 0}</span>
-          <span className="mcp-meta-item"><span className="mcp-meta-label">latency:</span> {typeof server.responseMs === "number" ? `${server.responseMs}ms` : "no ping"}</span>
+          <span className="mcp-meta-item"><span className="mcp-meta-label">latency:</span> {healthInfo(server)}</span>
         </footer>
         <div className="mcp-server-card-actions">
           {server.enabled && server.status === "ready" && (
@@ -515,7 +526,8 @@ function DesktopMcpShell({
               <article key={log.id} className={`mcp-log-row mcp-log-row--${log.status}`}>
                 <header className="mcp-log-row-header">
                   <span className="mcp-log-tool">{log.tool}</span>
-                  <strong className="mcp-log-meta">{log.count > 1 && <em className="mcp-repeat-badge">×{log.count}</em>}{log.durationMs}ms</strong>
+                  <strong className="mcp-log-meta">{log.durationMs}ms · {log.status === "complete" ? "success" : log.status}</strong>
+                  {log.count > 1 && <em className="mcp-repeat-badge">×{log.count}</em>}
                 </header>
                 <code className="mcp-log-args">{preview(log.args, 140)}</code>
                 <p className="mcp-log-result">{preview(log.result, 260)}</p>

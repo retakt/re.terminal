@@ -9622,10 +9622,16 @@ body,
   .mcp-meta-item {
     font-size: 10px !important;
     white-space: nowrap !important;
+    color: var(--fg-muted) !important;
   }
 
   .mcp-meta-label {
     display: none !important;
+  }
+
+  .mcp-meta-item:last-child {
+    color: var(--accent-cyan) !important;
+    font-weight: 600 !important;
   }
 
   .mcp-server-card-actions {
@@ -9925,12 +9931,18 @@ body,
   }
 
   /* === Pills and Badges - Compact === */
-  .mcp-pill,
-  .mcp-status-badge,
-  .mcp-tool-source-badge {
-    font-size: 9px !important;
-    padding: 1px 5px !important;
-  }
+.mcp-pill,
+.mcp-status-badge,
+.mcp-tool-source-badge {
+  font-size: 9px !important;
+  padding: 1px 5px !important;
+}
+
+/* Health/latency display - accent color for latency values */
+.mcp-meta-item:last-child {
+  color: var(--accent-cyan) !important;
+  font-weight: 600 !important;
+}
 
   /* === Prevent Horizontal Overflow === */
   .mcp-page,
@@ -11046,13 +11058,26 @@ body,
 }
 
 .mcp-page--mobile .mcp-server-row-meta {
-  font-size: 10px !important;
-  color: var(--fg-muted) !important;
-  font-family: var(--font-mono) !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+font-size: 10px !important;
+color: var(--fg-muted) !important;
+font-family: var(--font-mono) !important;
+white-space: nowrap !important;
+overflow: hidden !important;
+text-overflow: ellipsis !important;
 }
+
+/* Health/latency (last item in meta) - accent color */
+.mcp-page--mobile .mcp-server-row-meta {
+display: flex !important;
+  flex-wrap: nowrap !important;
+    gap: 4px !important;
+  }
+
+  .mcp-page--mobile .mcp-server-row-meta::before {
+    content: "·" !important;
+    color: var(--border) !important;
+    margin: 0 2px !important;
+  }
 
 .mcp-page--mobile .mcp-status-pill {
   font-size: 9px !important;
