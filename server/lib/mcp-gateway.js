@@ -1329,6 +1329,10 @@ export async function listMcpServers() {
     status: serverStatus(server),
     toolCount: isServerEnabled(server) ? server.tools.length : 0,
     responseMs: serverResponseMs.get(server.id) ?? null,
+    lastCheckedAt: null,
+    lastCallAt: null,
+    lastError: null,
+    connected: serverStatus(server) === "ready",
     source: "builtin",
     protocol: "internal-function",
     external: false,
@@ -1342,6 +1346,7 @@ export async function listMcpServers() {
     ...external.map((cfg) => {
       const status = externalStatuses.find(s => s.id === cfg.id) || {};
       const tools = getExternalMcpCachedTools(cfg.id);
+      const cachedResponseMs = serverResponseMs.get(cfg.id);
       return {
         id: cfg.id,
         title: cfg.title || cfg.id,
@@ -1351,12 +1356,15 @@ export async function listMcpServers() {
         description: cfg.description || "",
         status: status.status || "unknown",
         toolCount: tools?.length ?? 0,
-        responseMs: null,
+        responseMs: cachedResponseMs ?? null,
+        lastCheckedAt: null,
+        lastCallAt: null,
+        lastError: status.error || null,
+        connected: Boolean(status.running && status.initialized),
         source: "external",
         protocol: "mcp",
         external: true,
         mcpNative: true,
-        connected: Boolean(status.running && status.initialized),
       };
     }),
   ];
@@ -2108,7 +2116,10 @@ async function measureTool(name, args = {}) {
     }
 
     if (parsedResult && typeof parsedResult === "object" && parsedResult.ok === false) {
-      if (serverId) serverHealthOk.set(serverId, false);
+      if (serverId) {
+        serverHealthOk.set(serverId, false);
+        serverResponseMs.set(serverId, durationMs);
+      }
       return {
         ok: false,
         tool: name,
@@ -2118,7 +2129,10 @@ async function measureTool(name, args = {}) {
       };
     }
 
-    if (serverId) serverHealthOk.set(serverId, true);
+    if (serverId) {
+      serverHealthOk.set(serverId, true);
+      serverResponseMs.set(serverId, durationMs);
+    }
     return {
       ok: true,
       tool: name,
