@@ -32,6 +32,7 @@ import {
   browserAgentReset,
   browserAgentRun,
   browserAgentStatus,
+  setBrowserAgentMcpCaller,
 } from "./browser-agent.js";
 import {
   getExtension,
@@ -40,6 +41,8 @@ import {
   matchExtensionForUrl,
   planExtensionAction,
 } from "./extensions.js";
+import { appendAuditEvent } from "./audit-log.js";
+import { convertMcpLogToAuditInput } from "./mcp-log-audit.js";
 import {
   callExternalMcpTool,
   getExternalMcpCachedTools,
@@ -1023,7 +1026,7 @@ const builtinServers = [
   },
   {
     id: "browser",
-    title: "Lightpanda Browser",
+    title: "Browser",
     type: "builtin",
     transport: "cdp",
     enabled: true,
@@ -2053,6 +2056,7 @@ export async function callMcpTool(name, args = {}) {
     entry.status = "complete";
     entry.durationMs = Date.now() - startedAt;
     entry.result = result;
+    appendAuditEvent(convertMcpLogToAuditInput(entry));
     return result;
   } catch (err) {
     entry.status = "error";
@@ -2060,11 +2064,14 @@ export async function callMcpTool(name, args = {}) {
     serverResponseMs.set(serverId, entry.durationMs);
     serverHealthOk.set(serverId, false);
     entry.result = err?.message || String(err);
+    appendAuditEvent(convertMcpLogToAuditInput(entry));
     throw err;
   } finally {
     callLog = callLog.slice(-200);
   }
 }
+
+setBrowserAgentMcpCaller(callMcpTool);
 
 async function mcpArchitectureStatusTool() {
   const builtinList = builtinServers.map((server) => ({

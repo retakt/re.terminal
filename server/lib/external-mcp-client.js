@@ -81,7 +81,7 @@ export function listExternalMcpServerConfigs() {
       protocol: "mcp",
       enabled: true,
       command: "npx",
-      args: ["-y", "@playwright/mcp@latest"],
+      args: ["-y", "@playwright/mcp@latest", "--isolated"],
       description: "Official Microsoft Playwright MCP server for browser automation.",
     }));
   }

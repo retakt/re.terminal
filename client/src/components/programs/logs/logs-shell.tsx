@@ -161,6 +161,13 @@ function TerminalLine({ event }: { event: AuditEvent }) {
   const preview = summarizeEvent(event);
   const statusColor = getStatusColor(event.status);
   const categoryColor = getCategoryColor(event.category);
+  const tool = typeof event.refs?.tool === "string" ? event.refs.tool : "";
+  const serverId = typeof event.refs?.serverId === "string" ? event.refs.serverId : "";
+  const durationMs = typeof event.refs?.durationMs === "number"
+    ? event.refs.durationMs
+    : typeof event.payload === "object" && event.payload && typeof (event.payload as Record<string, unknown>).durationMs === "number"
+      ? (event.payload as Record<string, unknown>).durationMs as number
+      : null;
   
   return (
     <div className="log-line">
@@ -168,6 +175,15 @@ function TerminalLine({ event }: { event: AuditEvent }) {
       <span className={`log-segment ${categoryColor}`}>[{event.category}]</span>
       <span className="log-segment log-action">[{event.action}]</span>
       <span className={`log-segment ${statusColor}`}>[{event.status}]</span>
+      {tool ? (
+        <span className="log-segment log-magenta">[{tool}]</span>
+      ) : null}
+      {serverId ? (
+        <span className="log-segment log-teal">[{serverId}]</span>
+      ) : null}
+      {typeof durationMs === "number" && durationMs > 0 ? (
+        <span className="log-segment log-muted">[{durationMs}ms]</span>
+      ) : null}
       {event.usage?.totalTokens ? (
         <span className="log-segment log-yellow">[tok={event.usage.totalTokens}]</span>
       ) : null}

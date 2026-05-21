@@ -135,7 +135,7 @@ function loadActiveId(): string | null {
 }
 
 const PROGRAM_TITLES: Record<ProgramKind, string> = {
-  browser: "lightpanda",
+  browser: "browser",
   chat: "ai chat",
   logs: "Logs",
   forum: "forum",

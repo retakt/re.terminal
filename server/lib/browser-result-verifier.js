@@ -232,10 +232,13 @@ export function verifyBrowserResult({
   }
 
   const checks = [];
-  if (watcher.intent === "navigate") checks.push(verifyNavigation({ command, observation }));
-  if (watcher.intent === "observe") checks.push(verifyFocusedObservation({ watcher, command, result, observation }));
-  if (watcher.intent === "fill_form" || watcher.intent === "fill_and_submit") checks.push(verifyFill({ result, command }));
-  if (watcher.intent === "submit_form" || watcher.intent === "fill_and_submit") checks.push(verifySubmit({ result, observation, command }));
+  const commandTool = command?.tool || "";
+  if (commandTool === "browserNavigate") checks.push(verifyNavigation({ command, observation }));
+  if (commandTool === "browserObserve" || commandTool === "browserScrape" || commandTool === "browserShowActions") {
+    checks.push(verifyFocusedObservation({ watcher, command, result, observation }));
+  }
+  if (commandTool === "browserFillFields" || commandTool === "browserFillAndSubmit") checks.push(verifyFill({ result, command }));
+  if (commandTool === "browserSubmitForm" || commandTool === "browserFillAndSubmit") checks.push(verifySubmit({ result, observation, command }));
 
   const failed = checks.find((check) => !check.ok);
   if (failed) {

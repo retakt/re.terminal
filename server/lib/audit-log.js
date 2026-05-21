@@ -111,6 +111,12 @@ function createEventId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function normalizeEventTimestamp(value) {
+  if (!value) return new Date().toISOString();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+}
+
 function appendRecent(event) {
   recentEvents.push(event);
   if (recentEvents.length > MAX_IN_MEMORY) {
@@ -157,8 +163,8 @@ export function appendAuditEvent(input = {}) {
 
   const event = {
     seq: sequence + 1,
-    id: createEventId(),
-    ts: new Date().toISOString(),
+    id: String(input.id || createEventId()),
+    ts: normalizeEventTimestamp(input.ts),
     source: String(input.source || "server"),
     category: String(input.category || "server"),
     action: String(input.action || "event"),
