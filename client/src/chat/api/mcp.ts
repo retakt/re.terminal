@@ -86,24 +86,33 @@ export interface McpRoute {
   confidence?: number;
   reason: string;
 }
-async function getJson<T>(url: string, fallback: T): Promise<T> {
+// Result type for API calls that can fail
+export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+async function getJson<T>(url: string, fallback: T): Promise<ApiResult<T>> {
   try {
     const response = await fetch(url);
-    if (!response.ok) return fallback;
-    return response.json();
-  } catch {
-    return fallback;
+    if (!response.ok) {
+      return { ok: false, error: `HTTP ${response.status}: ${response.statusText}` };
+    }
+    const data = await response.json();
+    return { ok: true, data: data as T };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { ok: false, error: message };
   }
 }
 
-export async function listMcpServers(): Promise<McpServer[]> {
-  const data = await getJson<{ servers: McpServer[] }>("/api/mcp/servers", { servers: [] });
-  return data.servers ?? [];
+export async function listMcpServers(): Promise<ApiResult<McpServer[]>> {
+  const result = await getJson<{ servers: McpServer[] }>("/api/mcp/servers", { servers: [] });
+  if (!result.ok) return result;
+  return { ok: true, data: result.data.servers ?? [] };
 }
 
-export async function listMcpTools(): Promise<McpTool[]> {
-  const data = await getJson<{ tools: McpTool[] }>("/api/mcp/tools", { tools: [] });
-  return data.tools ?? [];
+export async function listMcpTools(): Promise<ApiResult<McpTool[]>> {
+  const result = await getJson<{ tools: McpTool[] }>("/api/mcp/tools", { tools: [] });
+  if (!result.ok) return result;
+  return { ok: true, data: result.data.tools ?? [] };
 }
 
 export async function listMcpToolDefinitions(): Promise<OllamaTool[]> {
@@ -111,9 +120,10 @@ export async function listMcpToolDefinitions(): Promise<OllamaTool[]> {
   return data.tools ?? [];
 }
 
-export async function listMcpLogs(): Promise<McpLog[]> {
-  const data = await getJson<{ logs: McpLog[] }>("/api/mcp/logs", { logs: [] });
-  return data.logs ?? [];
+export async function listMcpLogs(): Promise<ApiResult<McpLog[]>> {
+  const result = await getJson<{ logs: McpLog[] }>("/api/mcp/logs", { logs: [] });
+  if (!result.ok) return result;
+  return { ok: true, data: result.data.logs ?? [] };
 }
 
 export async function callMcpTool(name: string, args: Record<string, unknown>): Promise<string> {
