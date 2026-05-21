@@ -18,6 +18,15 @@ import {
   watchBrowserInstruction,
 } from "./browser-runtime-watcher.js";
 import {
+  browserAgentRuntimeConfig,
+  callBrowserAgentPlanner,
+  callBrowserAgentReporter,
+  combineBrowserAgentTokenUsage,
+  emptyBrowserAgentTokenUsage,
+  requireBrowserAgentRuntimeConfig,
+  validatePlannerShape,
+} from "./browser-llm-runtime.js";
+import {
   planBrowserTask,
   summarizeTaskSequence,
 } from "./browser-task-runner.js";
@@ -48,31 +57,6 @@ function boolArg(value, fallback = true) {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value === "boolean") return value;
   return !["0", "false", "off", "no"].includes(String(value).trim().toLowerCase());
-}
-
-function browserAgentRuntimeConfig() {
-  const baseUrl = String(
-    process.env.BROWSER_AGENT_BASE_URL ||
-    process.env.BROWSER_AGENT_API_BASE_URL ||
-    process.env.RUNTIME_BROWSER_AGENT_BASE_URL ||
-    ""
-  ).trim().replace(/\/+$/, "").replace(/\/api$/, "");
-  const redactedBaseUrl = baseUrl.replace(/([?&](?:token|key|api_key)=)[^&]+/ig, "$1***");
-  const model = String(process.env.BROWSER_AGENT_MODEL || process.env.RUNTIME_BROWSER_AGENT_MODEL || "").trim();
-  const configured = envFlag("BROWSER_AGENT_LLM_ENABLED", false) && Boolean(baseUrl && model);
-  return {
-    configured,
-    enabled: false,
-    used: false,
-    baseUrl: redactedBaseUrl,
-    model,
-    timeoutMs: Math.max(1000, Number(process.env.BROWSER_AGENT_TIMEOUT_MS || 60000)),
-    think: envFlag("BROWSER_AGENT_THINK", false),
-    strategy: "deterministic-only",
-    note: configured
-      ? "Runtime model is configured but not used; browser_agent currently uses deterministic watcher/planner code only."
-      : "Browser_agent currently uses deterministic watcher/planner code only.",
-  };
 }
 
 function siteSkillsDir() {
@@ -230,31 +214,8 @@ function roundMs(value = 0) {
   return Math.round(Number(value || 0) * 10) / 10;
 }
 
-function browserAgentTokenUsage(reason = "No browser-agent model was used; watcher/planner decisions are deterministic JS plus browser tool output.") {
-  return {
-    stage: "browser_agent",
-    model: "",
-    promptTokens: 0,
-    completionTokens: 0,
-    totalTokens: 0,
-    watcher: {
-      type: "deterministic",
-      used: false,
-      model: "",
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      reason,
-    },
-    mainModel: {
-      used: false,
-      model: "",
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      reason,
-    },
-  };
+function browserAgentTokenUsage(planner = null, reporter = null) {
+  return combineBrowserAgentTokenUsage(planner, reporter);
 }
 
 function redactInstructionSecrets(value = "") {
@@ -849,6 +810,8 @@ function responseBase({
   diagnostics = null,
   runtimeTiming = null,
   tokenUsage = null,
+  planner = null,
+  reporter = null,
 } = {}) {
   const observationIsValid = observation && isValidObservation(observation);
   return {
@@ -878,8 +841,11 @@ function responseBase({
     submitStatus,
     nextSafeAction,
     diagnostics,
+    planner,
+    reporter,
     runtimeTiming,
     tokenUsage: tokenUsage || browserAgentTokenUsage(),
+    runtime: browserAgentRuntimeConfig({ display: true }),
   };
 }
 
@@ -930,6 +896,166 @@ function submitStatusFromResult(result = {}) {
   return submit.error || "submit failed";
 }
 
+function availableSafeBrowserCommands() {
+  return [
+    "browserNavigate",
+    "browserObserve",
+    "browserClickByText",
+    "browserFillFields",
+    "browserSubmitForm",
+    "browserFillAndSubmit",
+    "browserScrape",
+    "browserShowActions",
+  ];
+}
+
+function availableBrowserBackends() {
+  return ["auto", "lightpanda", "chrome_cdp"];
+}
+
+function compactStateForPlanner(state = {}) {
+  return {
+    currentUrl: state.currentUrl || "",
+    currentTitle: state.currentTitle || "",
+    pendingForm: state.pendingForm || null,
+    pendingAction: state.pendingAction || null,
+    lastIntent: state.lastIntent || "",
+    lastCommand: redactCommand(state.lastCommand || null),
+    activeEngine: state.activeEngine || "",
+    engineFailures: state.engineFailures || {},
+  };
+}
+
+function compactObservationForPlanner(observation = {}) {
+  return observation && isValidObservation(observation)
+    ? compactObservation(observation)
+    : observation
+      ? {
+          url: observation.url || "",
+          title: observation.title || "",
+          textPreview: safeText(observation.textPreview || "", 800),
+          engine: observation.engine || "",
+          error: observation.error || observation.snapshotError || "",
+        }
+      : null;
+}
+
+function buildPlannerContext(args = {}, state = defaultState()) {
+  const currentUrl = args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
+  const currentTitle = args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "";
+  return {
+    userInstruction: redactInstructionSecrets(args.instruction || ""),
+    rawUserInstruction: args.instruction || "",
+    currentUrl,
+    currentTitle,
+    currentState: compactStateForPlanner(state),
+    lastValidObservation: compactObservationForPlanner(state.lastValidObservation),
+    lastFailedObservation: compactObservationForPlanner(state.lastFailedObservation),
+    availableSafeBrowserCommands: availableSafeBrowserCommands(),
+    backendOptions: availableBrowserBackends(),
+    safety: {
+      dangerousActionsRequireExactConfirmation: true,
+      confirmationPattern: `${CONFIRM_PREFIX}<tool>`,
+      deterministicParserRole: "guardrail only; not the planner",
+    },
+  };
+}
+
+function commandNeedsCurrentUrl(tool = "") {
+  return Boolean(tool && !["browserNavigate", "browserShowActions"].includes(tool));
+}
+
+function commandLooksDangerous(command = {}) {
+  const tool = command?.tool || "";
+  const args = command?.args || {};
+  if (["browserSubmitForm", "browserFillAndSubmit"].includes(tool)) return true;
+  if (tool === "browserFillFields" && Array.isArray(args.fields) && args.fields.some((field) =>
+    field.secret || /\b(password|pass|pwd|otp|code|pin)\b/i.test(`${field.label || ""} ${field.name || ""} ${field.id || ""}`)
+  )) return true;
+  if (tool === "browserClickByText" && DANGEROUS_RE.test(`${args.text || ""}`)) return true;
+  return false;
+}
+
+function confirmationPhraseForCommand(command = {}) {
+  return `${CONFIRM_PREFIX}${command?.tool || "browser action"}`;
+}
+
+function userConfirmedCommand(command = {}, args = {}) {
+  if (args.confirm === true || String(args.confirm || "").toLowerCase() === "true") return true;
+  return String(args.instruction || "").includes(confirmationPhraseForCommand(command));
+}
+
+function normalizePlannerCommand(plan = {}, args = {}, state = defaultState()) {
+  const normalized = {
+    ...plan,
+    backend: plan.backend || "auto",
+    command: {
+      ...(plan.command || {}),
+      args: {
+        ...(plan.command?.args || {}),
+      },
+    },
+  };
+  const tool = normalized.command.tool || "";
+  const commandArgs = normalized.command.args;
+  if (commandNeedsCurrentUrl(tool) && !commandArgs.currentUrl) {
+    commandArgs.currentUrl = args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
+  }
+  if (normalized.backend === "lightpanda") commandArgs.enginePriority = ["lightpanda_cdp", "static_fetch"];
+  if (normalized.backend === "chrome_cdp") commandArgs.enginePriority = ["chrome_cdp", "lightpanda_cdp", "static_fetch"];
+  return normalized;
+}
+
+function validateBrowserPlan(plan = {}, args = {}, state = defaultState(), guardrail = {}) {
+  const normalized = normalizePlannerCommand(plan, args, state);
+  const shape = validatePlannerShape(normalized);
+  if (!shape.ok) {
+    return {
+      ok: false,
+      status: "planner_error",
+      reason: `Browser agent LLM plan failed local validation: ${shape.errors.join("; ")}`,
+      plan: normalized,
+    };
+  }
+
+  const tool = normalized.command.tool;
+  const commandArgs = normalized.command.args || {};
+  if (tool === "browserNavigate" && !isHttpUrl(commandArgs.url || "")) {
+    return { ok: false, status: "planner_error", reason: "browserNavigate requires an http(s) url.", plan: normalized };
+  }
+  if (commandNeedsCurrentUrl(tool) && !isHttpUrl(commandArgs.currentUrl || "")) {
+    return {
+      ok: false,
+      status: "needs_user",
+      needsUser: true,
+      reason: "No valid current browser page is loaded. Navigate to a URL first.",
+      plan: normalized,
+    };
+  }
+  if (guardrail?.needsUser && commandNeedsCurrentUrl(tool)) {
+    return {
+      ok: false,
+      status: "needs_user",
+      needsUser: true,
+      reason: guardrail.reason || "The deterministic guardrail requires clarification before this browser action.",
+      plan: normalized,
+    };
+  }
+  if ((normalized.requiresConfirmation || commandLooksDangerous(normalized.command)) && !userConfirmedCommand(normalized.command, args)) {
+    const phrase = confirmationPhraseForCommand(normalized.command);
+    return {
+      ok: false,
+      status: "needs_user",
+      needsUser: true,
+      reason: `This browser action is risky and requires exact confirmation: ${phrase}`,
+      confirmationPhrase: phrase,
+      plan: normalized,
+    };
+  }
+
+  return { ok: true, plan: normalized, command: normalized.command };
+}
+
 function pendingFormFromResult(result = {}, previousPending = null) {
   const missing = missingFieldsFromResult(result);
   if (!missing.length) return null;
@@ -952,13 +1078,34 @@ function compactToolResult(result = {}, command = {}) {
     currentUrl: result?.currentUrl || result?.observation?.url || "",
     currentTitle: result?.currentTitle || result?.observation?.title || "",
     error: result?.error || "",
+    attempts: Array.isArray(result?.attempts)
+      ? result.attempts.slice(0, 6).map((attempt) => ({
+          engine: attempt?.engine || "",
+          ok: Boolean(attempt?.ok),
+          valid: Boolean(attempt?.valid),
+          error: attempt?.error || "",
+          requestedUrl: attempt?.requestedUrl || "",
+          currentUrl: attempt?.currentUrl || "",
+        }))
+      : [],
+    steps: Array.isArray(result?.steps)
+      ? result.steps.slice(0, 8).map((step) => ({
+          type: step?.type || "",
+          tool: step?.tool || "",
+          engine: step?.engine || "",
+          ok: Boolean(step?.ok),
+          valid: Boolean(step?.valid),
+          error: step?.error || "",
+          currentUrl: step?.currentUrl || "",
+        }))
+      : [],
     filledFields: filledFieldsFromResult(result, command),
     missingFields: missingFieldsFromResult(result),
     submitStatus: submitStatusFromResult(result),
   };
 }
 
-async function executeWatcherCommand(command = {}, args = {}, state = defaultState()) {
+async function executeBrowserCommand(command = {}, args = {}, state = defaultState()) {
   const tool = command?.tool || "";
   const activeEnginePriority = state.activeEngine === "chrome_cdp"
     ? ["chrome_cdp", "lightpanda_cdp", "static_fetch"]
@@ -999,24 +1146,37 @@ async function executeWatcherCommand(command = {}, args = {}, state = defaultSta
   return browserObserve({ ...commandArgs, lastValidObservation: state.lastValidObservation, state });
 }
 
-function stepsFromWatcherResult(watcher = {}, result = {}, command = {}) {
+function stepsFromPlanResult(plan = {}, guardrail = {}, result = {}, command = {}) {
   const steps = Array.isArray(result?.steps) ? result.steps : [];
   return [
     {
-      type: "watch",
-      tool: "watchBrowserInstruction",
-      ok: Boolean(watcher.ok && !watcher.needsUser),
-      intent: watcher.intent,
-      confidence: watcher.confidence,
-      risk: watcher.risk,
+      type: "llm_plan",
+      tool: "browserAgentPlanner",
+      ok: Boolean(plan?.command?.tool),
+      intent: plan.intent,
+      confidence: plan.confidence,
+      risk: plan.risk,
       resultPreview: preview({
-        intent: watcher.intent,
-        reason: watcher.reason,
+        intent: plan.intent,
+        reason: plan.reason,
         command: redactCommand(command),
+        guardrail: guardrail?.intent || "",
       }, 900),
     },
     ...steps,
   ];
+}
+
+const executeWatcherCommand = executeBrowserCommand;
+
+function stepsFromWatcherResult(watcher = {}, result = {}, command = {}) {
+  return stepsFromPlanResult({
+    intent: watcher.intent,
+    confidence: watcher.confidence,
+    risk: watcher.risk,
+    reason: watcher.reason,
+    command,
+  }, watcher, result, command);
 }
 
 async function browserAgentRunTaskPlan(args = {}, taskPlan = { steps: [] }) {
@@ -1966,11 +2126,16 @@ export async function browserAgentStatus(args = {}) {
     status: "success",
     sessionId,
     state: loadState(sessionId),
-    runtime: browserAgentRuntimeConfig(),
+    runtime: browserAgentRuntimeConfig({ display: true }),
     browserHealth: await browserHealth({ mode: args.mode || "browser" }),
   };
 }
 
+// Architecture note:
+// The mandatory LLM planner is the browser agent's brain. The deterministic
+// watcher/parser runs only after the model as a local guardrail, and browser
+// execution always uses a locally validated command allowlist before touching
+// Lightpanda/Chrome.
 export async function browserAgentDiagnose(args = {}) {
   const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
   const state = loadState(sessionId);
@@ -2037,45 +2202,111 @@ export async function browserAgentDiagnose(args = {}) {
   };
 }
 
+// Normal run path: mandatory LLM planner -> local deterministic guardrail ->
+// validated browser command execution -> verification -> mandatory LLM reporter.
 export async function browserAgentRun(args = {}) {
   const runStartedAt = nowMs();
-  let taskPlanningMs = 0;
-  let watcherMs = 0;
+  let plannerMs = 0;
+  let guardrailMs = 0;
   let browserToolMs = 0;
   let verificationMs = 0;
+  let reporterMs = 0;
   let stateMs = 0;
   const runtimeTiming = () => ({
     totalMs: roundMs(nowMs() - runStartedAt),
-    taskPlanningMs: roundMs(taskPlanningMs),
-    watcherMs: roundMs(watcherMs),
+    plannerMs: roundMs(plannerMs),
+    guardrailMs: roundMs(guardrailMs),
+    watcherMs: roundMs(guardrailMs),
     browserToolMs: roundMs(browserToolMs),
     verificationMs: roundMs(verificationMs),
+    reporterMs: roundMs(reporterMs),
     stateMs: roundMs(stateMs),
-    mainModelMs: 0,
+    mainModelMs: roundMs(plannerMs + reporterMs),
   });
   const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
   const state = loadState(sessionId);
   const instruction = String(args.instruction || "").trim();
-
   const baseArgs = {
     ...args,
     sessionId,
     instruction,
   };
 
-  const taskPlanningStartedAt = nowMs();
-  const taskPlan = args._skipTaskPlan ? { steps: [], atomic: true } : planBrowserTask({ instruction });
-  taskPlanningMs = nowMs() - taskPlanningStartedAt;
-  if (Array.isArray(taskPlan.steps) && taskPlan.steps.length > 1) {
-    return browserAgentRunTaskPlan({
-      ...baseArgs,
-      _taskPlanningMs: taskPlanningMs,
-      _runStartedAt: runStartedAt,
-    }, taskPlan);
+  if (!instruction) {
+    return responseBase({
+      ok: false,
+      status: "needs_user",
+      instruction,
+      state,
+      steps: [],
+      summary: "Browser instruction is empty.",
+      requiresUser: true,
+      blockedReason: "empty_instruction",
+      nextSafeAction: "Tell me what URL or page action to perform.",
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: emptyBrowserAgentTokenUsage(),
+    });
   }
 
-  const watcherStartedAt = nowMs();
-  const watcher = watchBrowserInstruction({
+  let runtimeConfig;
+  try {
+    runtimeConfig = requireBrowserAgentRuntimeConfig();
+  } catch (err) {
+    return responseBase({
+      ok: false,
+      status: "config_error",
+      instruction,
+      state,
+      steps: [],
+      summary: err.message,
+      requiresUser: true,
+      blockedReason: err.message,
+      nextSafeAction: "Set BROWSER_AGENT_BASE_URL and BROWSER_AGENT_MODEL, then retry.",
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: emptyBrowserAgentTokenUsage(),
+      diagnostics: {
+        diagnosis: "Browser agent LLM configuration is missing. The browser agent is LLM-required and will not use deterministic fallback.",
+        evidence: err.config?.missing || [],
+        suggestedFixes: [
+          "Set BROWSER_AGENT_BASE_URL to an Ollama-compatible server.",
+          "Set BROWSER_AGENT_MODEL to the model name the browser agent should use.",
+        ],
+      },
+    });
+  }
+
+  let plannerCall;
+  try {
+    const plannerStartedAt = nowMs();
+    plannerCall = await callBrowserAgentPlanner(buildPlannerContext(baseArgs, state));
+    plannerMs = nowMs() - plannerStartedAt;
+  } catch (err) {
+    plannerMs = plannerMs || roundMs(nowMs() - runStartedAt);
+    return responseBase({
+      ok: false,
+      status: "planner_error",
+      instruction,
+      state,
+      steps: [],
+      summary: err.message || "Browser agent planner failed.",
+      requiresUser: true,
+      blockedReason: err.message || "planner_error",
+      nextSafeAction: "Fix the browser-agent model response or configuration, then retry.",
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: browserAgentTokenUsage(err.usage || null, null),
+      diagnostics: {
+        diagnosis: "The mandatory browser-agent LLM planner did not produce a valid executable plan.",
+        evidence: [err.contentPreview || err.message].filter(Boolean),
+        suggestedFixes: [
+          "Use an Ollama-compatible model that can return strict JSON.",
+          "Check BROWSER_AGENT_BASE_URL and BROWSER_AGENT_MODEL.",
+        ],
+      },
+    });
+  }
+
+  const guardrailStartedAt = nowMs();
+  const guardrail = watchBrowserInstruction({
     sessionId,
     rawUserMessage: instruction,
     currentState: state,
@@ -2085,58 +2316,99 @@ export async function browserAgentRun(args = {}) {
     currentTitle: args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "",
     confirm: args.confirm === true || String(args.confirm || "").toLowerCase() === "true",
   });
-  watcherMs = nowMs() - watcherStartedAt;
+  guardrailMs = nowMs() - guardrailStartedAt;
 
-  const redactedWatcher = {
-    ...watcher,
-    command: redactCommand(watcher.command),
-    normalizedInstruction: redactInstructionSecrets(watcher.normalizedInstruction || ""),
+  const validation = validateBrowserPlan(plannerCall.plan, baseArgs, state, guardrail);
+  const planner = {
+    ...validation.plan,
+    command: redactCommand(validation.plan?.command || plannerCall.plan?.command),
+  };
+  const redactedGuardrail = {
+    ...guardrail,
+    command: redactCommand(guardrail.command),
+    normalizedInstruction: redactInstructionSecrets(guardrail.normalizedInstruction || ""),
   };
 
-  if (watcher.needsUser || !watcher.command) {
+  if (!validation.ok) {
     const waitingState = saveState({
       ...state,
       pendingInstruction: redactInstructionSecrets(instruction),
-      pendingAction: redactedWatcher,
-      lastIntent: watcher.intent || "",
-      lastCommand: redactCommand(watcher.command),
+      pendingAction: planner,
+      lastIntent: planner.intent || "",
+      lastCommand: redactCommand(planner.command),
     });
-
     return responseBase({
       ok: false,
-      status: "needs_user",
+      status: validation.status || "planner_error",
       instruction,
       state: waitingState,
-      steps: stepsFromWatcherResult(redactedWatcher, {}, watcher.command),
-      summary: watcher.reason || "I need clarification before acting in the browser.",
+      steps: stepsFromPlanResult(planner, redactedGuardrail, {}, planner.command),
+      summary: validation.reason,
       requiresUser: true,
-      blockedReason: watcher.reason || "needs_user",
-      watcher: redactedWatcher,
-      nextSafeAction: watcher.reason || "Navigate to a URL or clarify the target field/action.",
+      blockedReason: validation.reason,
+      watcher: redactedGuardrail,
+      planner,
+      nextSafeAction: validation.confirmationPhrase
+        ? `Reply exactly: ${validation.confirmationPhrase}`
+        : validation.reason,
       runtimeTiming: runtimeTiming(),
-      tokenUsage: browserAgentTokenUsage(),
+      tokenUsage: browserAgentTokenUsage(plannerCall.usage, null),
+      diagnostics: {
+        diagnosis: "The mandatory LLM planner returned a plan, but local safety validation blocked it.",
+        evidence: [validation.reason],
+        suggestedFixes: validation.confirmationPhrase
+          ? [`Reply exactly: ${validation.confirmationPhrase}`]
+          : ["Ask for a safer browser action or navigate to a URL first."],
+      },
     });
   }
 
-  const command = watcher.command;
+  const command = validation.command;
   const browserToolStartedAt = nowMs();
-  const result = await executeWatcherCommand(command, baseArgs, state);
+  const result = await executeBrowserCommand(command, baseArgs, state);
   browserToolMs = nowMs() - browserToolStartedAt;
 
   if (result?.state && ["browserLearn", "browserShowActions", "browserReset", "browserStatus"].includes(command.tool)) {
+    let reporterCall = null;
+    try {
+      const reporterStartedAt = nowMs();
+      reporterCall = await callBrowserAgentReporter({
+        instruction: redactInstructionSecrets(instruction),
+        planner,
+        result: compactToolResult(result, command),
+        currentState: compactStateForPlanner(result.state || state),
+      });
+      reporterMs = nowMs() - reporterStartedAt;
+    } catch (err) {
+      reporterMs = reporterMs || 0;
+      return {
+        ...result,
+        ok: false,
+        status: "reporter_error",
+        summary: err.message || "Browser agent reporter failed.",
+        watcher: redactedGuardrail,
+        planner,
+        runtimeTiming: runtimeTiming(),
+        tokenUsage: browserAgentTokenUsage(plannerCall.usage, err.usage || null),
+      };
+    }
     return {
       ...result,
-      watcher: redactedWatcher,
-      steps: stepsFromWatcherResult(redactedWatcher, result, command),
+      summary: reporterCall.report?.summary || result.summary,
+      nextSafeAction: reporterCall.report?.nextSafeAction || result.nextSafeAction,
+      watcher: redactedGuardrail,
+      planner,
+      reporter: reporterCall.report,
+      steps: stepsFromPlanResult(planner, redactedGuardrail, result, command),
       runtimeTiming: runtimeTiming(),
-      tokenUsage: browserAgentTokenUsage(),
+      tokenUsage: browserAgentTokenUsage(plannerCall.usage, reporterCall.usage),
     };
   }
 
   const observation = observationFromPageResult(result || {});
   const verificationStartedAt = nowMs();
   const verification = verifyBrowserResult({
-    watcher,
+    watcher: guardrail,
     command,
     result,
     observation,
@@ -2146,7 +2418,7 @@ export async function browserAgentRun(args = {}) {
 
   if (!verification.ok) {
     const diagnostics = adviseBrowserFailure({
-      watcher,
+      watcher: guardrail,
       command,
       result,
       observation,
@@ -2158,14 +2430,14 @@ export async function browserAgentRun(args = {}) {
       ? saveState({
           ...state,
           pendingInstruction: redactInstructionSecrets(instruction),
-          pendingAction: redactedWatcher,
-          lastIntent: watcher.intent,
+          pendingAction: redactedGuardrail,
+          lastIntent: planner.intent || guardrail.intent,
           lastCommand: redactCommand(command),
           lastToolResult: compactToolResult(result, command),
         })
       : recordFailedObservation({
           ...state,
-          lastIntent: watcher.intent,
+          lastIntent: planner.intent || guardrail.intent,
           lastCommand: redactCommand(command),
           lastToolResult: compactToolResult(result, command),
         }, observation, {
@@ -2175,27 +2447,63 @@ export async function browserAgentRun(args = {}) {
         });
     stateMs = nowMs() - stateStartedAt;
 
+    let reporterCall = null;
+    try {
+      const reporterStartedAt = nowMs();
+      reporterCall = await callBrowserAgentReporter({
+        instruction: redactInstructionSecrets(instruction),
+        planner,
+        command: redactCommand(command),
+        result: compactToolResult(result, command),
+        verification,
+        diagnostics,
+        observation: compactObservationForPlanner(observation),
+        currentState: compactStateForPlanner(failedState),
+      });
+      reporterMs = nowMs() - reporterStartedAt;
+    } catch (err) {
+      reporterMs = reporterMs || 0;
+      return responseBase({
+        ok: false,
+        status: "reporter_error",
+        instruction,
+        state: failedState,
+        observation: isValidObservation(observation) ? observation : null,
+        steps: stepsFromPlanResult(planner, redactedGuardrail, result, command),
+        summary: err.message || "Browser agent reporter failed.",
+        requiresUser: true,
+        blockedReason: err.message || "reporter_error",
+        watcher: redactedGuardrail,
+        planner,
+        nextSafeAction: "Fix the browser-agent reporter JSON response, then retry.",
+        runtimeTiming: runtimeTiming(),
+        tokenUsage: browserAgentTokenUsage(plannerCall.usage, err.usage || null),
+      });
+    }
+
     return responseBase({
       ok: false,
       status: result?.status === "needs_user" || verification.needsUser ? "needs_user" : "failed",
       instruction,
       state: failedState,
       observation: isValidObservation(observation) ? observation : null,
-      steps: stepsFromWatcherResult(redactedWatcher, result, command),
-      summary: result?.status === "needs_user"
-        ? (result.error || watcher.reason || "The browser needs more input before acting.")
-        : `${verification.reason || "Browser action failed verification."} Previous valid URL: ${state.currentUrl || state.lastValidObservation?.url || "none"}.`,
+      steps: stepsFromPlanResult(planner, redactedGuardrail, result, command),
+      summary: reporterCall.report?.summary || (result?.status === "needs_user"
+        ? (result.error || guardrail.reason || "The browser needs more input before acting.")
+        : `${verification.reason || "Browser action failed verification."} Previous valid URL: ${state.currentUrl || state.lastValidObservation?.url || "none"}.`),
       possibleNextActions: [],
       requiresUser: true,
       blockedReason: verification.blockedReason || result?.error || observation.error || observation.snapshotError || "observation_failed",
-      watcher: redactedWatcher,
+      watcher: redactedGuardrail,
+      planner,
+      reporter: reporterCall.report,
       filledFields: filledFieldsFromResult(result, command),
       missingFields: missingFieldsFromResult(result),
       submitStatus: submitStatusFromResult(result),
-      nextSafeAction: verification.nextSafeAction || "Retry the action, clarify the target, or navigate to a valid URL.",
+      nextSafeAction: reporterCall.report?.nextSafeAction || verification.nextSafeAction || "Retry the action, clarify the target, or navigate to a valid URL.",
       diagnostics,
       runtimeTiming: runtimeTiming(),
-      tokenUsage: browserAgentTokenUsage(),
+      tokenUsage: browserAgentTokenUsage(plannerCall.usage, reporterCall.usage),
     });
   }
 
@@ -2217,7 +2525,7 @@ export async function browserAgentRun(args = {}) {
     pendingForm,
     pendingInstruction: "",
     pendingAction: null,
-    lastIntent: watcher.intent,
+    lastIntent: planner.intent || guardrail.intent,
     lastCommand: redactCommand(command),
     lastToolResult: compactToolResult(result, command),
     lastToolResults: [
@@ -2232,6 +2540,49 @@ export async function browserAgentRun(args = {}) {
   const submitStatus = submitStatusFromResult(result);
   const accessDenied = /\baccess denied\b/i.test(`${observation.url || ""} ${observation.title || ""} ${observation.textPreview || ""}`);
 
+  let reporterCall = null;
+  try {
+    const reporterStartedAt = nowMs();
+    reporterCall = await callBrowserAgentReporter({
+      instruction: redactInstructionSecrets(instruction),
+      planner,
+      command: redactCommand(command),
+      result: compactToolResult(result, command),
+      verification,
+      observation: compactObservationForPlanner(observation),
+      filledFields,
+      missingFields,
+      submitStatus,
+      possibleNextActions,
+      currentState: compactStateForPlanner(updated),
+    });
+    reporterMs = nowMs() - reporterStartedAt;
+  } catch (err) {
+    reporterMs = reporterMs || 0;
+    return responseBase({
+      ok: false,
+      status: "reporter_error",
+      instruction,
+      state: updated,
+      observation,
+      extension,
+      pageKey,
+      steps: stepsFromPlanResult(planner, redactedGuardrail, result, command),
+      summary: err.message || "Browser agent reporter failed.",
+      possibleNextActions,
+      requiresUser: true,
+      blockedReason: err.message || "reporter_error",
+      watcher: redactedGuardrail,
+      planner,
+      filledFields,
+      missingFields,
+      submitStatus,
+      nextSafeAction: "Fix the browser-agent reporter JSON response, then retry.",
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: browserAgentTokenUsage(plannerCall.usage, err.usage || null),
+    });
+  }
+
   return responseBase({
     ok: true,
     status: "success",
@@ -2240,32 +2591,34 @@ export async function browserAgentRun(args = {}) {
     observation,
     extension,
     pageKey,
-    steps: stepsFromWatcherResult(redactedWatcher, result, command),
-    summary: accessDenied
+    steps: stepsFromPlanResult(planner, redactedGuardrail, result, command),
+    summary: reporterCall.report?.summary || (accessDenied
       ? "Submitted the form, but the site returned Access Denied for this browser/IP/location."
-      : watcher.intent === "fill_form"
+      : planner.intent === "fill_form"
       ? "Filled the requested field values without submitting."
-      : watcher.intent === "fill_and_submit"
+      : planner.intent === "fill_and_submit"
         ? "Filled the requested field values and submitted the form."
-        : watcher.intent === "submit_form"
+        : planner.intent === "submit_form"
           ? "Submitted the current form."
-          : watcher.intent === "click_or_open"
+          : planner.intent === "click_or_open"
             ? `Clicked/opened "${command.args?.text || "the requested target"}" and observed the result.`
-            : watcher.intent === "navigate"
+            : planner.intent === "navigate"
               ? `Navigated to ${observation.url}.`
-              : `Observed ${observation.url}.`,
+              : `Observed ${observation.url}.`),
     possibleNextActions,
     requiresUser: true,
-    watcher: redactedWatcher,
+    watcher: redactedGuardrail,
+    planner,
+    reporter: reporterCall.report,
     filledFields,
     missingFields,
     submitStatus,
-    nextSafeAction: accessDenied
+    nextSafeAction: reporterCall.report?.nextSafeAction || (accessDenied
       ? "Use an authorized network/IP or ask the site admin to whitelist this browser location."
       : missingFields.length
       ? `Provide a value for ${missingFields[0]}.`
-      : possibleNextActions[0]?.label || "Tell me the next visible button/link to click, fields to fill, or page to read.",
+      : possibleNextActions[0]?.label || "Tell me the next visible button/link to click, fields to fill, or page to read."),
     runtimeTiming: runtimeTiming(),
-    tokenUsage: browserAgentTokenUsage(),
+    tokenUsage: browserAgentTokenUsage(plannerCall.usage, reporterCall.usage),
   });
 }

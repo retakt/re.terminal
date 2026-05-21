@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Clipboard, Pause, Play, RefreshCcw, ScrollText, Search, Trash2, Terminal } from "lucide-react";
+import { Pause, Play, RefreshCcw, Search, Trash2, Terminal } from "lucide-react";
 import { listAuditEvents, type AuditEvent } from "@/lib/logs-api";
 import {
   formatTerminalOutput,
@@ -14,10 +14,6 @@ const PHONE_QUERY = "(max-width: 980px), (hover: none) and (pointer: coarse)";
 const CATEGORY_OPTIONS = ["all", "ui", "terminal", "chat", "llm", "mcp", "server"] as const;
 const STATUS_OPTIONS = ["success", "info", "warning", "error"] as const;
 const MAX_BUFFERED_EVENTS = 1600;
-
-function stripAnsi(value: string) {
-  return value.replace(/\u001b\[[0-9;]*m/g, "");
-}
 
 function previewText(value: unknown, limit = 220) {
   const text = typeof value === "string" ? value : JSON.stringify(value ?? null);
@@ -181,7 +177,7 @@ function TerminalLine({ event }: { event: AuditEvent }) {
 }
 
 export function LogsShell({ isActive = true }: { isActive?: boolean }) {
-  const isPhone = useIsPhoneLayout();
+  useIsPhoneLayout();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>("all");
   const [statuses, setStatuses] = useState<Set<(typeof STATUS_OPTIONS)[number]>>(new Set());
@@ -227,7 +223,7 @@ export function LogsShell({ isActive = true }: { isActive?: boolean }) {
       setLoading(true);
       setError("");
       try {
-        const result = await refresh();
+        await refresh();
         if (!alive) return;
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : "failed to load logs");
@@ -277,10 +273,6 @@ export function LogsShell({ isActive = true }: { isActive?: boolean }) {
     if (!latest) return;
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [followLive, visibleEvents]);
-
-  const copyEvent = async (event: AuditEvent) => {
-    await navigator.clipboard?.writeText(JSON.stringify(event, null, 2));
-  };
 
   return (
     <div className="log-page">

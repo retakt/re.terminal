@@ -437,7 +437,7 @@ function cleanOneLine(value: unknown, limit = 180) {
 function usageDurationMs(value: unknown) {
   if (!value || typeof value !== "object") return undefined;
   const source = value as Record<string, unknown>;
-  const durationMs = Number(source.durationMs ?? 0);
+  const durationMs = Number(source.durationMs ?? source.totalDurationMs ?? 0);
   if (Number.isFinite(durationMs) && durationMs > 0) return durationMs;
   const totalDuration = Number(source.total_duration ?? 0);
   if (Number.isFinite(totalDuration) && totalDuration > 0) {
@@ -469,9 +469,115 @@ function normalizeUsageWithDuration(
 function extractToolUsage(result: string, defaults: Partial<AuditUsage> = {}) {
   const parsed = parseToolJsonResult(result);
   if (parsed && typeof parsed === "object") {
-    return normalizeUsageWithDuration((parsed as Record<string, unknown>).usage ?? parsed, defaults);
+    const source = parsed as Record<string, unknown>;
+    return normalizeUsageWithDuration(source.usage ?? source.tokenUsage ?? parsed, defaults);
   }
   return null;
+}
+
+function extractToolUsageStages(result: string, defaults: Partial<AuditUsage> = {}) {
+  const parsed = parseToolJsonResult(result);
+  if (!parsed || typeof parsed !== "object") return [];
+  const source = parsed as Record<string, unknown>;
+  const tokenUsage = source.tokenUsage && typeof source.tokenUsage === "object"
+    ? source.tokenUsage as Record<string, unknown>
+    : null;
+  if (!tokenUsage) {
+    const usage = extractToolUsage(result, defaults);
+    return usage ? [usage] : [];
+  }
+
+  const stages: AuditUsage[] = [];
+  for (const stageName of ["planner", "reporter"] as const) {
+    const rawStage = tokenUsage[stageName];
+    if (!rawStage || typeof rawStage !== "object") continue;
+    const usage = normalizeUsageWithDuration(rawStage, {
+      ...defaults,
+      stage: `${defaults.stage || "tool"}.${stageName}`,
+      model: String((rawStage as Record<string, unknown>).model || defaults.model || ""),
+    });
+    if (usage) stages.push(usage);
+  }
+
+  if (stages.length > 0) return stages;
+  const aggregate = normalizeUsageWithDuration(tokenUsage, defaults);
+  return aggregate ? [aggregate] : [];
+}
+
+function formatBrowserAgentReasoning(payload: any) {
+  if (!payload || typeof payload !== "object") return "";
+  const planner = payload.planner && typeof payload.planner === "object" ? payload.planner : null;
+  const reporter = payload.reporter && typeof payload.reporter === "object" ? payload.reporter : null;
+  const tokenUsage = payload.tokenUsage && typeof payload.tokenUsage === "object" ? payload.tokenUsage : null;
+  const timing = payload.runtimeTiming && typeof payload.runtimeTiming === "object" ? payload.runtimeTiming : null;
+  const runtime = payload.runtime && typeof payload.runtime === "object" ? payload.runtime : null;
+  if (!planner && !reporter && !tokenUsage && !timing && !runtime) return "";
+
+  const command = planner?.command && typeof planner.command === "object" ? planner.command : null;
+  const commandArgs = command?.args && typeof command.args === "object"
+    ? JSON.stringify(command.args)
+        .replace(/("value"\s*:\s*")([^"]+)(")/ig, (_match, start, value, end) => {
+          const label = JSON.stringify(command.args).slice(0, 180).toLowerCase();
+          return /password|otp|code|pin/.test(label) ? `${start}[redacted]${end}` : `${start}${value}${end}`;
+        })
+        .slice(0, 320)
+    : "";
+  const plannerUsage = tokenUsage?.planner as Record<string, unknown> | undefined;
+  const reporterUsage = tokenUsage?.reporter as Record<string, unknown> | undefined;
+  const runtimeOptions = runtime?.options && typeof runtime.options === "object" ? runtime.options as Record<string, any> : null;
+  const runtimePrompts = runtime?.prompts && typeof runtime.prompts === "object" ? runtime.prompts as Record<string, any> : null;
+
+  return [
+    "planner",
+    planner
+      ? [
+          `intent=${cleanOneLine(planner.intent || "", 80)} risk=${cleanOneLine(planner.risk || "", 40)} backend=${cleanOneLine(planner.backend || "", 60)}`,
+          `tool=${cleanOneLine(command?.tool || "", 100)} confidence=${Number(planner.confidence ?? 0).toFixed(2)}`,
+          commandArgs ? `args=${commandArgs}` : "",
+          `reason=${cleanOneLine(planner.reason || "", 360)}`,
+        ].filter(Boolean).join("\n")
+      : "not returned",
+    "",
+    "reporter",
+    reporter
+      ? [
+          `summary=${cleanOneLine(reporter.summary || "", 360)}`,
+          `what_happened=${cleanOneLine(reporter.whatHappened || "", 420)}`,
+          reporter.failureDiagnosis ? `failure=${cleanOneLine(reporter.failureDiagnosis, 420)}` : "",
+          `next=${cleanOneLine(reporter.nextSafeAction || "", 320)}`,
+        ].filter(Boolean).join("\n")
+      : "not returned",
+    "",
+    "api token usage",
+    tokenUsage
+      ? [
+          `total=${Number(tokenUsage.totalTokens || 0)}`,
+          plannerUsage ? `planner model=${cleanOneLine(plannerUsage.model || "", 120)} total=${Number(plannerUsage.totalTokens || 0)} prompt=${Number(plannerUsage.promptTokens || 0)} completion=${Number(plannerUsage.completionTokens || 0)} duration=${Number(plannerUsage.totalDurationMs || plannerUsage.durationMs || 0)}ms` : "",
+          reporterUsage ? `reporter model=${cleanOneLine(reporterUsage.model || "", 120)} total=${Number(reporterUsage.totalTokens || 0)} prompt=${Number(reporterUsage.promptTokens || 0)} completion=${Number(reporterUsage.completionTokens || 0)} duration=${Number(reporterUsage.totalDurationMs || reporterUsage.durationMs || 0)}ms` : "",
+        ].filter(Boolean).join("\n")
+      : "not returned",
+    "",
+    "timing",
+    timing
+      ? [
+          `planner=${Number(timing.plannerMs || 0).toFixed(1)}ms`,
+          `browser=${Number(timing.browserToolMs || 0).toFixed(1)}ms`,
+          `reporter=${Number(timing.reporterMs || 0).toFixed(1)}ms`,
+          `main_model=${Number(timing.mainModelMs || 0).toFixed(1)}ms`,
+        ].join(" ")
+      : "not returned",
+    "",
+    "llm runtime settings",
+    runtime
+      ? [
+          `strategy=${cleanOneLine(runtime.strategy || "", 80)} model=${cleanOneLine(runtime.model || "", 120)} timeout=${Number(runtime.timeoutMs || 0)}ms`,
+          runtimeOptions?.planner ? `planner options=${JSON.stringify(runtimeOptions.planner).slice(0, 220)}` : "",
+          runtimeOptions?.reporter ? `reporter options=${JSON.stringify(runtimeOptions.reporter).slice(0, 220)}` : "",
+          runtimePrompts?.planner?.hasCustomPrompt ? `planner prompt=${cleanOneLine(runtimePrompts.planner.path || "inline custom prompt", 220)}` : "",
+          runtimePrompts?.reporter?.hasCustomPrompt ? `reporter prompt=${cleanOneLine(runtimePrompts.reporter.path || "inline custom prompt", 220)}` : "",
+        ].filter(Boolean).join("\n")
+      : "not returned",
+  ].join("\n").trim();
 }
 
 function listObservedLabels(values: any[] = [], limit = 8) {
@@ -512,9 +618,10 @@ function formatBrowserAgentDirectResponse(payload: any) {
   const observation = observationFromBrowserAgent(payload);
   const currentUrl = cleanOneLine(payload?.currentUrl || observation?.url || "unknown", 260);
   const currentTitle = cleanOneLine(payload?.currentTitle || observation?.title || "untitled", 180);
-  const summary = cleanOneLine(payload?.browserSummary || payload?.summary || "", 360);
+  const reporter = payload?.reporter && typeof payload.reporter === "object" ? payload.reporter : null;
+  const summary = cleanOneLine(reporter?.summary || payload?.summary || payload?.browserSummary || "", 360);
+  const whatHappened = cleanOneLine(reporter?.whatHappened || summary, 420);
   const status = cleanOneLine(payload?.status || "", 80);
-  const engine = cleanOneLine(payload?.engine || observation?.engine || "", 80);
   const observationFailed = !observation && /failed|needs_engine_fallback/i.test(status || payload?.blockedReason || payload?.error || "");
 
   const forms = Array.isArray(observation?.forms) ? observation.forms : [];
@@ -535,23 +642,36 @@ function formatBrowserAgentDirectResponse(payload: any) {
     ...forms.flatMap((form: any) => Array.isArray(form?.fields) ? form.fields : []),
   ];
 
-  const lines: string[] = [];
+  const lines: string[] = ["**Browser**"];
   const pageLabel = currentTitle && currentTitle !== "untitled" ? currentTitle : currentUrl;
   const pageText = /^https?:\/\//i.test(currentUrl) ? `[${pageLabel}](${currentUrl})` : pageLabel;
-  const statusText = payload?.ok === false
-    ? (status === "needs_user" ? "needs input" : "blocked")
-    : "done";
+  const ok = payload?.ok !== false && !/failed|blocked|planner_error|config_error|reporter_error/i.test(status);
 
-  lines.push("**Browser**");
-  lines.push("- Page: " + pageText);
-  lines.push("- Status: " + statusText + (engine ? " (" + engine + ")" : ""));
-  if (summary) lines.push("- Action: " + summary);
+  if (ok) {
+    lines.push(`I'm on ${pageText}.`);
+    if (whatHappened) lines.push(whatHappened);
+  } else {
+    const reason = cleanOneLine(
+      reporter?.failureDiagnosis ||
+      reporter?.summary ||
+      payload?.summary ||
+      payload?.blockedReason ||
+      payload?.error ||
+      "I could not verify that the browser action completed.",
+      300,
+    );
+    lines.push(currentUrl && currentUrl !== "unknown" ? `I'm still on ${pageText}.` : "I couldn't get a usable page loaded.");
+    lines.push(reason);
+    lines.push("I kept the technical details in the run inspector.");
+  }
 
   const filledFields = Array.isArray(payload?.filledFields) ? payload.filledFields : [];
   const missingFields = Array.isArray(payload?.missingFields) ? payload.missingFields : [];
   const submitStatus = cleanOneLine(payload?.submitStatus || "", 240);
 
   if (filledFields.length) {
+    lines.push("");
+    lines.push("**Done**");
     lines.push("- Filled: " + filledFields
       .map((field: any) => {
         const label = cleanOneLine(field?.label || field?.key || field?.name || "field", 120);
@@ -563,55 +683,15 @@ function formatBrowserAgentDirectResponse(payload: any) {
   }
 
   if (missingFields.length) {
+    if (!filledFields.length) {
+      lines.push("");
+      lines.push("**Done**");
+    }
     lines.push("- Missing: " + missingFields.map((field: any) => cleanOneLine(field, 120)).filter(Boolean).join(", "));
   }
 
   if (submitStatus) {
     lines.push("- Submit: " + submitStatus);
-  }
-
-  const sequenceItems = Array.isArray(payload?.sequence?.items) ? payload.sequence.items : [];
-  if (sequenceItems.length) {
-    lines.push("");
-    lines.push("**Steps**");
-    sequenceItems.slice(0, 6).forEach((item: any) => {
-      const index = cleanOneLine(item?.index || "", 20);
-      const marker = item?.ok ? "done" : "stopped";
-      const instruction = cleanOneLine(item?.instruction || "", 180);
-      const stepSummary = cleanOneLine(item?.summary || item?.blockedReason || item?.status || "", 180);
-      lines.push(`${index}. ${marker}: ${instruction}${stepSummary ? " - " + stepSummary : ""}`);
-    });
-    if (sequenceItems.length > 6) lines.push(`${sequenceItems.length - 6} more step(s) hidden.`);
-  }
-
-  if (payload?.blockedReason || payload?.error) {
-    lines.push("");
-    lines.push("**Blocked**");
-    lines.push(cleanOneLine(payload.blockedReason || payload.error, 420));
-  }
-
-  if (payload?.diagnostics?.diagnosis) {
-    const fixes = Array.isArray(payload.diagnostics.suggestedFixes) ? payload.diagnostics.suggestedFixes : [];
-    lines.push("");
-    lines.push("**Why**");
-    lines.push(cleanOneLine(payload.diagnostics.diagnosis, 420));
-    if (fixes.length) {
-      lines.push("**Try**");
-      fixes.slice(0, 2).forEach((item: any, index: number) => {
-        lines.push(String(index + 1) + ". " + cleanOneLine(item, 220));
-      });
-    }
-  }
-
-  if (!observation && (payload?.lastFailedObservation || payload?.engineFailures)) {
-    const failed = payload.lastFailedObservation;
-    const failedEngine = cleanOneLine(failed?.engine || Object.keys(payload.engineFailures || {}).slice(-1)[0] || "", 80);
-    const failedError = cleanOneLine(failed?.error || payload?.blockedReason || payload?.error || "browser observation failed", 360);
-    if (!payload?.diagnostics?.diagnosis) {
-      lines.push("");
-      lines.push("**Why**");
-      lines.push([failedEngine, failedError].filter(Boolean).join(" - "));
-    }
   }
 
   const buttonLabels = listObservedLabels(buttons, 10);
@@ -630,17 +710,17 @@ function formatBrowserAgentDirectResponse(payload: any) {
 
   if (hasObservedControls || previewText) {
     lines.push("");
-    lines.push("**On Page**");
+    lines.push("**I can see**");
     if (forms.length) lines.push("- Forms: " + forms.length);
-    if (inputLabels.length) lines.push("- Inputs: " + inputLabels.join(", "));
+    if (inputLabels.length) lines.push("- Fields: " + inputLabels.join(", "));
     if (buttonLabels.length) lines.push("- Buttons: " + buttonLabels.join(", "));
     if (linkLabels.length) lines.push("- Links: " + linkLabels.join(", "));
-    if (!hasObservedControls && previewText) lines.push("- Text: " + previewText);
+    if (!hasObservedControls && previewText) lines.push(previewText);
   }
 
   if (!hasObservedControls && !previewText && (status === "failed" || status === "needs_user")) {
     lines.push("");
-    lines.push("**On Page**");
+    lines.push("**I can see**");
     lines.push("- No visible controls were detected.");
   }
 
@@ -658,9 +738,9 @@ function formatBrowserAgentDirectResponse(payload: any) {
   if (nextSafeAction) {
     lines.push(nextSafeAction);
   } else if (observationFailed) {
-    lines.push("1. start or check Lightpanda CDP/native MCP on the server");
-    lines.push("2. set BROWSER_AGENT_ENGINE_PRIORITY=lightpanda_cdp,static_fetch for a VPS without Chrome");
-    lines.push("3. try the URL again after the browser engine is healthy");
+    lines.push("1. try the page again");
+    lines.push("2. give me another URL");
+    lines.push("3. open the run inspector if you want the technical reason");
   } else if (safeAgentActions.length) {
     safeAgentActions.forEach((label: string, index: number) => {
       lines.push(String(index + 1) + ". " + label);
@@ -1627,11 +1707,20 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
               const result = await executeTool(tc.function.name, tc.function.arguments);
               if (logEntry) { logEntry.result = result; logEntry.status = "complete"; logEntry.durationMs = Date.now() - startedAt; }
               persistToolLogs();
-              const usage = pushUsageStage(extractToolUsage(result, {
+              const durationMs = Date.now() - startedAt;
+              const usageStages = extractToolUsageStages(result, {
                 stage: `tool.${tc.function.name}`,
                 model: currentModel,
-                durationMs: Date.now() - startedAt,
-              }));
+                durationMs,
+              });
+              usageStages.forEach((stage) => pushUsageStage(stage));
+              const usage = usageStages.length > 0
+                ? aggregateAuditUsage(usageStages, {
+                    stage: `tool.${tc.function.name}`,
+                    model: currentModel,
+                    durationMs,
+                  })
+                : null;
               emitAudit({
                 source: "client.chat",
                 category: "chat",
@@ -1689,10 +1778,28 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
         if (browserAgentResult && !browserAgentResult.error) {
           const parsed = parseToolJsonResult(browserAgentResult.result);
           const responseText = formatBrowserAgentDirectResponse(parsed);
+          const browserReasoning = formatBrowserAgentReasoning(parsed);
+
+          if (browserReasoning) {
+            appendReasoningLog({
+              id: generateUUID(),
+              title: "browser watcher LLM",
+              text: browserReasoning,
+              status: "complete",
+              startedAt: Date.now(),
+              updatedAt: Date.now(),
+              runId,
+              model: cleanOneLine(parsed?.tokenUsage?.planner?.model || parsed?.planner?.model || currentModel, 120),
+            });
+            persistReasoningLogs();
+          }
 
           emitRunFinished("success", "chat.run.completed", "browser tool returned direct response", {
             directTool: browserAgentResult.name,
             responsePreview: cleanOneLine(responseText, 320),
+            browserAgentPlanner: parsed?.planner || null,
+            browserAgentReporter: parsed?.reporter || null,
+            tokenUsage: parsed?.tokenUsage || null,
           });
           setActivityStatus("idle");
 

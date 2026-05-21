@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "playwright": {
+      "id": "playwright",
+      "title": "Playwright MCP",
+      "source": "external",
+      "type": "external",
+      "transport": "stdio",
+      "protocol": "mcp",
+      "enabled": true,
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "description": "Official Microsoft Playwright MCP server for browser automation."
+    }
+  }
+}
