@@ -34,6 +34,9 @@ export interface LightpandaPageResult {
     markdown?: string;
     links?: Array<{ text: string; href: string }>;
     forms?: Array<Record<string, unknown>>;
+    inputs?: Array<Record<string, unknown>>;
+    buttons?: Array<Record<string, unknown>>;
+    interactiveElements?: Array<Record<string, unknown>>;
     accessibility?: {
       ok?: boolean;
       nodeCount?: number;
@@ -92,11 +95,82 @@ export interface PlaywrightMcpResult {
   [key: string]: unknown;
 }
 
+export interface BrowserAgentObservation {
+  url?: string;
+  title?: string;
+  textPreview?: string;
+  text?: string;
+  markdown?: string;
+  links?: Array<{ text?: string; href?: string }>;
+  forms?: Array<Record<string, unknown>>;
+  inputs?: Array<Record<string, unknown>>;
+  buttons?: Array<Record<string, unknown>>;
+  interactiveElements?: Array<Record<string, unknown>>;
+  stats?: Record<string, number | string>;
+  extractionPath?: string;
+  extractionSources?: string[];
+  extractionCapabilities?: Record<string, unknown>;
+  engine?: string;
+  error?: string;
+}
+
+export interface BrowserAgentStatus {
+  ok: boolean;
+  status?: string;
+  sessionId?: string;
+  state?: {
+    currentUrl?: string;
+    currentTitle?: string;
+    activeEngine?: string;
+    lastIntent?: string;
+    lastCommand?: {
+      tool?: string;
+      backend?: string;
+      args?: Record<string, unknown>;
+    };
+    lastToolResult?: {
+      ok?: boolean;
+      status?: string;
+      engine?: string;
+      action?: string;
+      currentUrl?: string;
+      currentTitle?: string;
+      error?: string;
+    };
+    lastValidObservation?: BrowserAgentObservation | null;
+    lastObservation?: BrowserAgentObservation | null;
+    lastFailedObservation?: BrowserAgentObservation | null;
+    updatedAt?: string;
+  };
+  runtime?: {
+    configured?: boolean;
+    model?: string;
+    models?: {
+      default?: string;
+      planner?: string;
+      reporter?: string;
+    };
+    strategy?: string;
+  };
+  error?: string;
+}
+
 async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `${response.status} ${response.statusText}`);
   return data as T;
+}
+
+function parseMcpResultPayload<T>(payload: unknown): T {
+  if (typeof payload !== "string") return payload as T;
+  const trimmed = payload.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return payload as T;
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    return payload as T;
+  }
 }
 
 async function callMcpJson<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -109,7 +183,7 @@ async function callMcpJson<T>(name: string, args: Record<string, unknown> = {}):
   if (!response.ok || data.success === false || data.ok === false) {
     throw new Error(data.error || `MCP tool failed: ${name}`);
   }
-  return data.result as T;
+  return parseMcpResultPayload<T>(data.result);
 }
 
 export function normalizeBrowserUrl(input: string) {
@@ -165,6 +239,13 @@ export async function screenshotPlaywright(): Promise<PlaywrightMcpResult> {
   return callMcpJson<PlaywrightMcpResult>(
     "mcp__playwright__browser_take_screenshot",
     { type: "png" },
+  );
+}
+
+export async function getBrowserAgentStatus(sessionId?: string): Promise<BrowserAgentStatus> {
+  return callMcpJson<BrowserAgentStatus>(
+    "mcp__browser_agent__status",
+    sessionId ? { sessionId } : {},
   );
 }
 

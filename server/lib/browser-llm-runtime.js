@@ -16,6 +16,7 @@ const ALLOWED_TOOLS = new Set([
 
 const ALLOWED_BACKENDS = new Set(["auto", "lightpanda", "chrome_cdp", "playwright_mcp"]);
 const ALLOWED_RISKS = new Set(["low", "medium", "high"]);
+const warnedMissingPromptFiles = new Set();
 
 function envFlag(name, fallback = false) {
   const raw = process.env[name];
@@ -59,15 +60,34 @@ function stageEnv(stage, suffix) {
   return process.env[`${prefix}_${suffix}`] ?? process.env[`BROWSER_AGENT_${suffix}`];
 }
 
+function baseBrowserAgentModel() {
+  return String(process.env.BROWSER_AGENT_MODEL || process.env.RUNTIME_BROWSER_AGENT_MODEL || "").trim();
+}
+
+function stageModel(stage, fallback = "") {
+  return String(stageEnv(stage, "MODEL") || fallback || "").trim();
+}
+
 function stagePromptConfig(stage) {
   const promptPath = resolvePromptPath(stageEnv(stage, "SYSTEM_PROMPT_PATH") || "");
   const inlinePrompt = String(stageEnv(stage, "SYSTEM_PROMPT") || "").trim();
+  const promptPathExists = promptPath ? fs.existsSync(promptPath) : false;
+  const strictPromptFiles = envFlag("BROWSER_AGENT_STRICT_PROMPT_FILES", false);
   return {
     promptPath,
     inlinePrompt,
     hasCustomPrompt: Boolean(promptPath || inlinePrompt),
-    promptPathExists: promptPath ? fs.existsSync(promptPath) : false,
+    promptPathExists,
+    strictPromptFiles,
+    promptPathIgnored: Boolean(promptPath && !promptPathExists && !strictPromptFiles),
   };
+}
+
+function warnMissingPromptFile(stage, promptPath) {
+  const key = `${stage}:${promptPath}`;
+  if (warnedMissingPromptFiles.has(key)) return;
+  warnedMissingPromptFiles.add(key);
+  console.warn(`[browser-agent] ${stage} prompt file not found, using built-in prompt: ${promptPath}`);
 }
 
 function customSystemPrompt(stage) {
@@ -75,11 +95,15 @@ function customSystemPrompt(stage) {
   const pieces = [];
   if (config.promptPath) {
     if (!config.promptPathExists) {
-      const error = new Error(`Browser agent ${stage} prompt file not found: ${config.promptPath}`);
-      error.code = "BROWSER_AGENT_PROMPT_CONFIG_ERROR";
-      throw error;
+      if (config.strictPromptFiles) {
+        const error = new Error(`Browser agent ${stage} prompt file not found: ${config.promptPath}`);
+        error.code = "BROWSER_AGENT_PROMPT_CONFIG_ERROR";
+        throw error;
+      }
+      warnMissingPromptFile(stage, config.promptPath);
+    } else {
+      pieces.push(fs.readFileSync(config.promptPath, "utf8"));
     }
-    pieces.push(fs.readFileSync(config.promptPath, "utf8"));
   }
   if (config.inlinePrompt) pieces.push(config.inlinePrompt);
   return pieces.map((piece) => String(piece || "").trim()).filter(Boolean).join("\n\n");
@@ -106,16 +130,24 @@ function stageOptions(stage) {
 
 export function browserAgentRuntimeConfig({ display = false } = {}) {
   const baseUrl = rawBaseUrl();
-  const model = String(process.env.BROWSER_AGENT_MODEL || process.env.RUNTIME_BROWSER_AGENT_MODEL || "").trim();
+  const model = baseBrowserAgentModel();
+  const plannerModel = stageModel("planner", model);
+  const reporterModel = stageModel("reporter", model);
   const timeoutMs = Math.max(1000, Number(process.env.BROWSER_AGENT_TIMEOUT_MS || 60000));
   const plannerPrompt = stagePromptConfig("planner");
   const reporterPrompt = stagePromptConfig("reporter");
+  const strictPromptFiles = envFlag("BROWSER_AGENT_STRICT_PROMPT_FILES", false);
   const config = {
     configured: Boolean(baseUrl && model),
     llmRequired: true,
     baseUrl,
     redactedBaseUrl: redactBaseUrl(baseUrl),
     model,
+    models: {
+      default: model,
+      planner: plannerModel,
+      reporter: reporterModel,
+    },
     timeoutMs,
     think: envFlag("BROWSER_AGENT_THINK", false),
     options: {
@@ -123,16 +155,19 @@ export function browserAgentRuntimeConfig({ display = false } = {}) {
       reporter: stageOptions("reporter"),
     },
     prompts: {
+      strictPromptFiles,
       planner: {
         hasCustomPrompt: plannerPrompt.hasCustomPrompt,
         path: plannerPrompt.promptPath,
         pathExists: plannerPrompt.promptPath ? plannerPrompt.promptPathExists : undefined,
+        ignored: plannerPrompt.promptPathIgnored || undefined,
         inline: Boolean(plannerPrompt.inlinePrompt),
       },
       reporter: {
         hasCustomPrompt: reporterPrompt.hasCustomPrompt,
         path: reporterPrompt.promptPath,
         pathExists: reporterPrompt.promptPath ? reporterPrompt.promptPathExists : undefined,
+        ignored: reporterPrompt.promptPathIgnored || undefined,
         inline: Boolean(reporterPrompt.inlinePrompt),
       },
     },
@@ -140,8 +175,8 @@ export function browserAgentRuntimeConfig({ display = false } = {}) {
     missing: [
       ...(baseUrl ? [] : ["BROWSER_AGENT_BASE_URL"]),
       ...(model ? [] : ["BROWSER_AGENT_MODEL"]),
-      ...(plannerPrompt.promptPath && !plannerPrompt.promptPathExists ? ["BROWSER_AGENT_PLANNER_SYSTEM_PROMPT_PATH"] : []),
-      ...(reporterPrompt.promptPath && !reporterPrompt.promptPathExists ? ["BROWSER_AGENT_REPORTER_SYSTEM_PROMPT_PATH"] : []),
+      ...(strictPromptFiles && plannerPrompt.promptPath && !plannerPrompt.promptPathExists ? ["BROWSER_AGENT_PLANNER_SYSTEM_PROMPT_PATH"] : []),
+      ...(strictPromptFiles && reporterPrompt.promptPath && !reporterPrompt.promptPathExists ? ["BROWSER_AGENT_REPORTER_SYSTEM_PROMPT_PATH"] : []),
     ],
   };
   config.configured = config.missing.length === 0;
@@ -213,12 +248,13 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
   const config = requireBrowserAgentRuntimeConfig();
   const startedAt = performance.now();
   const options = stageOptions(stage);
+  const model = config.models?.[stage] || config.model;
   const response = await fetch(`${config.baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(config.timeoutMs),
     body: JSON.stringify({
-      model: config.model,
+      model,
       messages,
       stream: false,
       format,
@@ -238,13 +274,13 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
     const error = new Error(data?.error || `Browser agent LLM ${stage} call failed: HTTP ${response.status}`);
     error.code = "BROWSER_AGENT_LLM_HTTP_ERROR";
     error.status = response.status;
-    error.usage = tokenUsageFromResponse(data || {}, config, stage, Math.round(performance.now() - startedAt));
+    error.usage = tokenUsageFromResponse(data || {}, { ...config, model }, stage, Math.round(performance.now() - startedAt));
     throw error;
   }
 
   return {
     content: responseContent(data),
-    usage: tokenUsageFromResponse(data || {}, config, stage, Math.round(performance.now() - startedAt)),
+    usage: tokenUsageFromResponse(data || {}, { ...config, model }, stage, Math.round(performance.now() - startedAt)),
     raw: data,
   };
 }
@@ -269,6 +305,7 @@ Your job:
 - Understand the user's browser instruction against current page state.
 - Choose exactly one validated browser command for this turn.
 - The deterministic parser is only a local guardrail after you; it is not the planner.
+- You are expected to be the strongest/smartest model in browser mode. The chat model may be weaker; you must reason from runtime state, errors, and available backends instead of echoing the chat answer.
 - Prefer safe observation if the instruction is unclear.
 
 Allowed tools:

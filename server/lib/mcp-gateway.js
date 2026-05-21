@@ -160,6 +160,12 @@ function compactBrowserObservation(observation = null) {
     textPreview: compactString(observation.textPreview || observation.text || "", 700),
     engine: compactString(observation.engine, 80),
     isLoginPage: Boolean(observation.isLoginPage),
+    stats: {
+      forms: Array.isArray(observation.forms) ? observation.forms.length : Number(observation.stats?.forms || 0),
+      inputs: Array.isArray(observation.inputs) ? observation.inputs.length : Number(observation.stats?.inputs || 0),
+      buttons: Array.isArray(observation.buttons) ? observation.buttons.length : Number(observation.stats?.buttons || 0),
+      links: Array.isArray(observation.links) ? observation.links.length : Number(observation.stats?.links || 0),
+    },
     forms: Array.isArray(observation.forms) ? observation.forms.slice(0, 3).map((form) => ({
       index: form.index,
       action: compactUrl(form.action),
@@ -185,6 +191,74 @@ function compactBrowserObservation(observation = null) {
       selector: compactString(link.selector, 120),
     })) : [],
     interactiveElements: [],
+  };
+}
+
+function compactBrowserCommand(command = null) {
+  if (!command || typeof command !== "object") return null;
+  return {
+    tool: compactString(command.tool, 120),
+    backend: compactString(command.backend, 80),
+    args: command.args && typeof command.args === "object"
+      ? {
+          url: compactUrl(command.args.url),
+          text: compactString(command.args.text, 160),
+          focus: compactString(command.args.focus, 120),
+          explicitSubmit: Boolean(command.args.explicitSubmit),
+          fields: Array.isArray(command.args.fields)
+            ? command.args.fields.slice(0, 12).map((field) => ({
+                label: compactString(field.label || field.name || field.selector, 120),
+                secret: Boolean(field.secret),
+                value: field.secret ? "[redacted]" : compactString(field.value, 160),
+              }))
+            : undefined,
+        }
+      : {},
+  };
+}
+
+function compactBrowserToolResult(result = null) {
+  if (!result || typeof result !== "object") return null;
+  return {
+    ok: result.ok,
+    status: compactString(result.status, 80),
+    engine: compactString(result.engine, 80),
+    action: compactString(result.action || result.summary, 260),
+    currentUrl: compactUrl(result.currentUrl || result.observation?.url || result.whatFound?.url || ""),
+    currentTitle: compactString(result.currentTitle || result.observation?.title || result.whatFound?.title || "", 160),
+    error: compactString(result.error || result.blockedReason, 360),
+    submitStatus: compactString(result.submitStatus, 120),
+  };
+}
+
+function compactBrowserAgentStatusPayload(payload = {}) {
+  const state = payload.state && typeof payload.state === "object" ? payload.state : {};
+  return {
+    ok: Boolean(payload.ok),
+    status: compactString(payload.status, 80),
+    sessionId: compactString(payload.sessionId || state.sessionId, 120),
+    state: {
+      sessionId: compactString(state.sessionId, 120),
+      currentUrl: compactUrl(state.currentUrl || state.lastValidObservation?.url || ""),
+      currentTitle: compactString(state.currentTitle || state.lastValidObservation?.title || "", 160),
+      activeEngine: compactString(state.activeEngine, 80),
+      lastIntent: compactString(state.lastIntent, 80),
+      lastCommand: compactBrowserCommand(state.lastCommand),
+      lastToolResult: compactBrowserToolResult(state.lastToolResult),
+      lastValidObservation: compactBrowserObservation(state.lastValidObservation),
+      lastObservation: compactBrowserObservation(state.lastObservation),
+      lastFailedObservation: compactBrowserObservation(state.lastFailedObservation),
+      updatedAt: compactString(state.updatedAt, 80),
+    },
+    runtime: payload.runtime,
+    browserHealth: payload.browserHealth && typeof payload.browserHealth === "object"
+      ? {
+          ok: payload.browserHealth.ok,
+          status: compactString(payload.browserHealth.status, 80),
+          engine: compactString(payload.browserHealth.engine, 80),
+          error: compactString(payload.browserHealth.error, 240),
+        }
+      : payload.browserHealth,
   };
 }
 
@@ -768,7 +842,7 @@ async function browserAgentResetTool(args = {}) {
 }
 
 async function browserAgentStatusTool(args = {}) {
-  return safeText(await browserAgentStatus(args), 20000);
+  return JSON.stringify(compactBrowserAgentStatusPayload(await browserAgentStatus(args)), null, 2);
 }
 
 async function browserAgentDiagnoseTool(args = {}) {
