@@ -666,15 +666,15 @@
   ],
   "learnedActions": [
     {
-      "id": "learned_login_page_fill_form_fields_employee_id_ezgb000121_password_11011011_then_login_or_submit_browser_pag",
-      "label": "fill form fields employee id: ezgb000121 password: 11011011 then login or submit Browser Page: unknown Status: blocked Next tell me what visible / to click ask ",
+      "id": "learned_login_page_fill_form_fields_employee_id_ezgb000121_password_redacted_then_login_or_submit_browser_pag",
+      "label": "fill form fields employee id: ezgb000121 password: [redacted] then login or submit Browser Page: unknown Status: blocked Next tell me what visible / to click ask ",
       "kind": "button",
       "domain": "ezhrmsys.com",
       "pageKey": "login_page",
       "url": "https://ezhrmsys.com",
       "title": "Login - HRM",
       "selector": "",
-      "textPattern": "fill form fields employee id: ezgb000121 password: 11011011 then login or submit Browser Page: unknown Status: blocked Next tell me what visible / to click ask ",
+      "textPattern": "fill form fields employee id: ezgb000121 password: [redacted] then login or submit Browser Page: unknown Status: blocked Next tell me what visible / to click ask ",
       "href": "",
       "requiresConfirmation": true,
       "source": "browser-agent.learn",

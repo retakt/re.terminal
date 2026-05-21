@@ -44,6 +44,9 @@ function hasPasswordField(observation = {}) {
 
 function looksLikeLoginPage(observation = {}) {
   const text = `${observation.url || ""} ${observation.title || ""} ${observation.textPreview || ""}`;
+  if (/\b(logout|dashboard|main attendance|payroll|my profile|notifications|leave application)\b/i.test(text)) {
+    return false;
+  }
   return Boolean(observation.isLoginPage || (hasPasswordField(observation) && /\b(login|log in|sign in)\b/i.test(text)));
 }
 
@@ -68,6 +71,8 @@ function sameNormalizedUrl(left = "", right = "") {
   try {
     const a = new URL(left);
     const b = new URL(right);
+    const requestedRoot = b.pathname === "/" || b.pathname === "";
+    if (requestedRoot && a.origin === b.origin) return true;
     return `${a.origin}${a.pathname}`.replace(/\/+$/, "") === `${b.origin}${b.pathname}`.replace(/\/+$/, "");
   } catch {
     return safeText(left, 500).replace(/\/+$/, "") === safeText(right, 500).replace(/\/+$/, "");

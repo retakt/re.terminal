@@ -9,6 +9,7 @@ type ProgramMenuItem = {
 
 const ITEMS: ProgramMenuItem[] = [
   { id: "chat", label: "AI Chat" },
+  { id: "logs", label: "Logs" },
   { id: "browser", label: "Lightpanda" },
   { id: "forum", label: "Forum" },
   { id: "community", label: "Community" },

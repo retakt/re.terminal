@@ -3,6 +3,7 @@ export type ViewerKind = "editor" | "image" | "pdf" | "spreadsheet" | "doc";
 export type ProgramKind =
   | "browser"
   | "chat"
+  | "logs"
   | "forum"
   | "community"
   | "mcp"

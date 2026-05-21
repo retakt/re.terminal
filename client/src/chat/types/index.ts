@@ -1,5 +1,6 @@
 // ── Chat types ────────────────────────────────────────────────────────────────
 import type { MemoryRecord } from "../api/memory";
+import type { AuditUsage } from "@/lib/logs-api";
 
 export type AttachedFile =
   | { type: "text"; name: string; content: string }
@@ -29,6 +30,8 @@ export type AssistantRunLog = {
   toolCount: number;
   errorCount: number;
   toolsUsed: string[];
+  usage?: AuditUsage | null;
+  usageStages?: AuditUsage[];
 };
 
 export type ReasoningLog = {

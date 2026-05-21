@@ -202,6 +202,26 @@ function fieldKind(field = {}) {
   return "";
 }
 
+function dedupeInferenceFields(fields = []) {
+  const seen = new Set();
+  return (Array.isArray(fields) ? fields : []).filter((field) => {
+    const kind = fieldKind(field);
+    const selectorKey = field.selector ? `selector:${normalize(field.selector)}` : "";
+    const key = selectorKey || normalize([
+      kind,
+      field.label,
+      field.name,
+      field.id,
+      field.placeholder,
+      field.ariaLabel,
+      field.type,
+    ].filter(Boolean).join(" "));
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function valueKind(value = "") {
   const raw = safeText(value, 240);
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return "email";
@@ -231,7 +251,7 @@ function inferFieldsFromShortMessage({
 
   const pending = pendingForm || state?.pendingForm || {};
   const expected = expectedFieldFromPending(pending);
-  const fields = observationFields(observation || state?.lastValidObservation || {});
+  const fields = dedupeInferenceFields(observationFields(observation || state?.lastValidObservation || {}));
   const kind = valueKind(raw);
 
   if (!fields.length) {
@@ -401,7 +421,7 @@ export function watchBrowserInstruction(args = {}) {
   }
 
   const url = extractUrl(raw);
-  if (url && (/\b(navigate|visit|open|go|goto|load|read|view|inspect)\b/i.test(raw) || /\bgo\s+to\b/i.test(raw) || raw === url || isLikelyUrl(raw))) {
+  if (url && (/\b(navigate|visit|open|go|goto|load|browse|read|view|inspect)\b/i.test(raw) || /\bgo\s+to\b/i.test(raw) || raw === url || isLikelyUrl(raw))) {
     return output({
       intent: "navigate",
       confidence: 0.98,

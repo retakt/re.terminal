@@ -10,6 +10,8 @@ VPS_HOST="${2:-157.173.127.84}"
 VPS_PATH="${3:-/opt/re-term}"
 PUBLIC_URL="${4:-https://tmux.retakt.cc}"
 LIGHTPANDA_CDP_URL="${LIGHTPANDA_CDP_URL:-ws://127.0.0.1:9222}"
+BROWSER_CHROME_CDP_PORT="${BROWSER_CHROME_CDP_PORT:-9223}"
+BROWSER_CHROME_CDP_URL="${BROWSER_CHROME_CDP_URL:-ws://127.0.0.1:${BROWSER_CHROME_CDP_PORT}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STAGING_DIR="$(mktemp -d)"
@@ -36,8 +38,12 @@ if [ ! -f "package.json" ]; then
   exit 1
 fi
 
-if ! command -v rsync >/dev/null 2>&1; then
-  echo "Error: rsync is required but was not found"
+if command -v rsync >/dev/null 2>&1; then
+  TRANSFER_TOOL="rsync"
+elif command -v scp >/dev/null 2>&1; then
+  TRANSFER_TOOL="scp"
+else
+  echo "Error: rsync or scp is required but neither was found"
   exit 1
 fi
 
@@ -95,6 +101,7 @@ copy_if_exists "$SCRIPT_DIR/Caddyfile" "$PACKAGE_DIR/Caddyfile"
 copy_if_exists "$SCRIPT_DIR/re-term.service" "$PACKAGE_DIR/re-term.service"
 copy_if_exists "$SCRIPT_DIR/README.md" "$PACKAGE_DIR/README.md"
 copy_if_exists "$SCRIPT_DIR/deploy.sh" "$PACKAGE_DIR/deploy.sh"
+copy_if_exists "$SCRIPT_DIR/scripts" "$PACKAGE_DIR/scripts"
 
 mkdir -p "$PACKAGE_DIR/client"
 copy_if_exists "$SCRIPT_DIR/client/dist" "$PACKAGE_DIR/client/dist"
@@ -131,15 +138,22 @@ tar -C "$PACKAGE_DIR" -czf "$ARCHIVE_PATH" .
 echo "Archive size:"
 du -h "$ARCHIVE_PATH" 2>/dev/null || ls -lh "$ARCHIVE_PATH"
 
-echo "Copying package to VPS with rsync..."
-rsync -avzP \
-  -e "ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10" \
-  "$ARCHIVE_PATH" \
-  "${VPS_USER}@${VPS_HOST}:${REMOTE_ARCHIVE}"
+if [ "$TRANSFER_TOOL" = "rsync" ]; then
+  echo "Copying package to VPS with rsync..."
+  rsync -avzP \
+    -e "ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10" \
+    "$ARCHIVE_PATH" \
+    "${VPS_USER}@${VPS_HOST}:${REMOTE_ARCHIVE}"
+else
+  echo "Copying package to VPS with scp..."
+  scp -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+    "$ARCHIVE_PATH" \
+    "${VPS_USER}@${VPS_HOST}:${REMOTE_ARCHIVE}"
+fi
 
 echo "Deploying on VPS..."
 ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${VPS_USER}@${VPS_HOST}" \
-  "VPS_PATH='$VPS_PATH' VPS_HOST='$VPS_HOST' PUBLIC_URL='$PUBLIC_URL' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' LIGHTPANDA_CDP_URL='$LIGHTPANDA_CDP_URL' bash -s" <<'EOF'
+  "VPS_PATH='$VPS_PATH' VPS_HOST='$VPS_HOST' PUBLIC_URL='$PUBLIC_URL' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' LIGHTPANDA_CDP_URL='$LIGHTPANDA_CDP_URL' BROWSER_CHROME_CDP_URL='$BROWSER_CHROME_CDP_URL' BROWSER_CHROME_CDP_PORT='$BROWSER_CHROME_CDP_PORT' bash -s" <<'EOF'
 set -euo pipefail
 
 mkdir -p "$VPS_PATH"
@@ -212,6 +226,23 @@ set_env_if_missing() {
   printf "\n%s=%s\n" "$key" "$value" >> "$file"
 }
 
+set_env_if_missing_or_value() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local old_value="$4"
+
+  mkdir -p "$(dirname "$file")"
+  touch "$file"
+
+  if grep -q "^${key}=${old_value}$" "$file"; then
+    sed -i "s|^${key}=.*$|${key}=${value}|" "$file"
+    return 0
+  fi
+
+  set_env_if_missing "$file" "$key" "$value"
+}
+
 install_lightpanda() {
   local target="/usr/local/bin/lightpanda"
   local arch
@@ -271,9 +302,40 @@ SYSTEMD
   fi
 }
 
+install_chrome() {
+  if command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1; then
+    echo "Warning: apt-get not found; skipping Chrome install"
+    return 0
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "Warning: curl not found; skipping Chrome install"
+    return 0
+  fi
+
+  echo "Installing Google Chrome stable for JS-heavy browser fallback..."
+  apt-get update
+  apt-get install -y ca-certificates fonts-liberation libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libcups2 libdrm2 libgbm1 libgtk-3-0 libnss3 libxcomposite1 libxdamage1 libxrandr2 xdg-utils wget gnupg || true
+  rm -f /usr/share/keyrings/google-linux-signing-keyring.gpg
+  curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor --yes -o /usr/share/keyrings/google-linux-signing-keyring.gpg
+  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-signing-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >/etc/apt/sources.list.d/google-chrome.list
+  apt-get update
+  apt-get install -y google-chrome-stable
+}
+
 install_lightpanda
+install_chrome
 
 set_env_if_missing "$VPS_PATH/server/.env" "LIGHTPANDA_CDP_URL" "$LIGHTPANDA_CDP_URL"
+set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_CDP_URL" "$BROWSER_CHROME_CDP_URL"
+set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_CDP_PORT" "$BROWSER_CHROME_CDP_PORT"
+set_env_if_missing_or_value "$VPS_PATH/server/.env" "BROWSER_AGENT_ENGINE_PRIORITY" "lightpanda_cdp,chrome_cdp,static_fetch" "lightpanda_cdp,static_fetch"
+set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_PAGE_SETTLE_MS" "45000"
+set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_AFTER_ACTION_SETTLE_MS" "12000"
 set_env_if_missing "$VPS_PATH/server/.env" "MEMORY_ENABLED" "true"
 set_env_if_missing "$VPS_PATH/server/.env" "MEMORY_PROVIDER" "falkordb"
 set_env_if_missing "$VPS_PATH/server/.env" "MEMORY_FALLBACK_ENABLED" "true"

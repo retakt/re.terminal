@@ -91,9 +91,9 @@
   ],
   "learnedAliases": [
     {
-      "label": "fill form fields employee id: ezgb000121 password: 11011011 then login or submit Browser Page: unknown Status: blocked Next tell me what visible / to click ask ",
+      "label": "fill form fields employee id: ezgb000121 password: [redacted] then login or submit Browser Page: unknown Status: blocked Next tell me what visible / to click ask ",
       "extensionId": "ezhrm",
-      "actionId": "learned_login_page_fill_form_fields_employee_id_ezgb000121_password_11011011_then_login_or_submit_browser_pag",
+      "actionId": "learned_login_page_fill_form_fields_employee_id_ezgb000121_password_redacted_then_login_or_submit_browser_pag",
       "learnedAt": "2026-05-20T15:43:12.749Z"
     }
   ],

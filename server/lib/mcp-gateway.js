@@ -89,6 +89,148 @@ function safeText(value, limit = 12000) {
   return text.length > limit ? `${text.slice(0, limit)}\n...[truncated]` : text;
 }
 
+function compactString(value = "", limit = 160) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+function compactUrl(value = "", limit = 220) {
+  const raw = compactString(value, 2000);
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    const base = `${url.origin}${url.pathname}`;
+    if (!url.search && !url.hash) return compactString(base, limit);
+    return compactString(`${base}?...`, limit);
+  } catch {
+    return compactString(raw, limit);
+  }
+}
+
+function shortenUrlsInText(value = "", limit = 700) {
+  return compactString(String(value || "").replace(/https?:\/\/[^\s"'<>]+/g, (url) => compactUrl(url, 160)), limit);
+}
+
+function browserAgentBrief(payload = {}) {
+  const page = payload.currentTitle || payload.whatFound?.title || payload.currentUrl || payload.whatFound?.url || "current page";
+  const action = shortenUrlsInText(payload.summary || (payload.ok ? "Browser action completed." : "Browser action was blocked."), 420);
+  const filled = Array.isArray(payload.filledFields) && payload.filledFields.length
+    ? ` Filled: ${payload.filledFields.map((field) => `${field.label || "field"}=${field.secret ? "[redacted]" : field.value || ""}`).join(", ")}.`
+    : "";
+  const next = payload.nextSafeAction ? ` Next: ${payload.nextSafeAction}` : "";
+  return compactString(`${page}: ${action}.${filled}${next}`, 700);
+}
+
+function compactBrowserObservation(observation = null) {
+  if (!observation || typeof observation !== "object") return null;
+  const visibleFields = (fields = []) => fields
+    .filter((field) => !/^hidden$/i.test(String(field?.type || "")))
+    .slice(0, 8)
+    .map((field) => ({
+      name: compactString(field.name, 80),
+      id: compactString(field.id, 80),
+      type: field.secret ? "password" : compactString(field.type, 40),
+      placeholder: compactString(field.placeholder, 120),
+      ariaLabel: compactString(field.ariaLabel, 120),
+      selector: compactString(field.selector, 120),
+      secret: Boolean(field.secret),
+    }));
+
+  return {
+    url: compactUrl(observation.url),
+    title: compactString(observation.title, 160),
+    textPreview: compactString(observation.textPreview || observation.text || "", 700),
+    engine: compactString(observation.engine, 80),
+    isLoginPage: Boolean(observation.isLoginPage),
+    forms: Array.isArray(observation.forms) ? observation.forms.slice(0, 3).map((form) => ({
+      index: form.index,
+      action: compactUrl(form.action),
+      method: compactString(form.method, 20),
+      selector: compactString(form.selector, 120),
+      fields: Array.isArray(form.fields) ? visibleFields(form.fields) : [],
+      buttons: Array.isArray(form.buttons) ? form.buttons.slice(0, 6).map((button) => ({
+        text: compactString(button.text || button.label, 120),
+        selector: compactString(button.selector, 120),
+        type: compactString(button.type, 40),
+      })) : [],
+    })) : [],
+    inputs: Array.isArray(observation.inputs) ? visibleFields(observation.inputs) : [],
+    buttons: Array.isArray(observation.buttons) ? observation.buttons.slice(0, 16).map((button) => ({
+      text: compactString(button.text || button.label, 120),
+      selector: compactString(button.selector, 120),
+      type: compactString(button.type, 40),
+      tag: compactString(button.tag, 40),
+    })) : [],
+    links: Array.isArray(observation.links) ? observation.links.slice(0, 6).map((link) => ({
+      text: compactString(link.text || link.label, 160),
+      href: compactUrl(link.href),
+      selector: compactString(link.selector, 120),
+    })) : [],
+    interactiveElements: [],
+  };
+}
+
+function compactBrowserAgentPayload(payload = {}) {
+  if (!payload || typeof payload !== "object") return payload;
+  const whatFound = compactBrowserObservation(payload.whatFound);
+  const observedControls = {
+    forms: Array.isArray(whatFound?.forms) ? whatFound.forms.length : 0,
+    inputs: Array.isArray(whatFound?.inputs) ? whatFound.inputs : [],
+    buttons: Array.isArray(whatFound?.buttons) ? whatFound.buttons : [],
+    links: Array.isArray(whatFound?.links) ? whatFound.links : [],
+  };
+  return {
+    ok: Boolean(payload.ok),
+    status: compactString(payload.status, 80),
+    instruction: compactString(payload.instruction, 800),
+    currentUrl: compactUrl(payload.currentUrl || payload.whatFound?.url || payload.state?.currentUrl || payload.state?.lastValidObservation?.url || ""),
+    currentTitle: compactString(payload.currentTitle || payload.whatFound?.title || payload.state?.currentTitle || payload.state?.lastValidObservation?.title || "", 160),
+    extensionId: compactString(payload.extensionId, 120),
+    pageKey: compactString(payload.pageKey, 120),
+    engine: compactString(payload.engine || payload.whatFound?.engine || payload.state?.activeEngine || "", 80),
+    summary: shortenUrlsInText(payload.summary || "", 500),
+    browserSummary: browserAgentBrief(payload),
+    whatFound,
+    observedControls,
+    possibleNextActions: Array.isArray(payload.possibleNextActions) ? payload.possibleNextActions.slice(0, 10) : [],
+    requiresUser: Boolean(payload.requiresUser),
+    blockedReason: compactString(payload.blockedReason, 240),
+    watcher: payload.watcher || null,
+    filledFields: Array.isArray(payload.filledFields) ? payload.filledFields : [],
+    missingFields: Array.isArray(payload.missingFields) ? payload.missingFields : [],
+    submitStatus: compactString(payload.submitStatus, 160),
+    nextSafeAction: compactString(payload.nextSafeAction, 260),
+    runtimeTiming: payload.runtimeTiming || null,
+    tokenUsage: payload.tokenUsage || null,
+    diagnostics: payload.diagnostics ? {
+      diagnosis: compactString(payload.diagnostics.diagnosis, 400),
+      evidence: Array.isArray(payload.diagnostics.evidence) ? payload.diagnostics.evidence.slice(0, 4).map((entry) => shortenUrlsInText(entry, 220)) : [],
+      suggestedFixes: Array.isArray(payload.diagnostics.suggestedFixes) ? payload.diagnostics.suggestedFixes.slice(0, 4).map((entry) => shortenUrlsInText(entry, 220)) : [],
+    } : null,
+    sequence: payload.sequence ? {
+      completed: payload.sequence.completed,
+      total: payload.sequence.total,
+      stoppedAt: payload.sequence.stoppedAt,
+      items: Array.isArray(payload.sequence.items) ? payload.sequence.items.slice(0, 8).map((item) => ({
+        index: item.index,
+        instruction: compactString(item.instruction, 240),
+        ok: Boolean(item.ok),
+        status: compactString(item.status, 80),
+        summary: compactString(item.summary, 240),
+        currentUrl: compactUrl(item.currentUrl),
+        blockedReason: compactString(item.blockedReason, 160),
+      })) : [],
+    } : null,
+    lastFailedObservation: payload.lastFailedObservation ? {
+      url: compactUrl(payload.lastFailedObservation.url),
+      title: compactString(payload.lastFailedObservation.title, 160),
+      textPreview: compactString(payload.lastFailedObservation.textPreview, 300),
+      engine: compactString(payload.lastFailedObservation.engine, 80),
+      error: compactString(payload.lastFailedObservation.error || payload.lastFailedObservation.snapshotError, 240),
+    } : null,
+    engineFailures: payload.engineFailures || {},
+  };
+}
+
 function fileRoot() {
   const workspaceDefault = path.basename(process.cwd()).toLowerCase() === "server"
     ? path.resolve(process.cwd(), "..")
@@ -588,7 +730,7 @@ async function extensionExecuteActionTool(args = {}) {
 }
 
 async function browserAgentRunTool(args = {}) {
-  return safeText(await browserAgentRun(args), 24000);
+  return safeText(compactBrowserAgentPayload(await browserAgentRun(args)), 80000);
 }
 
 async function browserAgentObserveTool(args = {}) {

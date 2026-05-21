@@ -17,6 +17,10 @@ import {
   redactCommand,
   watchBrowserInstruction,
 } from "./browser-runtime-watcher.js";
+import {
+  planBrowserTask,
+  summarizeTaskSequence,
+} from "./browser-task-runner.js";
 import { verifyBrowserResult } from "./browser-result-verifier.js";
 import { adviseBrowserFailure } from "./browser-error-advisor.js";
 import {
@@ -142,9 +146,10 @@ function redactPersistedValue(value, pathParts = []) {
   if (Array.isArray(value)) return value.map((entry, index) => redactPersistedValue(entry, [...pathParts, String(index)]));
   if (!value || typeof value !== "object") {
     const keyPath = pathParts.join(".");
-    return /\b(password|pass|pwd|otp|code|pin|secret)\b/i.test(keyPath) && typeof value === "string"
-      ? "[redacted]"
-      : value;
+    if (/\b(password|pass|pwd|otp|code|pin|secret)\b/i.test(keyPath) && typeof value === "string") {
+      return "[redacted]";
+    }
+    return typeof value === "string" ? redactInstructionSecrets(value) : value;
   }
 
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => {
@@ -212,9 +217,38 @@ function safeText(value, limit = 240) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
+function nowMs() {
+  return performance.now();
+}
+
+function roundMs(value = 0) {
+  return Math.round(Number(value || 0) * 10) / 10;
+}
+
+function browserAgentTokenUsage(reason = "Browser-agent runtime path uses deterministic JS parsing and direct MCP output.") {
+  return {
+    totalTokens: 0,
+    watcher: {
+      type: "deterministic",
+      model: "",
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    },
+    mainModel: {
+      used: false,
+      model: "",
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      reason,
+    },
+  };
+}
+
 function redactInstructionSecrets(value = "") {
   return String(value || "").replace(
-    /\b(password|pass|pwd|otp|code|pin)\b\s*(?:is\s+|[:=]\s*|\s+)(?:"[^"]*"|'[^']*'|[^\s,;]+)/ig,
+    /\b(password|pass|pwd|otp|code|pin)\b(?:\s*(?:is|[:=])\s*|[_\s-]+)(?:"[^"]*"|'[^']*'|[^\s,;]+)/ig,
     (match, label) => `${label}: [redacted]`
   );
 }
@@ -302,6 +336,10 @@ function pathFromUrl(url = "") {
 
 function isLoginObservation(observation = {}) {
   const page = observation.page || observation;
+  const combined = `${page.url || ""} ${page.title || ""} ${page.textPreview || ""}`;
+  if (/\b(logout|dashboard|main attendance|payroll|my profile|notifications|leave application)\b/i.test(combined)) {
+    return false;
+  }
   const fields = [
     ...(page.inputs || []),
     ...(page.forms || []).flatMap((form) => form.fields || []),
@@ -309,7 +347,26 @@ function isLoginObservation(observation = {}) {
   if (fields.some((field) => field.secret || /password/i.test(`${field.type || ""} ${field.name || ""} ${field.id || ""}`))) {
     return true;
   }
-  return /\b(login|log in|sign in)\b/i.test(`${page.url || ""} ${page.title || ""} ${page.textPreview || ""}`);
+  return /\b(login|log in|sign in)\b/i.test(combined);
+}
+
+function looksLikeLoginStep(step = {}) {
+  const instruction = `${step.instruction || ""} ${step.kind || ""}`;
+  return /\b(login|log\s*in|sign\s*in|fill_and_submit)\b/i.test(instruction) &&
+    /\b(username|user\s*name|user\s*id|employee\s*id|email|password|pass|pwd)\b/i.test(instruction);
+}
+
+function resultObservation(result = {}) {
+  return result.whatFound || result.observation || result.state?.lastValidObservation || {};
+}
+
+function resultLooksAuthenticated(result = {}) {
+  const page = resultObservation(result);
+  if (!page || isLoginObservation(page)) return false;
+  const combined = `${result.currentUrl || ""} ${result.currentTitle || ""} ${page.url || ""} ${page.title || ""} ${page.textPreview || ""}`;
+  if (/\/(?:index|dashboard|home|attendance|profile|admin)(?:[/?#]|$)/i.test(combined)) return true;
+  return /\b(logout|dashboard|main attendance|attendance|payroll|my profile|notifications|leave application)\b/i.test(combined) ||
+    /(首页|平台设置|玩家资金|玩家管理|登出|退出|仪表盘)/i.test(combined);
 }
 
 function actionIsDangerous(action = {}, instruction = "") {
@@ -771,14 +828,16 @@ function responseBase({
   submitStatus = "",
   nextSafeAction = "",
   diagnostics = null,
+  runtimeTiming = null,
+  tokenUsage = null,
 } = {}) {
   const observationIsValid = observation && isValidObservation(observation);
   return {
     ok,
     status,
     instruction: redactInstructionSecrets(instruction),
-    currentUrl: observationIsValid ? observation.url : state?.currentUrl || state?.lastValidObservation?.url || "",
-    currentTitle: observationIsValid ? observation.title || state?.currentTitle || "" : state?.currentTitle || state?.lastValidObservation?.title || "",
+    currentUrl: observationIsValid ? observation.url : state?.currentUrl || state?.lastValidObservation?.url || state?.lastFailedObservation?.url || "",
+    currentTitle: observationIsValid ? observation.title || state?.currentTitle || "" : state?.currentTitle || state?.lastValidObservation?.title || state?.lastFailedObservation?.title || "",
     extensionId: observationIsValid ? (extension?.id || state?.currentExtensionId || "") : state?.currentExtensionId || "",
     pageKey: observationIsValid ? (pageKey || state?.currentPageKey || "") : state?.currentPageKey || "",
     engine: observationIsValid
@@ -800,6 +859,8 @@ function responseBase({
     submitStatus,
     nextSafeAction,
     diagnostics,
+    runtimeTiming,
+    tokenUsage: tokenUsage || browserAgentTokenUsage(),
   };
 }
 
@@ -879,11 +940,21 @@ function compactToolResult(result = {}, command = {}) {
 
 async function executeWatcherCommand(command = {}, args = {}, state = defaultState()) {
   const tool = command?.tool || "";
+  const activeEnginePriority = state.activeEngine === "chrome_cdp"
+    ? ["chrome_cdp", "lightpanda_cdp", "static_fetch"]
+    : state.activeEngine === "lightpanda_cdp"
+      ? ["lightpanda_cdp", "chrome_cdp", "static_fetch"]
+      : null;
   const commandArgs = {
     ...(command?.args || {}),
     sessionId: state.sessionId || args.sessionId,
     instruction: args.instruction || "",
     useExtensions: boolArg(args.useExtensions, true),
+    ...(activeEnginePriority && tool !== "browserNavigate" ? { enginePriority: activeEnginePriority } : {}),
+    ...(args.waitMs ? { waitMs: args.waitMs } : {}),
+    ...(args.afterWaitMs ? { afterWaitMs: args.afterWaitMs } : {}),
+    ...(args.pageSettleMs ? { pageSettleMs: args.pageSettleMs } : {}),
+    ...(args.pageSettlePollMs ? { pageSettlePollMs: args.pageSettlePollMs } : {}),
     ...(args.extensionId ? { extensionId: args.extensionId } : {}),
   };
 
@@ -928,87 +999,69 @@ function stepsFromWatcherResult(watcher = {}, result = {}, command = {}) {
   ];
 }
 
-function looksLikeFormSubmitInstruction(value = "") {
-  const raw = String(value || "");
-  return /\b(fill|enter|type)\b[\s\S]*\b(employee\s*id|employee_id|emp\s*id|staff\s*id|user\s*id|username|login\s*id|email|phone|mobile|password|pass|pwd|otp|code|pin|search|query|name|date|amount)\b/i.test(raw) &&
-    /\b(submit|login|log\s*in|sign\s*in)\b/i.test(raw);
-}
-
-function looksLikeFormBlockStart(value = "") {
-  const raw = String(value || "");
-  return /\b(fill|enter|type)\b[\s\S]*\b(form|forms|field|fields|details|login)\b/i.test(raw) ||
-    /\b(employee\s*id|employee_id|emp\s*id|staff\s*id|user\s*id|username|login\s*id|email|phone|mobile|password|pass|pwd|otp|code|pin|search|query|name|date|amount)\b\s*(?::|=|\bis\b|\s+)/i.test(raw);
-}
-
-function splitLineParts(instruction = "") {
-  return String(instruction || "")
-    .replace(/\r/g, "\n")
-    .split(/\n+/)
-    .flatMap((line) => line.split(/\s+(?:and\s+then|then)\s+/i))
-    .flatMap((line) => line.split(/\s*;\s*/))
-    .map((part) => part.replace(/^\s*(?:\d+[\).:-]\s*|[-*]\s*)/, "").trim())
-    .filter(Boolean);
-}
-
-function splitSequentialInstructions(instruction = "") {
-  const raw = String(instruction || "").trim();
-  if (!raw) return [];
-
-  if (looksLikeFormSubmitInstruction(raw) && !extractUrl(raw)) return [];
-
-  const lineParts = splitLineParts(raw);
-
-  if (lineParts.length < 2) return [];
-
-  const firstFormIndex = lineParts.findIndex((part, index) => {
-    const tail = lineParts.slice(index).join("\n");
-    return looksLikeFormBlockStart(part) && looksLikeFormSubmitInstruction(tail);
-  });
-
-  if (firstFormIndex > 0) {
-    const beforeForm = lineParts.slice(0, firstFormIndex);
-    const formBlock = lineParts.slice(firstFormIndex).join("\n");
-    const beforeActionable = beforeForm.filter((part) =>
-      /\b(navigate|visit|open|go|goto|load|observe|inspect|read|scrape|extract|what|which|show|list|click|press|tap|select|choose)\b/i.test(part) ||
-      extractUrl(part)
-    );
-    if (beforeActionable.length && looksLikeFormSubmitInstruction(formBlock)) {
-      return [...beforeActionable, formBlock];
-    }
-  }
-
-  const actionable = lineParts.filter((part) =>
-    /\b(navigate|visit|open|go|goto|load|click|press|tap|select|choose|fill|enter|type|submit|login|sign\s*in|observe|inspect|read|scrape|extract|what|which|show|list)\b/i.test(part) ||
-    extractUrl(part)
-  );
-
-  return actionable.length >= 2 ? lineParts : [];
-}
-
-async function browserAgentRunSequence(args = {}, sequence = []) {
+async function browserAgentRunTaskPlan(args = {}, taskPlan = { steps: [] }) {
+  const startedAt = Number(args._runStartedAt || nowMs());
   const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
   const results = [];
   let currentUrl = args.currentUrl || "";
   let last = null;
+  const sequence = Array.isArray(taskPlan.steps) ? taskPlan.steps : [];
 
   for (let index = 0; index < sequence.length; index += 1) {
-    const stepInstruction = sequence[index];
+    const step = sequence[index] || {};
+    const stepInstruction = step.instruction || "";
+
+    if (index > 0 && last && looksLikeLoginStep(step) && resultLooksAuthenticated(last)) {
+      const skippedSummary = "Already on an authenticated page after navigation; skipped the login form step.";
+      const skippedTiming = {
+        totalMs: 0,
+        taskPlanningMs: 0,
+        watcherMs: 0,
+        browserToolMs: 0,
+        verificationMs: 0,
+        stateMs: 0,
+        mainModelMs: 0,
+      };
+      results.push({
+        index: index + 1,
+        kind: step.kind || "",
+        instruction: redactInstructionSecrets(stepInstruction),
+        ok: true,
+        status: "success",
+        summary: skippedSummary,
+        currentUrl: currentUrl || last.currentUrl || "",
+        blockedReason: "",
+        runtimeTiming: skippedTiming,
+        tokenUsage: browserAgentTokenUsage(),
+      });
+      last = {
+        ...last,
+        ok: true,
+        status: "success",
+        summary: skippedSummary,
+      };
+      continue;
+    }
+
     const stepResult = await browserAgentRun({
       ...args,
       sessionId,
       instruction: stepInstruction,
       currentUrl,
-      _skipSequence: true,
+      _skipTaskPlan: true,
     });
 
     results.push({
       index: index + 1,
+      kind: step.kind || "",
       instruction: redactInstructionSecrets(stepInstruction),
       ok: Boolean(stepResult.ok),
       status: stepResult.status || "",
       summary: stepResult.summary || "",
       currentUrl: stepResult.currentUrl || "",
       blockedReason: stepResult.blockedReason || "",
+      runtimeTiming: stepResult.runtimeTiming || null,
+      tokenUsage: stepResult.tokenUsage || null,
     });
 
     last = stepResult;
@@ -1017,14 +1070,17 @@ async function browserAgentRunSequence(args = {}, sequence = []) {
     if (!stepResult.ok || stepResult.status === "needs_user" || stepResult.status === "blocked") {
       return {
         ...stepResult,
-        instruction: redactInstructionSecrets(args.instruction || sequence.join(" then ")),
+        instruction: redactInstructionSecrets(args.instruction || sequence.map((item) => item.instruction).join(" then ")),
         status: stepResult.status || "failed",
-        summary: `Completed ${index} of ${sequence.length} browser steps. Stopped at step ${index + 1}: ${stepResult.summary || stepResult.blockedReason || "step did not complete"}.`,
+        summary: summarizeTaskSequence(results, stepResult.summary || stepResult.blockedReason || ""),
+        runtimeTiming: summarizeSequenceTiming(startedAt, args._taskPlanningMs, results),
+        tokenUsage: browserAgentTokenUsage(),
         sequence: {
-          completed: index,
+          completed: results.filter((item) => item.ok).length,
           total: sequence.length,
           stoppedAt: index + 1,
           items: results,
+          planner: taskPlan.reason || "",
         },
         nextSafeAction: stepResult.nextSafeAction || "Clarify or retry the stopped step.",
       };
@@ -1033,16 +1089,41 @@ async function browserAgentRunSequence(args = {}, sequence = []) {
 
   return {
     ...(last || {}),
-    instruction: redactInstructionSecrets(args.instruction || sequence.join(" then ")),
+    instruction: redactInstructionSecrets(args.instruction || sequence.map((item) => item.instruction).join(" then ")),
     ok: Boolean(last?.ok),
     status: last?.status || "success",
-    summary: `Completed ${sequence.length} of ${sequence.length} browser steps. ${last?.summary || ""}`.trim(),
+    summary: summarizeTaskSequence(results, last?.summary || ""),
+    runtimeTiming: summarizeSequenceTiming(startedAt, args._taskPlanningMs, results),
+    tokenUsage: browserAgentTokenUsage(),
     sequence: {
       completed: sequence.length,
       total: sequence.length,
       stoppedAt: null,
       items: results,
+      planner: taskPlan.reason || "",
     },
+  };
+}
+
+function summarizeSequenceTiming(startedAt, taskPlanningMs = 0, results = []) {
+  const stepTimings = results.map((item) => item.runtimeTiming || {});
+  const sum = (key) => roundMs(stepTimings.reduce((total, timing) => total + Number(timing?.[key] || 0), 0));
+  return {
+    totalMs: roundMs(nowMs() - startedAt),
+    taskPlanningMs: roundMs(taskPlanningMs),
+    watcherMs: sum("watcherMs"),
+    browserToolMs: sum("browserToolMs"),
+    verificationMs: sum("verificationMs"),
+    stateMs: sum("stateMs"),
+    mainModelMs: 0,
+    steps: results.map((item) => ({
+      index: item.index,
+      kind: item.kind,
+      totalMs: roundMs(item.runtimeTiming?.totalMs || 0),
+      watcherMs: roundMs(item.runtimeTiming?.watcherMs || 0),
+      browserToolMs: roundMs(item.runtimeTiming?.browserToolMs || 0),
+      verificationMs: roundMs(item.runtimeTiming?.verificationMs || 0),
+    })),
   };
 }
 
@@ -1937,6 +2018,21 @@ export async function browserAgentDiagnose(args = {}) {
 }
 
 export async function browserAgentRun(args = {}) {
+  const runStartedAt = nowMs();
+  let taskPlanningMs = 0;
+  let watcherMs = 0;
+  let browserToolMs = 0;
+  let verificationMs = 0;
+  let stateMs = 0;
+  const runtimeTiming = () => ({
+    totalMs: roundMs(nowMs() - runStartedAt),
+    taskPlanningMs: roundMs(taskPlanningMs),
+    watcherMs: roundMs(watcherMs),
+    browserToolMs: roundMs(browserToolMs),
+    verificationMs: roundMs(verificationMs),
+    stateMs: roundMs(stateMs),
+    mainModelMs: 0,
+  });
   const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
   const state = loadState(sessionId);
   const instruction = String(args.instruction || "").trim();
@@ -1947,11 +2043,18 @@ export async function browserAgentRun(args = {}) {
     instruction,
   };
 
-  const sequence = args._skipSequence ? [] : splitSequentialInstructions(instruction);
-  if (sequence.length > 1) {
-    return browserAgentRunSequence(baseArgs, sequence);
+  const taskPlanningStartedAt = nowMs();
+  const taskPlan = args._skipTaskPlan ? { steps: [], atomic: true } : planBrowserTask({ instruction });
+  taskPlanningMs = nowMs() - taskPlanningStartedAt;
+  if (Array.isArray(taskPlan.steps) && taskPlan.steps.length > 1) {
+    return browserAgentRunTaskPlan({
+      ...baseArgs,
+      _taskPlanningMs: taskPlanningMs,
+      _runStartedAt: runStartedAt,
+    }, taskPlan);
   }
 
+  const watcherStartedAt = nowMs();
   const watcher = watchBrowserInstruction({
     sessionId,
     rawUserMessage: instruction,
@@ -1962,6 +2065,7 @@ export async function browserAgentRun(args = {}) {
     currentTitle: args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "",
     confirm: args.confirm === true || String(args.confirm || "").toLowerCase() === "true",
   });
+  watcherMs = nowMs() - watcherStartedAt;
 
   const redactedWatcher = {
     ...watcher,
@@ -1989,21 +2093,28 @@ export async function browserAgentRun(args = {}) {
       blockedReason: watcher.reason || "needs_user",
       watcher: redactedWatcher,
       nextSafeAction: watcher.reason || "Navigate to a URL or clarify the target field/action.",
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: browserAgentTokenUsage(),
     });
   }
 
   const command = watcher.command;
+  const browserToolStartedAt = nowMs();
   const result = await executeWatcherCommand(command, baseArgs, state);
+  browserToolMs = nowMs() - browserToolStartedAt;
 
   if (result?.state && ["browserLearn", "browserShowActions", "browserReset", "browserStatus"].includes(command.tool)) {
     return {
       ...result,
       watcher: redactedWatcher,
       steps: stepsFromWatcherResult(redactedWatcher, result, command),
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: browserAgentTokenUsage(),
     };
   }
 
   const observation = observationFromPageResult(result || {});
+  const verificationStartedAt = nowMs();
   const verification = verifyBrowserResult({
     watcher,
     command,
@@ -2011,6 +2122,7 @@ export async function browserAgentRun(args = {}) {
     observation,
     previousState: state,
   });
+  verificationMs = nowMs() - verificationStartedAt;
 
   if (!verification.ok) {
     const diagnostics = adviseBrowserFailure({
@@ -2021,6 +2133,7 @@ export async function browserAgentRun(args = {}) {
       state,
       verification,
     });
+    const stateStartedAt = nowMs();
     const failedState = result?.status === "needs_user"
       ? saveState({
           ...state,
@@ -2040,6 +2153,7 @@ export async function browserAgentRun(args = {}) {
           requestedUrl: observation.requestedUrl || command.args?.currentUrl || command.args?.url || "",
           engine: observation.engine || result?.engine,
         });
+    stateMs = nowMs() - stateStartedAt;
 
     return responseBase({
       ok: false,
@@ -2060,6 +2174,8 @@ export async function browserAgentRun(args = {}) {
       submitStatus: submitStatusFromResult(result),
       nextSafeAction: verification.nextSafeAction || "Retry the action, clarify the target, or navigate to a valid URL.",
       diagnostics,
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: browserAgentTokenUsage(),
     });
   }
 
@@ -2073,6 +2189,7 @@ export async function browserAgentRun(args = {}) {
     : null;
   const skill = extension ? getExtensionSkill(extension.id) : null;
   const pageKey = pageKeyForObservation(skill, observation);
+  const stateStartedAt = nowMs();
   const updatedFromObservation = updateStateFromObservation(state, observation, extension, pageKey);
   const pendingForm = pendingFormFromResult(result, state.pendingForm);
   const updated = saveState({
@@ -2088,6 +2205,7 @@ export async function browserAgentRun(args = {}) {
       compactToolResult(result, command),
     ].slice(-20),
   });
+  stateMs = nowMs() - stateStartedAt;
   const possibleNextActions = extension && skill ? safePossibleNextActions(extension, skill, observation) : [];
   const filledFields = filledFieldsFromResult(result, command);
   const missingFields = missingFieldsFromResult(result);
@@ -2127,5 +2245,7 @@ export async function browserAgentRun(args = {}) {
       : missingFields.length
       ? `Provide a value for ${missingFields[0]}.`
       : possibleNextActions[0]?.label || "Tell me the next visible button/link to click, fields to fill, or page to read.",
+    runtimeTiming: runtimeTiming(),
+    tokenUsage: browserAgentTokenUsage(),
   });
 }
