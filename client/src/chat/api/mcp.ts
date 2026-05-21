@@ -10,6 +10,12 @@ export interface McpServer {
   status: "ready" | "needs_config" | "error" | string;
   toolCount: number;
   responseMs?: number | null;
+  // Metadata for UI classification
+  source?: "builtin" | "external";
+  mcpNative?: boolean;
+  external?: boolean;
+  protocol?: string;
+  connected?: boolean;
 }
 
 export interface McpTool {
@@ -19,6 +25,10 @@ export interface McpTool {
   description: string;
   inputSchema: Record<string, unknown>;
   enabled: boolean;
+  // Metadata for UI classification
+  source?: "builtin" | "external";
+  external?: boolean;
+  mcpNative?: boolean;
 }
 
 export interface McpLog {
