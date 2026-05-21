@@ -47,6 +47,10 @@ const DEFAULT_SESSION_ID = "default-browser-session";
 const DANGEROUS_RE = /\b(login|log\s*in|sign\s*in|submit|save|delete|remove|check\s*out|checkout|emergency|approve|reject|payment|profile\s*update|password|attendance)\b/i;
 const LOCAL_HIGH_RISK_RE = /\b(delete|remove|check\s*out|checkout|payment|pay|card|bank|transfer|approve|reject|profile\s*update|change\s+password|attendance|payroll|emergency)\b/i;
 const SUGGESTION_BLOCK_RE = /\b(login|log\s*in|sign\s*in|submit|save|delete|remove|check\s*out|checkout|emergency|approve|reject|payment|profile\s*update|password)\b/i;
+const EXPLICIT_PLAYWRIGHT_RE = /\b(use\s+playwright|playwright|real\s+browser|chrome|visible\s+browser)\b/i;
+const EXPLICIT_LIGHTPANDA_RE = /\b(use\s+lightpanda|lightpanda|light\s+panda)\b/i;
+const RESET_BROWSER_RE = /\b(exit|close|stop|reset|clear|new)\b.*\b(browser|browser agent|browser state|agent state|session)\b/i;
+const INTERACTIVE_BROWSER_RE = /\b(login|log\s*in|sign\s*in|form|fill|type|enter|input|password|pass|pwd|submit|click|press|tap|select|choose|checkbox|radio|upload|screenshot|network|console|tab)\b/i;
 let browserAgentMcpCaller = null;
 
 export function setBrowserAgentMcpCaller(caller) {
@@ -273,6 +277,42 @@ function extractUrl(text = "") {
   if (url) return url.replace(/[.,;]+$/, "");
   const domain = raw.match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s"'<>]*)?/i)?.[0];
   return domain ? domain.replace(/[.,;]+$/, "") : "";
+}
+
+function browserInstructionHints(instruction = "") {
+  const raw = String(instruction || "");
+  const trimmed = raw.trim();
+  const explicitBackend = EXPLICIT_PLAYWRIGHT_RE.test(raw)
+    ? "playwright_mcp"
+    : EXPLICIT_LIGHTPANDA_RE.test(raw)
+      ? "lightpanda"
+      : "";
+  return {
+    explicitBackend,
+    resetRequested: RESET_BROWSER_RE.test(raw) || /^(?:exit|close|stop|reset)$/i.test(trimmed),
+    interactive: INTERACTIVE_BROWSER_RE.test(raw),
+    extractedUrl: normalizeUrlInput(extractUrl(raw)),
+  };
+}
+
+function browserCommandIsInteractive(command = {}, instruction = "") {
+  const tool = command?.tool || "";
+  if (["browserClickByText", "browserFillFields", "browserSubmitForm", "browserFillAndSubmit"].includes(tool)) return true;
+  const args = command?.args || {};
+  if (Array.isArray(args.fields) && args.fields.length) return true;
+  return INTERACTIVE_BROWSER_RE.test(String(instruction || args.instruction || ""));
+}
+
+function commandUsesPlaywright(command = {}) {
+  return command?.backend === "playwright_mcp" || command?.args?.backend === "playwright_mcp";
+}
+
+function shouldUsePlaywrightBackend(command = {}, args = {}) {
+  const hints = browserInstructionHints(args.instruction || "");
+  if (command?.tool === "browserReset" || command?.tool === "browserStatus") return false;
+  if (hints.explicitBackend === "playwright_mcp") return true;
+  if (hints.explicitBackend === "lightpanda" && !browserCommandIsInteractive(command, args.instruction)) return false;
+  return browserCommandIsInteractive(command, args.instruction);
 }
 
 function explicitNavigationUrlFromArgs(args = {}) {
@@ -833,21 +873,27 @@ function responseBase({
   reporter = null,
 } = {}) {
   const observationIsValid = observation && isValidObservation(observation);
+  const observationFailed = Boolean(observation && !observationIsValid);
+  const failedUrl = observationFailed && isHttpUrl(observation.url || "")
+    ? observation.url
+    : "";
   return {
     ok,
     status,
     instruction: redactInstructionSecrets(instruction),
-    currentUrl: observationIsValid ? observation.url : state?.currentUrl || state?.lastValidObservation?.url || state?.lastFailedObservation?.url || "",
-    currentTitle: observationIsValid ? observation.title || state?.currentTitle || "" : state?.currentTitle || state?.lastValidObservation?.title || state?.lastFailedObservation?.title || "",
-    extensionId: observationIsValid ? (extension?.id || state?.currentExtensionId || "") : state?.currentExtensionId || "",
-    pageKey: observationIsValid ? (pageKey || state?.currentPageKey || "") : state?.currentPageKey || "",
+    currentUrl: observationIsValid ? observation.url : observationFailed ? failedUrl : state?.currentUrl || state?.lastValidObservation?.url || "",
+    currentTitle: observationIsValid ? observation.title || state?.currentTitle || "" : observationFailed ? "" : state?.currentTitle || state?.lastValidObservation?.title || "",
+    extensionId: observationIsValid ? (extension?.id || state?.currentExtensionId || "") : observationFailed ? "" : state?.currentExtensionId || "",
+    pageKey: observationIsValid ? (pageKey || state?.currentPageKey || "") : observationFailed ? "" : state?.currentPageKey || "",
     engine: observationIsValid
       ? (observation.engine || state?.activeEngine || "")
-      : state?.lastFailedObservation?.engine || state?.activeEngine || "",
+      : observationFailed
+        ? observation.engine || state?.lastFailedObservation?.engine || ""
+        : state?.lastFailedObservation?.engine || state?.activeEngine || "",
     state,
     steps,
     summary,
-    whatFound: whatFound || (observationIsValid ? compactObservation(observation) : null),
+    whatFound: whatFound || (observation ? compactObservation(observation) : null),
     lastFailedObservation: state?.lastFailedObservation || null,
     engineFailures: state?.engineFailures || {},
     possibleNextActions,
@@ -925,6 +971,8 @@ function availableSafeBrowserCommands() {
     "browserFillAndSubmit",
     "browserScrape",
     "browserShowActions",
+    "browserReset",
+    "browserStatus",
   ];
 }
 
@@ -962,6 +1010,7 @@ function compactObservationForPlanner(observation = {}) {
 function buildPlannerContext(args = {}, state = defaultState()) {
   const currentUrl = args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
   const currentTitle = args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "";
+  const hints = browserInstructionHints(args.instruction || "");
   return {
     userInstruction: redactInstructionSecrets(args.instruction || ""),
     rawUserInstruction: args.instruction || "",
@@ -972,6 +1021,17 @@ function buildPlannerContext(args = {}, state = defaultState()) {
     lastFailedObservation: compactObservationForPlanner(state.lastFailedObservation),
     availableSafeBrowserCommands: availableSafeBrowserCommands(),
     backendOptions: availableBrowserBackends(),
+    localHints: {
+      explicitBackend: hints.explicitBackend || "auto",
+      resetRequested: hints.resetRequested,
+      interactiveTask: hints.interactive,
+      extractedUrl: hints.extractedUrl,
+      policy: [
+        "If explicitBackend is playwright_mcp, choose playwright_mcp and do not choose Lightpanda.",
+        "If resetRequested is true, choose browserReset.",
+        "Use playwright_mcp for click/type/fill/submit/login/password tasks.",
+      ],
+    },
     safety: {
       dangerousActionsRequireExactConfirmation: true,
       confirmationPattern: `${CONFIRM_PREFIX}<tool>`,
@@ -981,7 +1041,7 @@ function buildPlannerContext(args = {}, state = defaultState()) {
 }
 
 function commandNeedsCurrentUrl(tool = "") {
-  return Boolean(tool && !["browserNavigate", "browserShowActions"].includes(tool));
+  return Boolean(tool && !["browserNavigate", "browserShowActions", "browserReset", "browserStatus"].includes(tool));
 }
 
 function commandLooksDangerous(command = {}) {
@@ -1016,25 +1076,54 @@ function userConfirmedCommand(command = {}, args = {}) {
 }
 
 function normalizePlannerCommand(plan = {}, args = {}, state = defaultState()) {
-  const requestedBackend = String(plan.backend || "auto") === "playwright" ? "playwright_mcp" : (plan.backend || "auto");
+  const hints = browserInstructionHints(args.instruction || "");
+  const plannerBackend = String(plan.backend || "auto") === "playwright" ? "playwright_mcp" : (plan.backend || "auto");
+  const rawCommand = plan.command || {};
+  const resetTool = hints.resetRequested ? "browserReset" : rawCommand.tool;
+  const resetIntent = hints.resetRequested ? "reset" : plan.intent;
+  let requestedBackend = plannerBackend;
+  const commandPreview = {
+    ...rawCommand,
+    tool: resetTool,
+    args: {
+      ...(hints.resetRequested ? {} : rawCommand.args || {}),
+    },
+  };
+  if (!hints.resetRequested) {
+    if (hints.explicitBackend) requestedBackend = hints.explicitBackend;
+    if (browserCommandIsInteractive(commandPreview, args.instruction) && requestedBackend !== "playwright_mcp") {
+      requestedBackend = "playwright_mcp";
+    }
+  }
   const normalized = {
     ...plan,
+    intent: resetIntent,
     backend: requestedBackend,
     command: {
-      ...(plan.command || {}),
+      ...commandPreview,
       backend: requestedBackend,
       args: {
-        ...(plan.command?.args || {}),
+        ...(commandPreview.args || {}),
       },
     },
   };
   const tool = normalized.command.tool || "";
   const commandArgs = normalized.command.args;
+  if (hints.extractedUrl && !commandArgs.url && tool === "browserNavigate") {
+    commandArgs.url = hints.extractedUrl;
+  }
+  if (hints.extractedUrl && !commandArgs.url && browserCommandIsInteractive(normalized.command, args.instruction)) {
+    commandArgs.url = hints.extractedUrl;
+  }
   if (commandNeedsCurrentUrl(tool) && !commandArgs.currentUrl) {
     commandArgs.currentUrl = args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
   }
   if (normalized.backend === "lightpanda") commandArgs.enginePriority = ["lightpanda_cdp", "static_fetch"];
   if (normalized.backend === "chrome_cdp") commandArgs.enginePriority = ["chrome_cdp", "lightpanda_cdp", "static_fetch"];
+  if (normalized.backend === "playwright_mcp") {
+    commandArgs.backend = "playwright_mcp";
+    delete commandArgs.enginePriority;
+  }
   return normalized;
 }
 
@@ -1163,8 +1252,8 @@ function normalizeControlText(value = "") {
 
 function parsePlaywrightSnapshot(result = {}, requestedUrl = "") {
   const text = mcpContentText(result);
-  const url = text.match(/Page URL:\s*(https?:\/\/[^\s]+)/i)?.[1]
-    || text.match(/\burl:\s*(https?:\/\/[^\s]+)/i)?.[1]
+  const url = text.match(/Page URL:\s*([^\s]+)/i)?.[1]
+    || text.match(/\burl:\s*([^\s]+)/i)?.[1]
     || requestedUrl
     || "";
   const title = text.match(/Page Title:\s*(.+)/i)?.[1]?.trim()
@@ -1200,10 +1289,12 @@ function parsePlaywrightSnapshot(result = {}, requestedUrl = "") {
     if (/\blink\b/i.test(role)) links.push({ text: label, href: "", ref, target: ref });
     if (/\b(button|menuitem|tab)\b/i.test(role)) buttons.push({ text: label, ref, target: ref, selector: ref });
     if (/\b(textbox|searchbox|combobox|checkbox|radio|slider|spinbutton|input)\b/i.test(role)) {
+      const isPassword = /\b(password|pass|pwd)\b/i.test(`${label} ${line}`);
       inputs.push({
         label,
         name: label,
-        type: role.includes("checkbox") ? "checkbox" : role.includes("radio") ? "radio" : role.includes("combobox") ? "combobox" : "textbox",
+        type: isPassword ? "password" : role.includes("checkbox") ? "checkbox" : role.includes("radio") ? "radio" : role.includes("combobox") ? "combobox" : "textbox",
+        secret: isPassword,
         ref,
         target: ref,
         selector: ref,
@@ -1305,6 +1396,34 @@ function matchScore(control = {}, query = "") {
   return parts.length ? parts.filter((part) => hay.includes(part)).length / parts.length * 60 : 0;
 }
 
+function playwrightControlKind(control = {}) {
+  const hay = normalizeControlText(`${control.label || ""} ${control.text || ""} ${control.name || ""} ${control.raw || ""} ${control.role || ""} ${control.type || ""}`);
+  if (/\b(password|pass|pwd)\b/.test(hay)) return "password";
+  if (/\b(employee id|emp id|employee|staff id|login id|user id|username)\b/.test(hay)) return "employee id";
+  if (/\b(email|e mail)\b/.test(hay)) return "email";
+  if (/\b(phone|mobile|telephone|tel|contact|whatsapp)\b/.test(hay)) return "phone";
+  if (/\b(otp|code|pin)\b/.test(hay)) return "otp";
+  if (/\b(search|query)\b/.test(hay)) return "search";
+  if (/\b(name)\b/.test(hay)) return "name";
+  if (/\b(message|textarea|comment|description)\b/.test(hay)) return "message";
+  return "";
+}
+
+function fieldAliasQueries(field = {}) {
+  const label = normalizeControlText(field.label || field.name || field.id || "");
+  const queries = [field.label, field.name, field.id].filter(Boolean);
+  if (/\b(password|pass|pwd)\b/.test(label)) queries.push("password", "pass", "pwd");
+  if (/\b(employee id|emp id|employee|staff id|login id|user id|id|text)\b/.test(label)) {
+    queries.push("employee id", "emp id", "employee", "staff id", "login id", "user id", "username", "id");
+  }
+  if (/\b(username|user|login)\b/.test(label)) queries.push("username", "user name", "login id", "user id", "employee id");
+  if (/\b(email|e mail)\b/.test(label)) queries.push("email", "e-mail");
+  if (/\b(phone|mobile|telephone|tel|contact|whatsapp)\b/.test(label)) queries.push("phone", "mobile", "telephone", "contact");
+  if (/\b(otp|code|pin)\b/.test(label)) queries.push("otp", "code", "pin");
+  if (/\b(message|textarea|comment|description)\b/.test(label)) queries.push("message", "textarea", "comment");
+  return Array.from(new Set(queries.map((query) => safeText(query, 120)).filter(Boolean)));
+}
+
 function findPlaywrightControl(observation = {}, query = "", { roles = [] } = {}) {
   const roleSet = roles.map((role) => normalizeControlText(role));
   const controls = Array.isArray(observation.interactiveElements) ? observation.interactiveElements : [];
@@ -1314,6 +1433,38 @@ function findPlaywrightControl(observation = {}, query = "", { roles = [] } = {}
     .map((control) => ({ control, score: matchScore(control, query) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score)[0]?.control || null;
+}
+
+function findSinglePlaywrightControlByKind(observation = {}, kind = "", { roles = [] } = {}) {
+  const roleSet = roles.map((role) => normalizeControlText(role));
+  const controls = (Array.isArray(observation.interactiveElements) ? observation.interactiveElements : [])
+    .filter((control) => !control.disabled)
+    .filter((control) => !roleSet.length || roleSet.some((role) => normalizeControlText(control.role).includes(role)))
+    .filter((control) => playwrightControlKind(control) === kind);
+  return controls.length === 1 ? controls[0] : null;
+}
+
+function findPlaywrightFieldControl(observation = {}, field = {}) {
+  const roles = ["textbox", "searchbox", "combobox", "checkbox", "radio", "slider", "spinbutton"];
+  for (const query of fieldAliasQueries(field)) {
+    const control = findPlaywrightControl(observation, query, { roles });
+    if (control) return control;
+  }
+
+  const label = normalizeControlText(field.label || field.name || field.id || "");
+  if (/\b(password|pass|pwd)\b/.test(label)) return findSinglePlaywrightControlByKind(observation, "password", { roles });
+  if (/\b(text|id|employee|emp|login|user)\b/.test(label)) {
+    return findSinglePlaywrightControlByKind(observation, "employee id", { roles });
+  }
+  if (/\b(email)\b/.test(label)) return findSinglePlaywrightControlByKind(observation, "email", { roles });
+  if (/\b(phone|mobile|tel|contact)\b/.test(label)) return findSinglePlaywrightControlByKind(observation, "phone", { roles });
+
+  const normalTextboxes = (Array.isArray(observation.interactiveElements) ? observation.interactiveElements : [])
+    .filter((control) => !control.disabled)
+    .filter((control) => /textbox|searchbox/i.test(control.role || ""))
+    .filter((control) => playwrightControlKind(control) !== "password");
+  if (label === "text" && normalTextboxes.length === 1) return normalTextboxes[0];
+  return null;
 }
 
 function playwrightFieldType(control = {}, field = {}) {
@@ -1476,7 +1627,7 @@ async function executePlaywrightMcpCommand(command = {}, args = {}, state = defa
     for (const field of fields) {
       const label = field.label || field.name || field.id || "";
       const value = String(field.value ?? "");
-      const control = findPlaywrightControl(beforeObservation, label, { roles: ["textbox", "searchbox", "combobox", "checkbox", "radio", "slider", "spinbutton"] })
+      const control = findPlaywrightFieldControl(beforeObservation, field)
         || findPlaywrightControl(beforeObservation, value, { roles: ["checkbox", "radio", "combobox"] });
       if (!control) {
         missing.push(label || "field");
@@ -1620,7 +1771,14 @@ async function executePlaywrightMcpCommand(command = {}, args = {}, state = defa
 
 async function executeBrowserCommand(command = {}, args = {}, state = defaultState()) {
   const tool = command?.tool || "";
-  if (command?.backend === "playwright_mcp" || command?.args?.backend === "playwright_mcp") {
+  if (tool === "browserReset") {
+    try {
+      await callBrowserAgentMcpTool("mcp__playwright__browser_close", {});
+    } catch {}
+    return browserAgentReset({ ...args, sessionId: state.sessionId });
+  }
+  if (tool === "browserStatus") return browserAgentStatus({ ...args, sessionId: state.sessionId });
+  if (commandUsesPlaywright(command) || shouldUsePlaywrightBackend(command, args)) {
     return executePlaywrightMcpCommand(command, args, state);
   }
   const activeEnginePriority = state.activeEngine === "chrome_cdp"
@@ -1657,8 +1815,6 @@ async function executeBrowserCommand(command = {}, args = {}, state = defaultSta
   if (tool === "browserScrape") return browserObserve({ ...commandArgs, lastValidObservation: state.lastValidObservation, state });
   if (tool === "browserLearn") return learn({ ...args, ...commandArgs });
   if (tool === "browserShowActions") return showActions({ ...args, ...commandArgs }, state);
-  if (tool === "browserReset") return browserAgentReset({ ...args, sessionId: state.sessionId });
-  if (tool === "browserStatus") return browserAgentStatus({ ...args, sessionId: state.sessionId });
   return browserObserve({ ...commandArgs, lastValidObservation: state.lastValidObservation, state });
 }
 
@@ -2631,7 +2787,7 @@ export async function browserAgentReset(args = {}) {
     status: "success",
     sessionId,
     state: defaultState(sessionId),
-    summary: "Browser agent state reset.",
+    summary: "Browser session reset.",
   };
 }
 
@@ -2881,7 +3037,38 @@ export async function browserAgentRun(args = {}) {
 
   const command = validation.command;
   const browserToolStartedAt = nowMs();
-  const result = await executeBrowserCommand(command, baseArgs, state);
+  let result = await executeBrowserCommand(command, baseArgs, state);
+  if (
+    !result?.ok &&
+    !commandUsesPlaywright(command) &&
+    browserInstructionHints(instruction).interactive &&
+    !["browserReset", "browserStatus"].includes(command.tool)
+  ) {
+    const retryCommand = {
+      ...command,
+      backend: "playwright_mcp",
+      args: {
+        ...(command.args || {}),
+        backend: "playwright_mcp",
+      },
+    };
+    const retry = await executePlaywrightMcpCommand(retryCommand, baseArgs, state);
+    result = {
+      ...retry,
+      steps: [
+        ...(Array.isArray(result?.steps) ? result.steps : []),
+        {
+          type: "backend_failover",
+          tool: "playwright_mcp",
+          ok: Boolean(retry?.ok),
+          error: result?.error || "",
+          resultPreview: "Lightpanda failed during an interactive browser task; retried with Playwright MCP.",
+        },
+        ...(Array.isArray(retry?.steps) ? retry.steps : []),
+      ],
+      failoverFrom: result?.engine || command.backend || "lightpanda",
+    };
+  }
   browserToolMs = nowMs() - browserToolStartedAt;
 
   if (result?.state && ["browserLearn", "browserShowActions", "browserReset", "browserStatus"].includes(command.tool)) {
@@ -2984,7 +3171,7 @@ export async function browserAgentRun(args = {}) {
         status: "reporter_error",
         instruction,
         state: failedState,
-        observation: isValidObservation(observation) ? observation : null,
+        observation,
         steps: stepsFromPlanResult(planner, redactedGuardrail, result, command),
         summary: err.message || "Browser agent reporter failed.",
         requiresUser: true,
@@ -3002,7 +3189,7 @@ export async function browserAgentRun(args = {}) {
       status: result?.status === "needs_user" || verification.needsUser ? "needs_user" : "failed",
       instruction,
       state: failedState,
-      observation: isValidObservation(observation) ? observation : null,
+      observation,
       steps: stepsFromPlanResult(planner, redactedGuardrail, result, command),
       summary: reporterCall.report?.summary || (result?.status === "needs_user"
         ? (result.error || guardrail.reason || "The browser needs more input before acting.")

@@ -10,6 +10,8 @@ const ALLOWED_TOOLS = new Set([
   "browserFillAndSubmit",
   "browserScrape",
   "browserShowActions",
+  "browserReset",
+  "browserStatus",
 ]);
 
 const ALLOWED_BACKENDS = new Set(["auto", "lightpanda", "chrome_cdp", "playwright_mcp"]);
@@ -278,6 +280,8 @@ Allowed tools:
 - browserFillAndSubmit: args { "currentUrl": "...", "explicitSubmit": true, "fields": [...] }
 - browserScrape: args { "currentUrl": "...", "focus": "..." }
 - browserShowActions: args { "currentUrl": "...", "instruction": "..." }
+- browserReset: args {}
+- browserStatus: args {}
 
 Backend choices:
 - auto: let the runtime choose the safest backend.
@@ -290,10 +294,10 @@ For playwright_mcp, a command may include "url" as well as fields/text. That mea
 
 Return schema:
 {
-  "intent": "navigate|observe|click_or_open|fill_form|submit_form|fill_and_submit|scrape|show_actions|learn",
+  "intent": "navigate|observe|click_or_open|fill_form|submit_form|fill_and_submit|scrape|show_actions|reset|status|learn",
   "risk": "low|medium|high",
   "backend": "auto|lightpanda|playwright_mcp|chrome_cdp",
-  "command": { "tool": "browserNavigate|browserObserve|browserClickByText|browserFillFields|browserSubmitForm|browserFillAndSubmit|browserScrape|browserShowActions", "args": {} },
+  "command": { "tool": "browserNavigate|browserObserve|browserClickByText|browserFillFields|browserSubmitForm|browserFillAndSubmit|browserScrape|browserShowActions|browserReset|browserStatus", "args": {} },
   "requiresConfirmation": false,
   "reason": "short reason",
   "confidence": 0.0
@@ -303,6 +307,7 @@ Safety:
 - Mark login, submit, password, OTP/code, delete, payment, attendance, and profile update as medium or high risk.
 - Do not invent credentials.
 - If a password/OTP/code value is included, set secret=true for that field.
+- If the user asks to exit, close, stop, reset, or start a new browser session, return browserReset.
 - If no valid current URL is available for a non-navigation command, return browserNavigate only if the user gave a URL, otherwise browserObserve with reason asking for a URL.`;
   const custom = customSystemPrompt("planner");
   return custom ? `${base}\n\nCustom browser-agent planner instructions:\n${custom}` : base;

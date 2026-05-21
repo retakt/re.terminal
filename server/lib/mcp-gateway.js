@@ -1586,7 +1586,7 @@ export function routeMcpIntent(text = "", options = {}) {
       );
     }
 
-    if (browserTarget && /\b(open|visit|navigate|go to|browse)\b/i.test(lower)) {
+    if (mode !== "browser" && browserTarget && /\b(open|visit|navigate|go to|browse)\b/i.test(lower)) {
       const navigateTool = cachedExternalToolName("playwright", ["browser_navigate"]);
       if (navigateTool) {
         return use(

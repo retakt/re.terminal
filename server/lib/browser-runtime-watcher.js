@@ -1,6 +1,6 @@
 const FIELD_ALIASES = [
-  { key: "employee id", canonical: "employee id", secret: false, patterns: ["employee id", "employee_id", "emp id", "staff id", "user id", "login id"] },
-  { key: "username", canonical: "username", secret: false, patterns: ["username", "user name"] },
+  { key: "employee id", canonical: "employee id", secret: false, patterns: ["employee id", "employee_id", "emp id", "employee", "staff id", "user id", "login id", "id", "text"] },
+  { key: "username", canonical: "username", secret: false, patterns: ["username", "user name", "user", "login"] },
   { key: "email", canonical: "email", secret: false, patterns: ["email", "e-mail"] },
   { key: "phone", canonical: "phone", secret: false, patterns: ["phone", "mobile", "contact", "tel", "telephone", "whatsapp"] },
   { key: "password", canonical: "password", secret: true, patterns: ["password", "pass", "pwd"] },
@@ -372,7 +372,7 @@ function output({
 }
 
 function needsCurrentPage(intent, command) {
-  return Boolean(command?.tool && !["browserNavigate"].includes(command.tool) && intent !== "show_actions");
+  return Boolean(command?.tool && !["browserNavigate", "browserReset", "browserStatus"].includes(command.tool) && intent !== "show_actions");
 }
 
 function currentPageMissingResponse(intent, normalizedInstruction) {
@@ -412,7 +412,7 @@ export function watchBrowserInstruction(args = {}) {
     });
   }
 
-  if (/\b(reset|clear)\b.*\b(browser agent|browser state|agent state)\b/i.test(raw)) {
+  if (/\b(exit|close|stop|reset|clear|new)\b.*\b(browser|browser agent|browser state|agent state|session)\b/i.test(raw) || /^(?:exit|close|stop|reset)$/i.test(raw.trim())) {
     return output({ intent: "reset", confidence: 0.98, command: { tool: "browserReset", args: {} }, normalizedInstruction });
   }
 
