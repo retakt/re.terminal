@@ -9373,136 +9373,623 @@ body,
   }
 }
 
-/* ─── MCP Tool Gateway UI Updates ───────────────────────────────────── */
-/* Honest labeling, mobile-first vertical layout, clean separation */
+/* ─── MCP Tool Gateway UI - Typography Tuned ───────────────────────────── */
+/* Compact, app-consistent typography matching re.Term visual rhythm        */
 
-/* MCP Inspect Card - collapsible on mobile */
-.mcp-inspect-card {
-  transition: max-height 0.2s ease, padding 0.2s ease;
+/* === Base MCP Page Layout === */
+.mcp-page .tool-compact-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-.mcp-inspect-card--collapsed {
-  max-height: 48px;
-  overflow: hidden;
-}
+/* ─── MCP Tool Gateway - Mobile Compact Overrides ───────────────────────── */
+/* Strict mobile layout for 401px phone viewport - no giant empty boxes     */
 
-.mcp-inspect-card--collapsed pre {
-  display: none;
-}
-
-/* JSON/schema blocks - prevent horizontal page scroll */
-.mcp-inspect-card pre,
-.mcp-tool-row code,
-.mcp-log-row code,
-.run-tool-preview code {
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-/* Builtin pill badge */
-.mcp-pill--builtin {
-  border-color: color-mix(in srgb, var(--accent-cyan) 45%, var(--border));
-  color: var(--accent-cyan);
-  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
-}
-
-/* Mobile-first vertical layout for MCP page */
 @media (max-width: 768px) {
+  /* === Overall MCP Page Spacing === */
   .mcp-page .tool-compact-body {
     display: flex !important;
     flex-direction: column !important;
-    grid-template-columns: 1fr !important;
     padding: 6px !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+    gap: 6px !important;
   }
 
-  /* Ensure page order on mobile: Header → Search → Filters → Summary → Builtin → External → Inspect → Tools → Logs */
-  .mcp-page .mcp-toolbar,
-  .mcp-page .catalog-filter-bar,
-  .mcp-page section:nth-child(3), /* Builtin Tool Groups */
-  .mcp-page section:nth-child(4), /* External MCP Servers */
-  .mcp-page .mcp-inspect-card,
-  .mcp-page .mcp-stacked-row {
-    order: initial !important;
+  .tool-compact-card.mcp-section,
+  .tool-compact-card.mcp-toolbar,
+  .tool-compact-card.mcp-filters,
+  .tool-compact-card.mcp-inspect-card,
+  .tool-compact-card.mcp-logs-card {
+    padding: 8px !important;
+    margin: 0 !important;
+    border-radius: 6px !important;
   }
 
-  /* Toolbar stacks vertically */
+  /* === Toolbar - Compact === */
   .mcp-toolbar {
+    flex-direction: column !important;
     align-items: flex-start !important;
-    flex-direction: column !important;
     gap: 8px !important;
+    padding: 8px !important;
   }
 
-  .mcp-toolbar__stats {
-    flex-wrap: wrap !important;
-    gap: 4px !important;
-    justify-content: flex-start !important;
-  }
-
-  /* Filter bar stacks */
-  .catalog-filter-bar {
-    align-items: stretch !important;
-    flex-direction: column !important;
-    gap: 8px !important;
-  }
-
-  .catalog-search {
+  .mcp-toolbar-header {
+    gap: 6px !important;
     width: 100% !important;
   }
 
-  /* Server grids become vertical stacks, not horizontal scroll */
+  .mcp-toolbar-title h1 {
+    font-size: 12px !important;
+    margin: 0 !important;
+  }
+
+  .mcp-toolbar-title svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .mcp-toolbar-notice {
+    font-size: 10px !important;
+  }
+
+  .mcp-toolbar-stats {
+    width: 100% !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .mcp-stat-group {
+    gap: 0 !important;
+  }
+
+  .mcp-stat-value {
+    font-size: 11px !important;
+  }
+
+  .mcp-stat-label {
+    font-size: 9px !important;
+  }
+
+  .mcp-toolbar .mcp-icon-button {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  .mcp-toolbar .mcp-icon-button svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  /* === Filter Bar - Compact === */
+  .mcp-filters {
+    padding: 6px 8px !important;
+  }
+
+  .mcp-filter-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+  }
+
+  .mcp-filter-chips {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding-bottom: 2px !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .mcp-filter-chips::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .mcp-filter-chip {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 8px !important;
+    font-size: 10px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .mcp-search {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+  }
+
+  .mcp-search input {
+    font-size: 11px !important;
+  }
+
+  .mcp-search svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  /* === Section Headers - Compact === */
+  .mcp-section-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+    margin-bottom: 6px !important;
+    padding-bottom: 6px !important;
+  }
+
+  .mcp-section-title {
+    gap: 4px !important;
+  }
+
+  .mcp-section-title h2 {
+    font-size: 12px !important;
+    margin: 0 !important;
+  }
+
+  .mcp-section-title svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .mcp-section-count {
+    font-size: 10px !important;
+    padding: 1px 5px !important;
+  }
+
+  .mcp-section-description {
+    margin: 0 0 6px !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  /* === Builtin Tool Groups - Compact Summary List === */
   .mcp-server-grid {
     display: flex !important;
     flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  .mcp-server-card {
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    grid-template-areas: "title badge" "desc desc" "meta meta" "actions actions" !important;
+    gap: 4px !important;
+    padding: 8px !important;
+    min-height: 48px !important;
+    max-height: 60px !important;
+    overflow: hidden !important;
+  }
+
+  .mcp-server-card-header {
+    grid-area: title !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 4px !important;
+    margin: 0 !important;
+  }
+
+  .mcp-server-card-title-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+
+  .mcp-server-card-title {
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .mcp-pill {
+    font-size: 9px !important;
+    padding: 1px 5px !important;
+  }
+
+  .mcp-status-badge {
+    font-size: 9px !important;
+    padding: 1px 5px !important;
+  }
+
+  .mcp-server-card-description {
+    grid-area: desc !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 1 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+  }
+
+  .mcp-server-card-meta {
+    grid-area: meta !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
     gap: 8px !important;
-    overflow: visible !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+    overflow: hidden !important;
+  }
+
+  .mcp-meta-item {
+    font-size: 10px !important;
+    white-space: nowrap !important;
+  }
+
+  .mcp-meta-label {
+    display: none !important;
+  }
+
+  .mcp-server-card-actions {
+    grid-area: actions !important;
+    gap: 4px !important;
+    padding-top: 0 !important;
+    justify-content: flex-end !important;
+  }
+
+  .mcp-action-btn {
+    height: 22px !important;
+    min-width: 22px !important;
+    padding: 0 6px !important;
+    font-size: 10px !important;
+    gap: 3px !important;
+  }
+
+  .mcp-action-btn svg {
+    width: 11px !important;
+    height: 11px !important;
+  }
+
+  .mcp-action-btn span {
+    display: none !important;
+  }
+
+  /* Show button labels on hover for touch devices with pointer */
+  @media (hover: hover) and (pointer: fine) {
+    .mcp-action-btn:hover span {
+      display: inline !important;
+    }
+  }
+
+  /* === External MCP Servers - Compact Empty State === */
+  .mcp-empty-state.mcp-empty-state--full {
+    min-height: 40px !important;
+    max-height: 56px !important;
+    padding: 8px !important;
+    gap: 6px !important;
+  }
+
+  .mcp-empty-state svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .mcp-empty-state span,
+  .mcp-empty-state strong,
+  .mcp-empty-state p {
+    font-size: 11px !important;
+    margin: 0 !important;
+    line-height: 1.3 !important;
+  }
+
+  .mcp-empty-state strong {
+    display: inline !important;
+    margin-bottom: 0 !important;
+  }
+
+  .mcp-empty-state p {
+    display: none !important;
+  }
+
+  /* === Inspect Panel - Hidden When Collapsed on Mobile === */
+  .mcp-inspect-card {
+    padding: 8px !important;
+  }
+
+  /* Hide inspect card when collapsed class is present (mobile default state) */
+  .mcp-inspect-card.mcp-inspect-card--collapsed {
+    display: none !important;
+  }
+
+  .mcp-inspect-header {
+    gap: 6px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .mcp-inspect-title h2 {
+    font-size: 12px !important;
+    margin: 0 !important;
+  }
+
+  .mcp-inspect-title svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .mcp-inspect-content {
+    margin: 0 !important;
+    padding: 8px !important;
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+    max-height: 200px !important;
+  }
+
+  /* === Available Tools - Compact Cards === */
+  .mcp-tool-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  .mcp-tool-row {
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    grid-template-areas: "header actions" "desc desc" "schema schema" !important;
+    gap: 4px !important;
+    padding: 10px !important;
+  }
+
+  .mcp-tool-row-header {
+    grid-area: header !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 4px !important;
+    margin: 0 !important;
+  }
+
+  .mcp-tool-row-title {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+
+  .mcp-tool-row-title strong {
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .mcp-tool-source-badge {
+    font-size: 9px !important;
+    padding: 1px 4px !important;
+  }
+
+  .mcp-tool-server {
+    font-size: 10px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .mcp-tool-description {
+    grid-area: desc !important;
+    margin: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  /* === Collapsible Schema - Hidden by Default, Compact === */
+  .mcp-tool-schema {
+    grid-area: schema !important;
+    margin: 0 !important;
+  }
+
+  .mcp-tool-schema[open] {
+    margin-top: 4px !important;
+  }
+
+  .mcp-tool-schema-toggle {
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+  }
+
+  .mcp-tool-schema-toggle svg {
+    width: 11px !important;
+    height: 11px !important;
+  }
+
+  .mcp-tool-schema-content {
+    margin: 4px 0 0 !important;
+    padding: 6px !important;
+    font-size: 9px !important;
+    line-height: 1.3 !important;
+    max-height: 120px !important;
+  }
+
+  .mcp-tool-actions {
+    grid-area: actions !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    margin: 0 !important;
+  }
+
+  .mcp-tool-actions .mcp-action-btn--small {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
     padding: 0 !important;
   }
 
-  /* Prevent horizontal page scroll */
+  .mcp-tool-actions .mcp-action-btn--small svg {
+    width: 11px !important;
+    height: 11px !important;
+  }
+
+  /* === Activity Logs - Collapsed by Default === */
+  .mcp-logs-card {
+    padding: 0 !important;
+  }
+
+  .mcp-logs-header {
+    padding: 10px 12px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    font-size: 12px !important;
+  }
+
+  .mcp-logs-header-left {
+    gap: 4px !important;
+  }
+
+  .mcp-logs-header-left svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .mcp-logs-count {
+    font-size: 10px !important;
+    padding: 1px 4px !important;
+  }
+
+  .mcp-logs-header-right svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .mcp-log-list {
+    padding: 0 12px 12px !important;
+    gap: 4px !important;
+  }
+
+  /* Only show first 3 logs when expanded */
+  .mcp-log-list > .mcp-log-row:nth-child(n+4) {
+    display: none !important;
+  }
+
+  .mcp-log-row {
+    padding: 6px 8px !important;
+    gap: 4px !important;
+  }
+
+  .mcp-log-row-header {
+    gap: 4px !important;
+  }
+
+  .mcp-log-tool {
+    font-size: 11px !important;
+  }
+
+  .mcp-log-meta {
+    font-size: 9px !important;
+    gap: 3px !important;
+  }
+
+  .mcp-repeat-badge {
+    height: 13px !important;
+    padding: 0 4px !important;
+    font-size: 8px !important;
+  }
+
+  .mcp-log-args,
+  .mcp-log-result {
+    margin: 0 !important;
+    padding: 4px 6px !important;
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+    max-height: 80px !important;
+    overflow-y: auto !important;
+  }
+
+  .mcp-show-more-logs {
+    padding: 4px !important;
+    font-size: 10px !important;
+  }
+
+  /* === Empty Log State - Compact === */
+  .mcp-empty-log {
+    min-height: 0 !important;
+    padding: 8px !important;
+    font-size: 11px !important;
+    gap: 6px !important;
+  }
+
+  .mcp-empty-log svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  /* === Pills and Badges - Compact === */
+  .mcp-pill,
+  .mcp-status-badge,
+  .mcp-tool-source-badge {
+    font-size: 9px !important;
+    padding: 1px 5px !important;
+  }
+
+  /* === Prevent Horizontal Overflow === */
   .mcp-page,
   .mcp-page .tool-compact-body,
   .mcp-page .tool-compact-card,
-  .mcp-page .mcp-server-card,
   .mcp-page pre,
-  .mcp-page code {
+  .mcp-page code,
+  .mcp-page .mcp-server-card,
+  .mcp-page .mcp-tool-row {
     max-width: 100% !important;
     overflow-x: hidden !important;
   }
 
-  /* JSON/schema blocks - prevent horizontal page scroll */
   .mcp-page pre,
-  .mcp-page code {
+  .mcp-page code,
+  .mcp-page .mcp-tool-schema-content,
+  .mcp-page .mcp-inspect-content,
+  .mcp-page .mcp-log-args,
+  .mcp-page .mcp-log-result {
     overflow-x: auto !important;
     overflow-wrap: break-word !important;
     word-break: break-word !important;
   }
 
-  .mcp-server-card {
-    min-width: auto !important;
-    width: 100% !important;
-    scroll-snap-align: none !important;
+  /* === Typography Consistency === */
+  .mcp-section-title h2,
+  .mcp-server-card-title,
+  .mcp-tool-row-title strong,
+  .mcp-inspect-title h2 {
+    font-size: 12px !important;
   }
 
-  .mcp-server-card p {
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+  .mcp-section-description,
+  .mcp-server-card-description,
+  .mcp-tool-description,
+  .mcp-log-tool {
+    font-size: 11px !important;
   }
 
-  /* Resizable row becomes vertical stack on mobile */
+  .mcp-meta-item,
+  .mcp-tool-server,
+  .mcp-log-meta,
+  .mcp-stat-label,
+  .mcp-filter-chip,
+  .mcp-action-btn,
+  .mcp-pill,
+  .mcp-status-badge,
+  .mcp-tool-source-badge {
+    font-size: 10px !important;
+  }
+
+  /* === Remove Resizable Split on Mobile === */
   .mcp-resizable-row {
     display: grid !important;
     grid-template-columns: 1fr !important;
     grid-column: 1 / -1 !important;
-    gap: 8px !important;
+    gap: 6px !important;
     height: auto !important;
     min-height: 0 !important;
-    overflow: visible !important;
   }
 
   .mcp-resizable-row > [data-panel],
@@ -9518,43 +10005,1475 @@ body,
     display: none !important;
   }
 
-  /* Stacked row for tools/logs on mobile */
-  .mcp-stacked-row {
+  /* === Mobile Order - Natural DOM order is correct per TSX render sequence === */
+  /* Toolbar -> Filters -> Builtin Groups -> External Servers -> Tools -> Logs */
+  /* No CSS reordering needed; DOM order matches required mobile sequence */
+}
+
+/* === Base MCP Page Layout === */
+
+.mcp-section {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--ui-card, var(--bg-surface));
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+}
+
+.mcp-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-border-soft, var(--border-subtle));
+}
+
+.mcp-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-section-title h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ui-text, var(--fg-base));
+  text-transform: none;
+}
+
+.mcp-section-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ui-muted, var(--fg-muted));
+  background: var(--ui-chip-bg, rgba(240, 246, 252, 0.045));
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.mcp-section-description {
+  margin: 0 0 10px;
+  color: var(--ui-muted, var(--fg-muted));
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* === Toolbar - Compact === */
+.mcp-toolbar {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--ui-panel, var(--bg-surface));
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 8px;
+}
+
+.mcp-toolbar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-toolbar-title h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ui-text, var(--fg-base));
+  text-transform: none;
+}
+
+.mcp-toolbar-notice {
+  color: var(--accent-cyan, var(--ui-teal));
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.mcp-toolbar-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mcp-stat-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.mcp-stat-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ui-text, var(--fg-base));
+}
+
+.mcp-stat-label {
+  font-size: 10px;
+  color: var(--ui-muted, var(--fg-muted));
+  text-transform: lowercase;
+}
+
+/* === Filter Bar - Compact === */
+.mcp-filters {
+  padding: 8px 12px;
+}
+
+.mcp-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mcp-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mcp-filter-chip {
+  height: 22px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 999px;
+  background: var(--ui-input, var(--bg-base));
+  color: var(--ui-muted, var(--fg-muted));
+  padding: 0 10px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  text-transform: lowercase;
+}
+
+.mcp-filter-chip:hover {
+  border-color: var(--ui-border, var(--border));
+  color: var(--ui-text, var(--fg-base));
+  background: var(--ui-card-hover, var(--bg-highlight));
+}
+
+.mcp-filter-chip.is-active {
+  border-color: var(--ui-active-border, var(--ui-teal-border));
+  color: var(--ui-text, var(--fg-base));
+  background: var(--ui-active-bg, var(--ui-teal-soft));
+}
+
+.mcp-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 160px;
+  height: 26px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 6px;
+  background: var(--ui-input, var(--bg-base));
+  color: var(--ui-muted, var(--fg-muted));
+  padding: 0 8px;
+}
+
+.mcp-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text, var(--fg-base));
+  font-family: var(--font-ui);
+  font-size: 11px;
+  outline: none;
+}
+
+.mcp-search input::placeholder {
+  color: var(--ui-subtle, var(--fg-subtle));
+}
+
+/* === Server Cards - Compact === */
+.mcp-server-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.mcp-server-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 8px;
+  background: var(--ui-card, var(--bg-base));
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.mcp-server-card:hover {
+  border-color: var(--ui-border, var(--border));
+}
+
+.mcp-server-card.is-disabled {
+  opacity: 0.6;
+}
+
+.mcp-server-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mcp-server-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mcp-server-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ui-text, var(--fg-base));
+  text-transform: none;
+}
+
+.mcp-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--ui-chip-bg, rgba(240, 246, 252, 0.045));
+  color: var(--ui-muted, var(--fg-muted));
+  text-transform: lowercase;
+}
+
+.mcp-status-badge--ready {
+  background: rgba(46, 160, 67, 0.12);
+  color: var(--accent-green, #2ea043);
+}
+
+.mcp-status-badge--needs-config {
+  background: rgba(210, 153, 34, 0.12);
+  color: var(--accent-yellow, #d29922);
+}
+
+.mcp-server-card-description {
+  margin: 0;
+  color: var(--ui-muted, var(--fg-muted));
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.mcp-server-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ui-border-soft, var(--border-subtle));
+}
+
+.mcp-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+}
+
+.mcp-meta-label {
+  color: var(--ui-subtle, var(--fg-subtle));
+  text-transform: lowercase;
+}
+
+.mcp-server-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.mcp-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 24px;
+  min-width: 56px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 4px;
+  background: var(--ui-input, var(--bg-base));
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.mcp-action-btn:hover {
+  border-color: var(--ui-border, var(--border));
+  color: var(--ui-text, var(--fg-base));
+  background: var(--ui-card-hover, var(--bg-highlight));
+}
+
+.mcp-action-btn--small {
+  height: 22px;
+  min-width: 22px;
+  padding: 0 6px;
+}
+
+.mcp-action-btn--test {
+  border-color: color-mix(in srgb, var(--accent-green) 30%, var(--border-subtle));
+  color: var(--accent-green, #2ea043);
+}
+
+.mcp-action-btn--test:hover {
+  background: rgba(46, 160, 67, 0.1);
+}
+
+/* === Pill Badges - Compact === */
+.mcp-pill {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 999px;
+  color: var(--ui-muted, var(--fg-muted));
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.mcp-pill--builtin {
+  border-color: color-mix(in srgb, var(--accent-cyan) 40%, var(--border-subtle));
+  color: var(--accent-cyan, #79c0ff);
+  background: rgba(121, 192, 255, 0.1);
+}
+
+.mcp-pill--external {
+  border-color: color-mix(in srgb, var(--accent-magenta) 40%, var(--border-subtle));
+  color: var(--accent-magenta, #bc8cff);
+  background: rgba(188, 140, 255, 0.1);
+}
+
+.mcp-pill--disabled {
+  border-color: var(--border-subtle);
+  color: var(--fg-subtle);
+  background: var(--bg-overlay);
+}
+
+/* === Tool Rows - Compact === */
+.mcp-tool-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mcp-tool-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 6px;
+  background: var(--ui-card, var(--bg-base));
+  transition: border-color 0.12s ease;
+}
+
+.mcp-tool-row:hover {
+  border-color: var(--ui-border, var(--border));
+}
+
+.mcp-tool-row--disabled {
+  opacity: 0.6;
+}
+
+.mcp-tool-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mcp-tool-row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-tool-row-title strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ui-text, var(--fg-base));
+  text-transform: none;
+}
+
+.mcp-tool-source-badge {
+  font-size: 9px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--ui-chip-bg);
+  color: var(--ui-muted);
+  text-transform: lowercase;
+}
+
+.mcp-tool-server {
+  font-size: 10px;
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+}
+
+.mcp-tool-description {
+  margin: 0;
+  color: var(--ui-muted, var(--fg-muted));
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* === Collapsible Schema - Compact === */
+.mcp-tool-schema {
+  margin: 0;
+}
+
+.mcp-tool-schema-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px dashed var(--ui-border-soft, var(--border-subtle));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  transition: all 0.12s ease;
+}
+
+.mcp-tool-schema-toggle:hover {
+  border-color: var(--ui-border, var(--border));
+  color: var(--ui-text, var(--fg-base));
+  background: var(--ui-card-hover, var(--bg-highlight));
+}
+
+.mcp-tool-schema-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.mcp-tool-schema-content {
+  margin: 6px 0 0;
+  padding: 8px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 4px;
+  background: var(--ui-input, var(--bg-base));
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.mcp-tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+/* === Empty States - Compact === */
+.mcp-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 60px;
+  padding: 12px;
+  border: 1px dashed var(--ui-border-soft, var(--border-subtle));
+  border-radius: 6px;
+  color: var(--ui-muted, var(--fg-muted));
+  font-size: 11px;
+  text-align: center;
+}
+
+.mcp-empty-state--full {
+  grid-column: 1 / -1;
+  background: var(--ui-card, var(--bg-base));
+}
+
+.mcp-empty-state strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ui-text, var(--fg-base));
+  font-weight: 700;
+}
+
+.mcp-empty-state p {
+  margin: 0;
+  font-size: 10px;
+}
+
+/* === Inspect Card - Compact === */
+.mcp-inspect-card {
+  padding: 10px 12px;
+}
+
+.mcp-inspect-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mcp-inspect-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-inspect-title h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ui-text, var(--fg-base));
+  text-transform: none;
+}
+
+.mcp-inspect-content {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 6px;
+  background: var(--ui-input, var(--bg-base));
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.mcp-inspect-card--collapsed {
+  max-height: 44px;
+  overflow: hidden;
+}
+
+.mcp-inspect-card--collapsed .mcp-inspect-content {
+  display: none;
+}
+
+/* === Logs Card - Secondary, Collapsible, Compact === */
+.mcp-logs-card {
+  padding: 0;
+}
+
+.mcp-logs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text, var(--fg-base));
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.mcp-logs-header:hover {
+  background: var(--ui-card-hover, var(--bg-highlight));
+}
+
+.mcp-logs-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-logs-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ui-muted, var(--fg-muted));
+  background: var(--ui-chip-bg);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.mcp-logs-header-right {
+  color: var(--ui-muted, var(--fg-muted));
+}
+
+.mcp-log-list {
+  display: grid;
+  gap: 6px;
+  padding: 0 12px 12px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.mcp-log-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 4px;
+  background: var(--ui-card, var(--bg-base));
+}
+
+.mcp-log-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.mcp-log-tool {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ui-text, var(--fg-base));
+  font-family: var(--font-mono);
+}
+
+.mcp-log-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+}
+
+.mcp-repeat-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, var(--border-subtle));
+  border-radius: 999px;
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--accent-blue, #58a6ff);
+  padding: 0 4px;
+  font-style: normal;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.mcp-log-args,
+.mcp-log-result {
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 3px;
+  background: var(--ui-input, var(--bg-base));
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.mcp-log-row--error .mcp-log-result {
+  border-color: color-mix(in srgb, var(--accent-red) 40%, var(--border-subtle));
+  color: var(--accent-red, #f85149);
+}
+
+.mcp-show-more-logs {
+  width: 100%;
+  padding: 6px;
+  border: 1px dashed var(--ui-border-soft, var(--border-subtle));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-ui);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.mcp-show-more-logs:hover {
+  border-color: var(--ui-border, var(--border));
+  color: var(--ui-text, var(--fg-base));
+  background: var(--ui-card-hover, var(--bg-highlight));
+}
+
+/* === Responsive: Desktop === */
+@media (min-width: 768px) {
+  .mcp-server-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+
+  .mcp-tool-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* === Responsive: Mobile === */
+@media (max-width: 767px) {
+  .mcp-page .tool-compact-body {
     display: flex !important;
     flex-direction: column !important;
+    padding: 8px !important;
+    gap: 12px !important;
+  }
+
+  .mcp-toolbar {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+
+  .mcp-toolbar-stats {
+    width: 100%;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
     gap: 8px !important;
   }
 
-  .mcp-list-card {
-    min-height: 220px !important;
+  .mcp-filter-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
   }
 
-  .mcp-tool-list,
-  .mcp-log-list {
-    max-height: 300px !important;
-  }
-
-  /* Inspect panel - full width, collapsible */
-  .mcp-inspect-card {
+  .mcp-search {
     width: 100% !important;
+    min-width: 0 !important;
   }
 
-  .mcp-inspect-card pre {
-    max-height: 200px;
-    overflow-y: auto;
+  .mcp-section {
+    padding: 14px !important;
   }
 
-  /* Card actions wrap on mobile */
-  .catalog-card-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 4px !important;
+  .mcp-section-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
   }
 
-  /* Remove non-functional buttons on mobile - keep only copy/inspect */
-  .mcp-server-card .catalog-card-actions a,
-  .mcp-server-card .catalog-card-actions button:nth-child(2) {
-    display: none;
+  .mcp-server-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
   }
+
+  .mcp-server-card {
+    width: 100% !important;
+    min-width: auto !important;
+  }
+
+  .mcp-tool-row-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  .mcp-tool-actions {
+    flex-wrap: wrap !important;
+  }
+
+  .mcp-logs-header {
+    padding: 12px !important;
+  }
+
+  .mcp-log-list {
+    padding: 0 12px 12px !important;
+  }
+
+  /* Prevent horizontal scroll */
+  .mcp-page,
+  .mcp-page .tool-compact-body,
+  .mcp-page .tool-compact-card,
+  .mcp-page pre,
+  .mcp-page code {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .mcp-page pre,
+  .mcp-page code {
+    overflow-x: auto !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+
+  /* Remove resizable split on mobile */
+  .mcp-resizable-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-column: 1 / -1 !important;
+    gap: 8px !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .mcp-resizable-row > [data-panel],
+  .mcp-resizable-row > [data-panel] > [data-panel-size] {
+    width: 100% !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    flex: none !important;
+  }
+
+  .mcp-resizable-row .chat-resize-handle {
+    display: none !important;
+  }
+}
+
+/* ============ MOBILE-ONLY LAYOUT (mcp-page--mobile) ============ */
+/* Strict mobile layout for 401px phone viewport - structural, not just CSS patches */
+
+.mcp-page--mobile .tool-compact-body.mcp-dashboard--mobile {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 6px !important;
+  gap: 6px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Overall spacing */
+.mcp-page--mobile .tool-compact-card,
+.mcp-page--mobile .mcp-section,
+.mcp-page--mobile .mcp-toolbar,
+.mcp-page--mobile .mcp-filters,
+.mcp-page--mobile .mcp-logs-card {
+  padding: 8px !important;
+  margin: 0 !important;
+  border-radius: 6px !important;
+}
+
+/* === Header - Compact === */
+.mcp-page--mobile .mcp-toolbar--mobile {
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 6px !important;
+  padding: 6px 8px !important;
+}
+
+.mcp-page--mobile .mcp-toolbar-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.mcp-page--mobile .mcp-toolbar-title h1 {
+  font-size: 12px !important;
+  margin: 0 !important;
+  font-weight: 700 !important;
+}
+
+.mcp-page--mobile .mcp-toolbar-title svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.mcp-page--mobile .mcp-toolbar-stats--mobile {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  flex-wrap: wrap !important;
+}
+
+.mcp-page--mobile .mcp-stat-line {
+  font-size: 11px !important;
+  color: var(--fg-muted) !important;
+  font-family: var(--font-mono) !important;
+}
+
+.mcp-page--mobile .mcp-toolbar-notice {
+  font-size: 10px !important;
+}
+
+.mcp-page--mobile .mcp-icon-button--mobile {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+}
+
+.mcp-page--mobile .mcp-icon-button--mobile svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+/* === Search + Filters === */
+.mcp-page--mobile .mcp-filters--mobile {
+  padding: 4px 8px !important;
+}
+
+.mcp-page--mobile .mcp-filter-bar--mobile {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+}
+
+.mcp-page--mobile .mcp-filter-chips--mobile {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 4px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding-bottom: 2px !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.mcp-page--mobile .mcp-filter-chips--mobile::-webkit-scrollbar {
+  display: none !important;
+}
+
+.mcp-page--mobile .mcp-filter-chip--mobile {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  font-size: 10px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.mcp-page--mobile .mcp-search--mobile {
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+}
+
+.mcp-page--mobile .mcp-search--mobile input {
+  font-size: 11px !important;
+}
+
+.mcp-page--mobile .mcp-search--mobile svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+/* === Section Headers === */
+.mcp-page--mobile .mcp-section-header--mobile {
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  margin-bottom: 6px !important;
+  padding-bottom: 4px !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+}
+
+.mcp-page--mobile .mcp-section-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.mcp-page--mobile .mcp-section-title h2 {
+  font-size: 12px !important;
+  margin: 0 !important;
+  font-weight: 700 !important;
+}
+
+.mcp-page--mobile .mcp-section-title svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.mcp-page--mobile .mcp-section-count {
+  font-size: 10px !important;
+  padding: 1px 5px !important;
+}
+
+/* === Builtin Tool Groups - Compact Summary Rows === */
+.mcp-page--mobile .mcp-server-list--mobile {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.mcp-page--mobile .mcp-server-row--mobile {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding: 8px 10px !important;
+  min-height: 44px !important;
+  max-height: 52px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 6px !important;
+  background: var(--bg-base) !important;
+  text-align: left !important;
+  width: 100% !important;
+}
+
+.mcp-page--mobile .mcp-server-row-left {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.mcp-page--mobile .mcp-server-row-title {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: var(--fg-base) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.mcp-page--mobile .mcp-server-row-meta {
+  font-size: 10px !important;
+  color: var(--fg-muted) !important;
+  font-family: var(--font-mono) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.mcp-page--mobile .mcp-status-pill {
+  font-size: 9px !important;
+  padding: 1px 6px !important;
+  border-radius: 999px !important;
+  font-family: var(--font-mono) !important;
+  font-weight: 600 !important;
+  flex-shrink: 0 !important;
+}
+
+.mcp-page--mobile .mcp-status-pill--ready {
+  background: rgba(46, 160, 67, 0.12) !important;
+  color: var(--accent-green) !important;
+}
+
+.mcp-page--mobile .mcp-status-pill--needs_config,
+.mcp-page--mobile .mcp-status-pill--degraded {
+  background: rgba(210, 153, 34, 0.12) !important;
+  color: var(--accent-yellow) !important;
+}
+
+.mcp-page--mobile .mcp-status-pill--error {
+  background: rgba(248, 81, 73, 0.12) !important;
+  color: var(--accent-red) !important;
+}
+
+/* === External MCP - Compact Empty State === */
+.mcp-page--mobile .mcp-empty-row--compact {
+  min-height: 36px !important;
+  max-height: 44px !important;
+  padding: 8px 10px !important;
+  font-size: 11px !important;
+  color: var(--fg-muted) !important;
+  display: flex !important;
+  align-items: center !important;
+  border: 1px dashed var(--border-subtle) !important;
+  border-radius: 6px !important;
+}
+
+.mcp-page--mobile .mcp-empty-row {
+  padding: 8px 10px !important;
+  font-size: 11px !important;
+  color: var(--fg-muted) !important;
+  text-align: center !important;
+}
+
+/* === Available Tools - Collapsible, 3 items by default === */
+.mcp-page--mobile .mcp-section-title-expand {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  width: 100% !important;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  color: inherit !important;
+  text-align: left !important;
+}
+
+.mcp-page--mobile .mcp-tool-list--mobile {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.mcp-page--mobile .mcp-show-more-tools,
+.mcp-page--mobile .mcp-show-less-tools {
+  width: 100% !important;
+  padding: 8px 10px !important;
+  border: 1px dashed var(--border-subtle) !important;
+  border-radius: 6px !important;
+  background: var(--bg-base) !important;
+  color: var(--fg-muted) !important;
+  font-size: 10px !important;
+  font-family: var(--font-mono) !important;
+  cursor: pointer !important;
+  text-align: center !important;
+  transition: all 0.12s ease !important;
+}
+
+.mcp-page--mobile .mcp-show-more-tools:hover,
+.mcp-page--mobile .mcp-show-less-tools:hover {
+  border-color: var(--border) !important;
+  color: var(--fg-base) !important;
+  background: var(--bg-surface) !important;
+}
+
+.mcp-page--mobile .mcp-tool-card--mobile {
+  padding: 10px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 6px !important;
+  background: var(--bg-base) !important;
+}
+
+.mcp-page--mobile .mcp-tool-card-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  margin-bottom: 4px !important;
+}
+
+.mcp-page--mobile .mcp-tool-card-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.mcp-page--mobile .mcp-tool-card-title strong {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.mcp-page--mobile .mcp-tool-source-badge {
+  font-size: 9px !important;
+  padding: 1px 4px !important;
+  border-radius: 3px !important;
+  font-family: var(--font-mono) !important;
+  flex-shrink: 0 !important;
+}
+
+.mcp-page--mobile .mcp-tool-server-name {
+  font-size: 10px !important;
+  color: var(--fg-muted) !important;
+  font-family: var(--font-mono) !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.mcp-page--mobile .mcp-tool-card-desc {
+  margin: 0 0 6px !important;
+  font-size: 11px !important;
+  color: var(--fg-muted) !important;
+  line-height: 1.3 !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
+.mcp-page--mobile .mcp-tool-card-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  justify-content: flex-end !important;
+}
+
+.mcp-page--mobile .mcp-icon-btn--mobile {
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 4px !important;
+  background: var(--bg-base) !important;
+  color: var(--fg-muted) !important;
+  padding: 0 !important;
+}
+
+.mcp-page--mobile .mcp-icon-btn--mobile svg {
+  width: 11px !important;
+  height: 11px !important;
+}
+
+.mcp-page--mobile .mcp-icon-btn--test {
+  border-color: color-mix(in srgb, var(--accent-green) 30%, var(--border-subtle)) !important;
+  color: var(--accent-green) !important;
+}
+
+/* === Activity Logs - Collapsed by Default, Compact === */
+.mcp-page--mobile .mcp-logs-card--mobile {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.mcp-page--mobile .mcp-logs-header--mobile {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  width: 100% !important;
+  padding: 8px 10px !important;
+  min-height: 34px !important;
+  max-height: 40px !important;
+  height: auto !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 6px !important;
+  background: var(--bg-base) !important;
+  color: var(--fg-base) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+}
+
+.mcp-page--mobile .mcp-logs-header--mobile:hover {
+  background: var(--bg-surface) !important;
+}
+
+.mcp-page--mobile .mcp-logs-header-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.mcp-page--mobile .mcp-logs-header-left svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.mcp-page--mobile .mcp-logs-count {
+  font-size: 10px !important;
+  color: var(--fg-muted) !important;
+  font-weight: 600 !important;
+}
+
+.mcp-page--mobile .mcp-logs-header--mobile svg {
+  width: 12px !important;
+  height: 12px !important;
+  color: var(--fg-muted) !important;
+}
+
+.mcp-page--mobile .mcp-log-list--mobile {
+  padding: 6px 0 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+.mcp-page--mobile .mcp-log-row--mobile {
+  padding: 6px 8px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 4px !important;
+  background: var(--bg-base) !important;
+}
+
+.mcp-page--mobile .mcp-log-row-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  margin-bottom: 4px !important;
+}
+
+.mcp-page--mobile .mcp-log-tool-name {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  font-family: var(--font-mono) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.mcp-page--mobile .mcp-log-meta {
+  font-size: 9px !important;
+  color: var(--fg-muted) !important;
+  font-family: var(--font-mono) !important;
+  white-space: nowrap !important;
+}
+
+.mcp-page--mobile .mcp-log-preview {
+  display: block !important;
+  font-size: 10px !important;
+  color: var(--fg-muted) !important;
+  font-family: var(--font-mono) !important;
+  padding: 4px 6px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 3px !important;
+  background: var(--bg-surface) !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  max-height: 60px !important;
+  overflow-y: auto !important;
+}
+
+/* === Inspect Modal === */
+.mcp-page--mobile .mcp-inspect-modal--mobile {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 100 !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  padding: 12px !important;
+}
+
+.mcp-page--mobile .mcp-inspect-modal-content {
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 70vh !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px 8px 0 0 !important;
+  background: var(--bg-surface) !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.mcp-page--mobile .mcp-inspect-modal-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding: 10px 12px !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  background: var(--bg-base) !important;
+}
+
+.mcp-page--mobile .mcp-inspect-modal-header h3 {
+  font-size: 12px !important;
+  margin: 0 !important;
+  font-weight: 700 !important;
+}
+
+.mcp-page--mobile .mcp-inspect-modal-body {
+  flex: 1 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 10px 12px !important;
+  font-size: 10px !important;
+  font-family: var(--font-mono) !important;
+  line-height: 1.4 !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow: auto !important;
+  color: var(--fg-muted) !important;
+}
+
+/* === Typography Consistency === */
+.mcp-page--mobile h1,
+.mcp-page--mobile h2,
+.mcp-page--mobile h3,
+.mcp-page--mobile strong,
+.mcp-page--mobile .mcp-server-row-title,
+.mcp-page--mobile .mcp-tool-card-title strong,
+.mcp-page--mobile .mcp-log-tool-name {
+  font-size: 12px !important;
+}
+
+/* === Section Header Tight Spacing === */
+.mcp-page--mobile .mcp-section-header--mobile {
+  margin-bottom: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.mcp-page--mobile p,
+.mcp-page--mobile span:not(.mcp-status-pill):not(.mcp-section-count):not(.mcp-logs-count),
+.mcp-page--mobile .mcp-server-row-meta,
+.mcp-page--mobile .mcp-tool-card-desc,
+.mcp-page--mobile .mcp-tool-server-name,
+.mcp-page--mobile .mcp-log-preview {
+  font-size: 11px !important;
+}
+
+.mcp-page--mobile .mcp-meta,
+.mcp-page--mobile .mcp-log-meta,
+.mcp-page--mobile .mcp-filter-chip--mobile,
+.mcp-page--mobile .mcp-icon-btn--mobile,
+.mcp-page--mobile .mcp-status-pill,
+.mcp-page--mobile .mcp-tool-source-badge {
+  font-size: 10px !important;
+}
+
+.mcp-page--mobile .mcp-section-count,
+.mcp-page--mobile .mcp-logs-count,
+.mcp-page--mobile .mcp-stat-line {
+  font-size: 10px !important;
+}
+
+/* === Prevent Horizontal Overflow === */
+.mcp-page--mobile,
+.mcp-page--mobile .tool-compact-body,
+.mcp-page--mobile .tool-compact-card,
+.mcp-page--mobile pre,
+.mcp-page--mobile code,
+.mcp-page--mobile .mcp-server-row,
+.mcp-page--mobile .mcp-tool-card {
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.mcp-page--mobile pre,
+.mcp-page--mobile code,
+.mcp-page--mobile .mcp-log-preview,
+.mcp-page--mobile .mcp-inspect-modal-body {
+  overflow-x: auto !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+}
+
+/* === Remove Resizable Split on Mobile === */
+.mcp-page--mobile .mcp-resizable-row {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-column: 1 / -1 !important;
+  gap: 6px !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+.mcp-page--mobile .mcp-resizable-row > [data-panel],
+.mcp-page--mobile .mcp-resizable-row > [data-panel] > [data-panel-size] {
+  width: 100% !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  flex: none !important;
+}
+
+.mcp-page--mobile .mcp-resizable-row .chat-resize-handle {
+  display: none !important;
 }
 
 
