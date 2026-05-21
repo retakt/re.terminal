@@ -17,6 +17,7 @@ server/data/
 client/data/
 client/dist/
 client/artifacts/
+server/.playwright-mcp/
 
 # Editors
 .vscode/

@@ -192,7 +192,6 @@ const MODEL_WARMUP_ENABLED = !["0", "false", "off", "no"].includes(String(proces
 const MODEL_WARMUP_SCOPE = String(process.env.MODEL_WARMUP_SCOPE || "active").toLowerCase() === "all" ? "all" : "active";
 const MODEL_WARMUP_KEEP_ALIVE = process.env.MODEL_WARMUP_KEEP_ALIVE || "10m";
 const MODEL_WARMUP_TIMEOUT_MS = parseInt(process.env.MODEL_WARMUP_TIMEOUT_MS || "20000", 10);
-const BROWSER_AGENT_LLM_ENABLED = !["0", "false", "off", "no"].includes(String(process.env.BROWSER_AGENT_LLM_ENABLED || "false").toLowerCase());
 const BROWSER_AGENT_BASE_URL = (process.env.BROWSER_AGENT_BASE_URL || "").replace(/\/+$/, "").replace(/\/api$/, "");
 const BROWSER_AGENT_MODEL = process.env.BROWSER_AGENT_MODEL || "";
 
@@ -331,10 +330,14 @@ async function buildWarmupTargets({ chatModel, includeBrowserAgent, all }) {
   }
 
   if (includeBrowserAgent) {
-    log("INFO", "browser-agent", "skipped runtime model warmup", {
-      reason: "browser_agent is deterministic-only and does not call its configured runtime model",
-      configured: Boolean(BROWSER_AGENT_LLM_ENABLED && BROWSER_AGENT_BASE_URL && BROWSER_AGENT_MODEL),
-    });
+    if (BROWSER_AGENT_BASE_URL && BROWSER_AGENT_MODEL) {
+      addWarmupTarget(targets, BROWSER_AGENT_BASE_URL, BROWSER_AGENT_MODEL, "browser_agent");
+    } else {
+      log("WARN", "browser-agent", "browser agent model warmup skipped", {
+        reason: "browser_agent is LLM-required but BROWSER_AGENT_BASE_URL or BROWSER_AGENT_MODEL is missing",
+        configured: false,
+      });
+    }
   }
 
   return [...targets.values()];
@@ -645,25 +648,6 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.get("/health", (_req, res) => {
-  // Simple liveness check - returns immediately
-  res.json(getHealthStatus());
-});
-
-// Detailed readiness check
-app.get("/readiness", async (_req, res) => {
-  try {
-    res.json(await getReadinessStatus());
-  } catch (err) {
-    res.status(500).json({
-      ok: false,
-      status: "error",
-      error: err.message,
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
 // Detailed stats endpoint
 app.get("/api/stats", (_req, res) => {
   res.json({
@@ -718,20 +702,14 @@ app.post("/api/ezhrm-skill/import-observation", (req, res) => {
 });
 
 // MCP gateway API
-app.get("/api/mcp/servers", async (_req, res) => {
-  try {
-    res.json({ servers: await listMcpServers() });
-  } catch (err) {
-    res.status(500).json({ servers: [], error: err.message });
-  }
+
+
+app.get("/api/mcp/tools", async (_req, res) => {
+  res.json(await listMcpTools());
 });
 
-app.get("/api/mcp/tools", (_req, res) => {
-  res.json({ tools: listMcpTools() });
-});
-
-app.get("/api/mcp/tool-definitions", (_req, res) => {
-  res.json({ tools: listMcpToolDefinitions() });
+app.get("/api/mcp/tool-definitions", async (_req, res) => {
+  res.json(await listMcpToolDefinitions());
 });
 
 app.get("/api/logs/events", (req, res) => {
@@ -797,8 +775,8 @@ app.post("/api/browser/open-headful", async (req, res) => {
   }
 });
 
-app.post("/api/mcp/route", (req, res) => {
-  res.json(routeMcpIntent(req.body?.text || "", {
+app.post("/api/mcp/route", async (req, res) => {
+  res.json(await routeMcpIntent(req.body?.text || "", {
     projectId: req.body?.projectId || req.body?.userId,
     mode: req.body?.mode,
     currentUrl: req.body?.currentUrl,
@@ -833,7 +811,7 @@ app.post("/api/mcp/call", async (req, res) => {
         result,
       },
     });
-    res.json({ success: true, result });
+    res.json({ ok: true, success: true, result });
   } catch (err) {
     appendAuditEvent({
       source: "server.mcp",
@@ -854,7 +832,7 @@ app.post("/api/mcp/call", async (req, res) => {
       },
     });
     log("WARN", "mcp", "tool call failed", { tool: toolName, error: err.message });
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ ok: false, success: false, error: err.message });
   }
 });
 
@@ -1034,10 +1012,10 @@ app.post("/api/models/warmup", async (req, res) => {
     started: true,
     scope: all ? "all" : MODEL_WARMUP_SCOPE,
     chatModel,
-    browserAgentModel: null,
-    browserAgentWarmupSkipped: includeBrowserAgent,
-    browserAgentWarmupReason: includeBrowserAgent
-      ? "browser_agent is deterministic-only and does not call its configured runtime model"
+    browserAgentModel: includeBrowserAgent ? BROWSER_AGENT_MODEL || null : null,
+    browserAgentWarmupSkipped: includeBrowserAgent && !(BROWSER_AGENT_BASE_URL && BROWSER_AGENT_MODEL),
+    browserAgentWarmupReason: includeBrowserAgent && !(BROWSER_AGENT_BASE_URL && BROWSER_AGENT_MODEL)
+      ? "browser_agent is LLM-required but BROWSER_AGENT_BASE_URL or BROWSER_AGENT_MODEL is missing"
       : "",
   });
 });
