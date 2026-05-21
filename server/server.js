@@ -36,6 +36,11 @@ import {
   getGraphSnapshot,
 } from "./lib/memory-client.js";
 import {
+  getHealthStatus,
+  getReadinessStatus,
+  validateServerEnvironment,
+} from "./lib/readiness.js";
+import {
   callMcpTool,
   getExtensionCatalog,
   getMcpLogs,
@@ -643,21 +648,6 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.get("/health", async (_req, res) => {
-  const [mcpServers, mcpTools] = await Promise.all([listMcpServers(), listMcpTools()]);
-  res.json({
-    status:   "ok",
-    uptime:   process.uptime(),
-    sessions: globalSessions.size,
-    stats,
-    memory:   getMemoryStatus(),
-    mcp:      {
-      servers: mcpServers.length,
-      tools:   mcpTools.length,
-    },
-  });
-});
-
 // Detailed stats endpoint
 app.get("/api/stats", (_req, res) => {
   res.json({
@@ -712,9 +702,7 @@ app.post("/api/ezhrm-skill/import-observation", (req, res) => {
 });
 
 // MCP gateway API
-app.get("/api/mcp/servers", async (_req, res) => {
-  res.json(await listMcpServers());
-});
+
 
 app.get("/api/mcp/tools", async (_req, res) => {
   res.json(await listMcpTools());
