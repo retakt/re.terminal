@@ -89,7 +89,7 @@ export interface McpRoute {
 // Result type for API calls that can fail
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-async function getJson<T>(url: string, fallback: T): Promise<ApiResult<T>> {
+async function getJson<T>(url: string): Promise<ApiResult<T>> {
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -104,28 +104,28 @@ async function getJson<T>(url: string, fallback: T): Promise<ApiResult<T>> {
 }
 
 export async function listMcpServers(): Promise<ApiResult<McpServer[]>> {
-  const result = await getJson<McpServer[] | { servers: McpServer[] }>("/api/mcp/servers", []);
+  const result = await getJson<McpServer[] | { servers: McpServer[] }>("/api/mcp/servers");
   if (!result.ok) return result;
   const payload = result.data;
   return { ok: true, data: Array.isArray(payload) ? payload : payload.servers ?? [] };
 }
 
 export async function listMcpTools(): Promise<ApiResult<McpTool[]>> {
-  const result = await getJson<McpTool[] | { tools: McpTool[] }>("/api/mcp/tools", []);
+  const result = await getJson<McpTool[] | { tools: McpTool[] }>("/api/mcp/tools");
   if (!result.ok) return result;
   const payload = result.data;
   return { ok: true, data: Array.isArray(payload) ? payload : payload.tools ?? [] };
 }
 
 export async function listMcpToolDefinitions(): Promise<ApiResult<OllamaTool[]>> {
-  const result = await getJson<OllamaTool[] | { tools: OllamaTool[] }>("/api/mcp/tool-definitions", []);
+  const result = await getJson<OllamaTool[] | { tools: OllamaTool[] }>("/api/mcp/tool-definitions");
   if (!result.ok) return result;
   const payload = result.data;
   return { ok: true, data: Array.isArray(payload) ? payload : payload.tools ?? [] };
 }
 
 export async function listMcpLogs(): Promise<ApiResult<McpLog[]>> {
-  const result = await getJson<{ logs: McpLog[] }>("/api/mcp/logs", { logs: [] });
+  const result = await getJson<{ logs: McpLog[] }>("/api/mcp/logs");
   if (!result.ok) return result;
   return { ok: true, data: result.data.logs ?? [] };
 }
@@ -161,16 +161,14 @@ export async function routeMcpIntent(
   }
 }
 export async function listExtensionCatalog(): Promise<ExtensionCatalogItem[]> {
-  const data = await getJson<{ items: ExtensionCatalogItem[] }>("/api/extensions/catalog", { items: [] });
-  return data.items ?? [];
+  const result = await getJson<{ items: ExtensionCatalogItem[] }>("/api/extensions/catalog");
+  if (!result.ok) return [];
+  return result.data.items ?? [];
 }
 export async function listBrowserExtensions(): Promise<BrowserExtension[]> {
-  const data = await getJson<{ ok: boolean; extensions: BrowserExtension[] }>("/api/extensions", {
-    ok: false,
-    extensions: [],
-  });
-
-  return data.extensions ?? [];
+  const result = await getJson<{ ok: boolean; extensions: BrowserExtension[] }>("/api/extensions");
+  if (!result.ok) return [];
+  return result.data.extensions ?? [];
 }
 
 export async function updateBrowserExtensionEnabled(id: string, enabled: boolean): Promise<BrowserExtension | null> {
