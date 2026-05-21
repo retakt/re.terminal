@@ -3,7 +3,7 @@
  * 
  * Loads and validates external MCP server configurations from server/config/mcp-servers.json.
  * This module does NOT spawn or connect to external servers - it only provides configuration metadata.
- * Real MCP client implementation is handled separately in external-mcp-client.js (future).
+ * Real MCP client implementation is handled separately in external-mcp-client.js.
  */
 
 import fs from "fs";
@@ -212,10 +212,11 @@ export const EXAMPLE_CONFIG = {
       source: "external",
       type: "external",
       transport: "stdio",
+      protocol: "mcp",
       enabled: false,
       command: "npx",
       args: ["-y", "@playwright/mcp@latest"],
-      description: "Official Microsoft Playwright MCP server.",
+      description: "Official Microsoft Playwright MCP server for browser automation.",
     },
   },
 };

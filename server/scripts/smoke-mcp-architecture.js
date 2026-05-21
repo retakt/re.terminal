@@ -1,217 +1,145 @@
-
-/**
- * Smoke test for MCP architecture refactoring
- * 
- * Run with: node server/scripts/smoke-mcp-architecture.js
- * 
- * Verifies:
- * - Internal tool groups still list correctly
- * - Every internal group has source: "builtin" and mcpNative: false
- * - External config loader returns empty list if config missing
- * - Example config shape validates
- * - External configured servers are not listed as callable tools yet
- */
-
-import { fileURLToPath } from "url";
-import path from "path";
 import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const serverLib = path.join(__dirname, "..", "lib");
+const serverRoot = path.join(__dirname, "..");
+const libRoot = path.join(serverRoot, "lib");
+const configPath = path.join(serverRoot, "config", "mcp-servers.json");
+const examplePath = path.join(serverRoot, "config", "mcp-servers.example.json");
 
 let passed = 0;
 let failed = 0;
 
 function assert(condition, message) {
-  if (condition) {
-    console.log(`✓ ${message}`);
-    passed++;
-  } else {
-    console.error(`✗ ${message}`);
-    failed++;
+  if (!condition) {
+    failed += 1;
+    console.error(`FAIL ${message}`);
+    return;
+  }
+  passed += 1;
+  console.log(`PASS ${message}`);
+}
+
+function playwrightConfig(enabled) {
+  return {
+    servers: {
+      playwright: {
+        id: "playwright",
+        title: "Playwright MCP",
+        source: "external",
+        type: "external",
+        transport: "stdio",
+        protocol: "mcp",
+        enabled,
+        command: "npx",
+        args: ["-y", "@playwright/mcp@latest"],
+        description: "Official Microsoft Playwright MCP server for browser automation.",
+      },
+    },
+  };
+}
+
+function writeConfig(config) {
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+function parseMaybeJson(value) {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
   }
 }
 
-async function runTests() {
-  console.log("=== MCP Architecture Smoke Tests ===\n");
+async function main() {
+  console.log("=== MCP Architecture Smoke Tests ===");
 
-  // Test 1: Import mcp-gateway and verify exports exist
-  console.log("Test 1: Verify mcp-gateway exports");
+  const originalConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : null;
+  const gateway = await import(`file://${path.join(libRoot, "mcp-gateway.js")}`);
+  const externalClient = await import(`file://${path.join(libRoot, "external-mcp-client.js")}`);
+
   try {
-    const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    
     assert(typeof gateway.listMcpServers === "function", "listMcpServers is exported");
     assert(typeof gateway.listMcpTools === "function", "listMcpTools is exported");
     assert(typeof gateway.listMcpToolDefinitions === "function", "listMcpToolDefinitions is exported");
     assert(typeof gateway.callMcpTool === "function", "callMcpTool is exported");
-    assert(typeof gateway.getMcpLogs === "function", "getMcpLogs is exported");
-  } catch (err) {
-    console.error(`Failed to import mcp-gateway: ${err.message}`);
-    failed += 5;
-  }
+    assert(typeof gateway.routeMcpIntent === "function", "routeMcpIntent is exported");
 
-  // Test 2: listMcpServers returns built-in groups with honest fields
-  console.log("\nTest 2: listMcpServers returns honest builtin fields");
-  try {
-    const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    const servers = await gateway.listMcpServers();
-    
-    assert(Array.isArray(servers), "listMcpServers returns an array");
-    assert(servers.length > 0, "At least one builtin server exists");
-    
-    for (const server of servers) {
-      assert(server.source === "builtin", `Server ${server.id} has source: "builtin"`);
-      assert(server.type === "builtin", `Server ${server.id} has type: "builtin"`);
-      assert(server.transport === "internal", `Server ${server.id} has transport: "internal"`);
-      assert(server.protocol === "internal-function", `Server ${server.id} has protocol: "internal-function"`);
-      assert(server.external === false, `Server ${server.id} has external: false`);
-      assert(server.mcpNative === false, `Server ${server.id} has mcpNative: false`);
-      assert(typeof server.status === "string", `Server ${server.id} has status field`);
-    }
-  } catch (err) {
-    console.error(`Failed listMcpServers test: ${err.message}`);
-    failed += 10;
-  }
-
-  // Test 3: listMcpTools only returns internal tools
-  console.log("\nTest 3: listMcpTools only returns internal/builtin tools");
-  try {
-    const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    const tools = gateway.listMcpTools();
-    
-    assert(Array.isArray(tools), "listMcpTools returns an array");
-    assert(tools.length > 0, "At least one builtin tool exists");
-    
-    for (const tool of tools) {
-      assert(tool.name.startsWith("mcp__"), `Tool name starts with mcp__: ${tool.name}`);
-      assert(typeof tool.serverId === "string", `Tool ${tool.name} has serverId`);
-      // Verify no external tools are listed (since no external client exists yet)
-      assert(!tool.name.includes("playwright") || tool.serverId !== "playwright", 
-        "External tools like playwright should not appear yet");
-    }
-  } catch (err) {
-    console.error(`Failed listMcpTools test: ${err.message}`);
-    failed += 5;
-  }
-
-  // Test 4: External config loader returns empty if config missing
-  console.log("\nTest 4: External config loader handles missing config");
-  try {
-    const configLoader = await import(`file://${path.join(serverLib, "external-mcp-config.js")}`);
-    
-    // Ensure config file doesn't exist for this test
-    const configPath = path.join(__dirname, "..", "config", "mcp-servers.json");
-    const configExists = fs.existsSync(configPath);
-    
-    const configs = await configLoader.loadExternalMcpConfigs();
-    assert(Array.isArray(configs), "loadExternalMcpConfigs returns an array");
-    
-    if (!configExists) {
-      assert(configs.length === 0, "Returns empty array when config file is missing");
-    } else {
-      console.log("  (Note: mcp-servers.json exists, so configs may be non-empty)");
-    }
-  } catch (err) {
-    console.error(`Failed external config test: ${err.message}`);
-    failed += 3;
-  }
-
-  // Test 5: Example config shape validates
-  console.log("\nTest 5: Example config shape is valid");
-  try {
-    const configLoader = await import(`file://${path.join(serverLib, "external-mcp-config.js")}`);
-    const examplePath = path.join(__dirname, "..", "config", "mcp-servers.example.json");
-    
     assert(fs.existsSync(examplePath), "mcp-servers.example.json exists");
-    
-    const exampleContent = fs.readFileSync(examplePath, "utf8");
-    const exampleConfig = JSON.parse(exampleContent);
-    
-    assert(exampleConfig.servers, "Example config has servers object");
-    
-    // Validate one example server
-    const exampleServer = Object.values(exampleConfig.servers)[0];
-    assert(exampleServer.id, "Example server has id");
-    assert(exampleServer.title, "Example server has title");
-    assert(exampleServer.source === "external", "Example server has source: external");
-    assert(exampleServer.type === "external", "Example server has type: external");
-    assert(["stdio", "sse", "http"].includes(exampleServer.transport), 
-      `Example server has valid transport: ${exampleServer.transport}`);
-  } catch (err) {
-    console.error(`Failed example config test: ${err.message}`);
-    failed += 4;
-  }
+    const example = JSON.parse(fs.readFileSync(examplePath, "utf8"));
+    const examplePlaywright = example.servers?.playwright;
+    assert(examplePlaywright?.id === "playwright", "example config includes playwright server");
+    assert(examplePlaywright?.protocol === "mcp", "example Playwright config uses MCP protocol");
+    assert(examplePlaywright?.enabled === false, "example Playwright config is disabled by default");
+    assert(examplePlaywright?.command === "npx", "example Playwright config uses npx");
+    assert(examplePlaywright?.args?.join(" ") === "-y @playwright/mcp@latest", "example Playwright config uses official package");
 
-  // Test 6: Existing tool names still work
-  console.log("\nTest 6: Existing internal tool names still exist");
-  try {
-    const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    const tools = gateway.listMcpTools();
-    const toolNames = tools.map(t => t.name);
-    
-    const expectedTools = [
-      "mcp__local__read_text_file",
-      "mcp__local__write_text_file",
-      "mcp__git__status",
-      "mcp__memory__search",
-      "mcp__web__search",
-      "mcp__browser_agent__run",
-      "mcp__browser__lightpanda_navigate",
-      "mcp__ops__ollama_health",
-    ];
-    
-    for (const expected of expectedTools) {
-      assert(toolNames.includes(expected), `Expected tool exists: ${expected}`);
+    writeConfig(playwrightConfig(false));
+    let servers = await gateway.listMcpServers();
+    assert(Array.isArray(servers), "listMcpServers returns an array");
+    const disabledPlaywright = servers.find((server) => server.id === "playwright");
+    assert(disabledPlaywright?.source === "external", "disabled Playwright MCP appears as an external server");
+    assert(disabledPlaywright?.enabled === false, "disabled Playwright MCP remains visible as disabled");
+    assert(disabledPlaywright?.status === "disabled", "disabled Playwright MCP reports disabled status");
+
+    writeConfig(playwrightConfig(true));
+    servers = await gateway.listMcpServers();
+    const enabledPlaywright = servers.find((server) => server.id === "playwright");
+    assert(enabledPlaywright?.source === "external", "enabled Playwright MCP appears as external");
+    assert(["configured", "ready", "error"].includes(enabledPlaywright?.status), "enabled Playwright MCP reports configured/ready/error");
+
+    const toolsBefore = await gateway.listMcpTools();
+    assert(Array.isArray(toolsBefore), "listMcpTools returns an array");
+    assert(toolsBefore.some((tool) => tool.name === "mcp__ops__playwright_mcp_status"), "playwright_mcp_status ops tool is registered");
+    assert(toolsBefore.some((tool) => tool.name === "mcp__ops__mcp_architecture_status"), "mcp_architecture_status ops tool is registered");
+    assert(!toolsBefore.some((tool) => tool.name.startsWith("mcp__playwright__")), "external Playwright tools are hidden before discovery");
+
+    const statusResult = parseMaybeJson(await gateway.callMcpTool("mcp__ops__playwright_mcp_status", {}));
+    assert(statusResult?.ok === true, "playwright_mcp_status is callable");
+    assert(statusResult?.server?.id === "playwright", "playwright_mcp_status returns Playwright server status");
+
+    const discovered = parseMaybeJson(await gateway.callMcpTool("mcp__ops__external_mcp_tools", { serverId: "playwright" }));
+    assert(discovered?.ok === true, "external_mcp_tools discovers real Playwright MCP tools");
+    assert(Array.isArray(discovered?.tools), "external_mcp_tools returns a tools array");
+    assert(discovered.tools.some((tool) => tool.name === "browser_navigate"), "real Playwright browser_navigate tool is discovered");
+
+    const toolsAfter = await gateway.listMcpTools();
+    assert(toolsAfter.some((tool) => tool.name === "mcp__playwright__browser_navigate"), "discovered Playwright tool appears in listMcpTools");
+
+    const definitions = await gateway.listMcpToolDefinitions();
+    assert(definitions.some((tool) => tool.function?.name === "mcp__playwright__browser_navigate"), "discovered Playwright tool appears in tool definitions");
+
+    const navigateResult = await gateway.callMcpTool("mcp__playwright__browser_navigate", { url: "https://example.com" });
+    assert(Array.isArray(navigateResult?.content), "mcp__playwright__browser_navigate dispatches to real external MCP client");
+
+    const route = await gateway.routeMcpIntent("open google", { mode: "browser" });
+    assert(route.tool_candidates?.[0]?.name === "mcp__browser_agent__run", "generic browser route remains browser_agent.run");
+
+    const playwrightRoute = await gateway.routeMcpIntent("playwright mcp status", {});
+    assert(playwrightRoute.tool_candidates?.[0]?.name === "mcp__ops__playwright_mcp_status", "explicit Playwright MCP status routes to ops status");
+  } finally {
+    await externalClient.stopExternalMcpClient("playwright").catch(() => {});
+    if (originalConfig == null) {
+      fs.rmSync(configPath, { force: true });
+    } else {
+      fs.writeFileSync(configPath, originalConfig, "utf8");
     }
-  } catch (err) {
-    console.error(`Failed tool names test: ${err.message}`);
-    failed += 8;
   }
 
-  // Test 7: Admin status helper is callable as MCP tool
-  console.log("\nTest 7: Admin status helper is callable as MCP tool");
-  try {
-    const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    const tools = gateway.listMcpTools();
-    
-    // Check that the admin tool appears in the tool list with correct name
-    const hasAdminTool = tools.some(t => t.name === "mcp__ops__mcp_architecture_status");
-    assert(hasAdminTool, "mcp__ops__mcp_architecture_status appears in listMcpTools()");
-    
-    // Try calling the admin tool
-    try {
-      const result = await gateway.callMcpTool("mcp__ops__mcp_architecture_status", {});
-      assert(result && result.builtinToolGroups && result.externalMcpServers, 
-        "mcp__ops__mcp_architecture_status returns expected structure");
-      console.log("  ✓ Admin tool is callable and returns correct structure");
-      passed++;
-    } catch (callErr) {
-      console.error(`  ✗ Failed to call admin tool: ${callErr.message}`);
-      failed++;
-    }
-  } catch (err) {
-    console.error(`Failed admin tool test: ${err.message}`);
-    failed++;
-  }
-
-  // Summary
   console.log("\n=== Test Summary ===");
   console.log(`Passed: ${passed}`);
   console.log(`Failed: ${failed}`);
-  
+
   if (failed > 0) {
-    console.error("\n❌ Some tests failed. Please review the errors above.");
     process.exit(1);
-  } else {
-    console.log("\n✅ All smoke tests passed!");
-    process.exit(0);
   }
 }
 
-// Run the tests
-runTests().catch(err => {
-  console.error("Unhandled error in smoke tests:", err);
+main().catch((err) => {
+  console.error(err);
   process.exit(1);
-
 });

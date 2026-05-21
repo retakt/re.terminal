@@ -1184,25 +1184,25 @@ const builtinServers = [
         name: "external_mcp_servers",
         description: "List configured external MCP server definitions from config file.",
         inputSchema: { type: "object", properties: {} },
-        execute: async () => safeText({ ok: true, servers: await loadExternalMcpConfigs() }),
+        execute: async () => ({ ok: true, servers: await loadExternalMcpConfigs() }),
       },
       {
         name: "external_mcp_status",
         description: "Check connection status of all configured external MCP servers.",
         inputSchema: { type: "object", properties: {} },
-        execute: async () => safeText({ ok: true, statuses: await listExternalMcpStatuses() }),
+        execute: async () => ({ ok: true, statuses: await listExternalMcpStatuses() }),
       },
       {
         name: "external_mcp_tools",
         description: "List tools from a specific external MCP server by serverId. Requires real discovery.",
         inputSchema: { type: "object", required: ["serverId"], properties: { serverId: { type: "string" } } },
-        execute: async (args) => safeText({ ok: true, tools: await listExternalMcpTools(args.serverId) }),
+        execute: async (args) => ({ ok: true, tools: await listExternalMcpTools(args.serverId) }),
       },
       {
         name: "external_mcp_refresh",
         description: "Refresh/re-discover tools from a specific external MCP server by serverId.",
         inputSchema: { type: "object", required: ["serverId"], properties: { serverId: { type: "string" } } },
-        execute: async (args) => safeText({ ok: true, refreshed: await refreshExternalMcpTools(args.serverId) }),
+        execute: async (args) => ({ ok: true, tools: await refreshExternalMcpTools(args.serverId) }),
       },
       {
         name: "playwright_mcp_status",
@@ -1211,9 +1211,9 @@ const builtinServers = [
         execute: async () => {
           const configs = await loadExternalMcpConfigs();
           const pwConfig = configs.find(c => c.id === "playwright");
-          if (!pwConfig) return safeText({ ok: true, discovered: false, message: "Playwright MCP not configured" });
+          if (!pwConfig) return { ok: true, discovered: false, message: "Playwright MCP not configured" };
           const status = await getExternalMcpServerStatus("playwright");
-          return safeText({ ok: true, discovered: true, ...status });
+          return { ok: true, discovered: true, server: status };
         },
       },
       {
@@ -2203,5 +2203,4 @@ export {
   lightpandaStatus,
   openHeadfulBrowser,
   getLightpandaConfig,
-  mcp__ops__mcp_architecture_status,
 };
