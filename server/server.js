@@ -704,12 +704,31 @@ app.post("/api/ezhrm-skill/import-observation", (req, res) => {
 // MCP gateway API
 
 
+app.get("/api/mcp/servers", async (_req, res) => {
+  try {
+    res.json({ servers: await listMcpServers() });
+  } catch (err) {
+    log("WARN", "mcp", "servers failed", { error: err.message });
+    res.status(500).json({ servers: [], error: err.message });
+  }
+});
+
 app.get("/api/mcp/tools", async (_req, res) => {
-  res.json(await listMcpTools());
+  try {
+    res.json({ tools: await listMcpTools() });
+  } catch (err) {
+    log("WARN", "mcp", "tools failed", { error: err.message });
+    res.status(500).json({ tools: [], error: err.message });
+  }
 });
 
 app.get("/api/mcp/tool-definitions", async (_req, res) => {
-  res.json(await listMcpToolDefinitions());
+  try {
+    res.json({ tools: await listMcpToolDefinitions() });
+  } catch (err) {
+    log("WARN", "mcp", "tool-definitions failed", { error: err.message });
+    res.status(500).json({ tools: [], error: err.message });
+  }
 });
 
 app.get("/api/logs/events", (req, res) => {
