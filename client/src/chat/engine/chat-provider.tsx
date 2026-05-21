@@ -780,6 +780,7 @@ function forcedMcpTool(text: string, sessionId: string, enabledTools: OllamaTool
       currentUrl,
     });
     if (agent) return agent;
+    return null;
   }
 
   const browserishIntent =
