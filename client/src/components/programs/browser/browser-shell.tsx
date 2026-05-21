@@ -26,6 +26,7 @@ import {
   type LightpandaPageResult,
   type LightpandaStatus,
 } from "@/lib/browser-api";
+import { focusInputShell } from "@/lib/focus-input-shell";
 
 const INSPECTOR_EXIT_MS = 380;
 const PHONE_QUERY = "(max-width: 767px), (hover: none) and (pointer: coarse)";
@@ -218,6 +219,11 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       .slice(0, 24),
     [page?.links],
   );
+  const extractionPath = page?.extractionPath || page?.extractionSources?.join(", ") || "lightpanda_cdp";
+  const markdownReady = Boolean(page?.extractionCapabilities?.markdown ?? status?.capabilities?.markdown);
+  const axTreeReady = Boolean(page?.extractionCapabilities?.accessibilityTree ?? status?.capabilities?.accessibilityTree);
+  const readablePreview = page?.text || page?.accessibility?.textPreview || page?.markdown || "";
+  const axNodeCount = page?.accessibility?.nodeCount ?? page?.stats?.axNodes ?? 0;
 
   const inspectorMounted = inspectorOpen || (isPhone && inspectorClosing);
   const inspectorMotionClass = isPhone
@@ -232,7 +238,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
             <span className="lightpanda-brand-icon">
               <Globe size={16} />
             </span>
-            <span className="lightpanda-brand-title">lightpanda</span>
+            <span className="lightpanda-brand-title">Lightpanda CDP</span>
             <strong className={status?.ok ? "is-ok" : "is-down"}>{status?.ok ? "ready" : "down"}</strong>
             <em><Clock size={11} />{duration(status?.durationMs)}</em>
           </div>
@@ -250,8 +256,8 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
               type="button"
               className="lightpanda-open lightpanda-open--icon chat-tool-button"
               onClick={() => void openHeadful()}
-              title="Open a real Chrome window connected to CDP"
-              aria-label="Open Chrome"
+              title="Open manual Chrome fallback"
+              aria-label="Open manual Chrome fallback"
             >
               <Chrome size={16} />
             </button>
@@ -276,10 +282,10 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
             <article className="lightpanda-preview-document">
               <header>
                 <span>extracted page</span>
-                <strong>{page.stats?.links ?? 0} links</strong>
+                <strong>{extractionPath}</strong>
               </header>
               <h1>{page.title || page.url}</h1>
-              <p>{compact(page.text || "No readable text returned by Lightpanda.", 1400)}</p>
+              <p>{compact(readablePreview || "No readable text returned by Lightpanda.", 1400)}</p>
             </article>
           ) : (
             <div className={`lightpanda-preview-empty ${loading ? "is-loading" : ""}`}>
@@ -321,8 +327,10 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
             >
               <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
             </button>
-            <label className="lightpanda-address-field">
-              <Search size={14} />
+            <label className="lightpanda-address-field click-field input-shell" onPointerDown={focusInputShell}>
+              <div className="lightpanda-address-field__icon pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 z-10">
+                <Search size={14} className="text-muted-foreground" />
+              </div>
               <input
                 value={address}
                 onChange={(event) => setAddress(event.target.value)}
@@ -331,6 +339,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}
+                className="pl-7"
               />
             </label>
           </form>
@@ -372,6 +381,10 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
                     <code>{status?.cdpUrl || "ws://127.0.0.1:9222"}</code>
                     <span>nav</span>
                     <code>{duration(result?.durationMs)}</code>
+                    <span>markdown</span>
+                    <code>{markdownReady ? "ready" : "n/a"}</code>
+                    <span>AXTree</span>
+                    <code>{axTreeReady ? `${axNodeCount || "ready"}` : "n/a"}</code>
                     <span>page</span>
                     <code>{page?.title || error || "not loaded"}</code>
                   </div>
@@ -385,8 +398,14 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
                     <span>extraction</span>
                     <strong>{page?.stats?.links ?? 0} links</strong>
                   </div>
+                  <div className="lightpanda-kv">
+                    <span>path</span>
+                    <code>{extractionPath}</code>
+                    <span>chrome</span>
+                    <code>{status?.chromeFallback?.automatic ? "auto" : "manual"}</code>
+                  </div>
                   <p className="lightpanda-text-preview">
-                    {compact(page?.text || headfulNotice || "Navigate to a page. Lightpanda extracts text, links, forms, and timing for AI use. Use chrome when you want a real headful browser window.", 900)}
+                    {compact(readablePreview || headfulNotice || "Navigate to a page. Lightpanda extracts text, links, forms, and timing for AI use.", 900)}
                   </p>
                 </section>
 

@@ -41,6 +41,7 @@ import {
 import type { FC } from "react";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { AssistantRunLog } from "../types";
+import { focusInputShell } from "@/lib/focus-input-shell";
 
 // ── Thread root ───────────────────────────────────────────────────────────────
 
@@ -205,8 +206,9 @@ const Composer: FC = () => {
     <ComposerPrimitive.Root className="relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone asChild>
         <div
+          onPointerDown={focusInputShell}
           className={cn(
-            "chat-composer-shell relative flex w-full flex-col overflow-hidden rounded-(--composer-radius) p-0",
+            "chat-composer-shell input-shell relative flex w-full flex-col overflow-hidden rounded-(--composer-radius) p-0",
             "transition-all duration-150",
             "data-[dragging=true]:border-dashed",
           )}
@@ -214,8 +216,8 @@ const Composer: FC = () => {
           <ComposerAttachments />
           <ComposerPrimitive.Input
             placeholder="Send a message..."
-            className="chat-composer-input w-full resize-none bg-transparent px-2.5 pb-8 pt-2 text-[13px] leading-5 outline-none placeholder:text-muted-foreground/60"
-            minRows={2}
+            className="chat-composer-input z-0 min-h-[56px] w-full resize-none bg-transparent px-2.5 pb-9 pt-2 text-[13px] leading-5 outline-none placeholder:text-muted-foreground/60"
+            minRows={1}
             maxRows={8}
             autoFocus
             aria-label="Message input"
@@ -229,8 +231,10 @@ const Composer: FC = () => {
 
 const ComposerAction: FC = () => {
   return (
-    <div className="absolute inset-x-2.5 bottom-1.5 flex items-center justify-between">
-      <ComposerAddAttachment />
+    <div className="pointer-events-none absolute inset-x-2.5 bottom-1.5 z-10 flex items-center justify-between">
+      <div className="pointer-events-auto">
+        <ComposerAddAttachment />
+      </div>
       <AuiIf condition={(s) => !s.thread.isRunning}>
         <ComposerPrimitive.Send asChild>
           <TooltipIconButton
@@ -239,7 +243,7 @@ const ComposerAction: FC = () => {
             type="button"
             variant="default"
             size="icon"
-            className="chat-send-button size-8 rounded-sm text-primary-foreground transition-all duration-150"
+            className="pointer-events-auto chat-send-button size-8 rounded-sm text-primary-foreground transition-all duration-150"
             aria-label="Send message"
           >
             <ArrowUpIcon className="size-4" />
@@ -252,7 +256,7 @@ const ComposerAction: FC = () => {
             type="button"
             variant="default"
             size="icon"
-            className="size-8 rounded-sm bg-destructive text-destructive-foreground transition-all duration-150 hover:bg-destructive/90"
+            className="pointer-events-auto size-8 rounded-sm bg-destructive text-destructive-foreground transition-all duration-150 hover:bg-destructive/90"
             aria-label="Stop generating"
           >
             <SquareIcon className="size-3 fill-current" />

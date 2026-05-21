@@ -7,6 +7,18 @@ export interface LightpandaStatus {
   error?: string;
   hint?: string;
   version?: Record<string, unknown>;
+  capabilities?: {
+    cdp?: boolean;
+    markdown?: boolean;
+    accessibilityTree?: boolean;
+    domEval?: boolean;
+    nativeMcp?: boolean;
+  };
+  chromeFallback?: {
+    automatic?: boolean;
+    supported?: boolean;
+    cdpUrl?: string;
+  };
 }
 
 export interface LightpandaPageResult {
@@ -19,9 +31,26 @@ export interface LightpandaPageResult {
     url?: string;
     title?: string;
     text?: string;
+    markdown?: string;
     links?: Array<{ text: string; href: string }>;
     forms?: Array<Record<string, unknown>>;
-    stats?: Record<string, number>;
+    accessibility?: {
+      ok?: boolean;
+      nodeCount?: number;
+      rootRole?: string;
+      rootName?: string;
+      controls?: Array<Record<string, unknown>>;
+      textPreview?: string;
+    } | null;
+    extractionPath?: string;
+    extractionSources?: string[];
+    extractionCapabilities?: {
+      markdown?: boolean;
+      accessibilityTree?: boolean;
+      domEval?: boolean;
+      selectors?: boolean;
+    };
+    stats?: Record<string, number | string>;
   };
   error?: string;
 }

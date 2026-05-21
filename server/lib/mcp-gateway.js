@@ -1065,7 +1065,7 @@ const builtinServers = [
       },
       {
         name: "browser_open_headful",
-        description: "Open a real Chrome window connected to the shared CDP port for user-visible browsing.",
+        description: "Open a manual Chrome fallback window without changing the Lightpanda-first browser-agent default.",
         inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string" } } },
         execute: openHeadfulBrowser,
       },

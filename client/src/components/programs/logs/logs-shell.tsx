@@ -1,11 +1,18 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Clipboard, Pause, Play, RefreshCcw, ScrollText, Search, Trash2 } from "lucide-react";
+import { Clipboard, Pause, Play, RefreshCcw, ScrollText, Search, Trash2, Terminal } from "lucide-react";
 import { listAuditEvents, type AuditEvent } from "@/lib/logs-api";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  formatTerminalOutput,
+  type FormattedLogEntry,
+  getLevelClass,
+  needsPrettyPrint,
+  stripAnsiCodes,
+  sanitizeControlChars
+} from "@/lib/terminal-formatter";
 
 const PHONE_QUERY = "(max-width: 980px), (hover: none) and (pointer: coarse)";
 const CATEGORY_OPTIONS = ["all", "ui", "terminal", "chat", "llm", "mcp", "server"] as const;
-const STATUS_OPTIONS = ["all", "success", "info", "warning", "error"] as const;
+const STATUS_OPTIONS = ["success", "info", "warning", "error"] as const;
 const MAX_BUFFERED_EVENTS = 1600;
 
 function stripAnsi(value: string) {
@@ -14,7 +21,9 @@ function stripAnsi(value: string) {
 
 function previewText(value: unknown, limit = 220) {
   const text = typeof value === "string" ? value : JSON.stringify(value ?? null);
-  const normalized = stripAnsi(String(text || "")).replace(/\s+/g, " ").trim();
+  // Use new formatter for better sanitization
+  const cleaned = sanitizeControlChars(stripAnsiCodes(String(text || "")));
+  const normalized = cleaned.replace(/\s+/g, " ").trim();
   return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
 }
 
@@ -29,32 +38,13 @@ function formatClock(ts: string) {
   });
 }
 
-function formatAbsoluteTime(ts: string) {
-  const date = new Date(ts);
-  if (Number.isNaN(date.getTime())) return ts;
-  return date.toLocaleString([], {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
 function summarizeEvent(event: AuditEvent) {
   const payloadData = event.payload && typeof event.payload === "object" && "data" in (event.payload as Record<string, unknown>)
     ? (event.payload as Record<string, unknown>).data
     : null;
-  const refsText = Object.entries(event.refs || {})
-    .slice(0, 3)
-    .map(([key, value]) => `${key}=${previewText(value, 48)}`)
-    .join(" ");
   return [
     previewText(event.summary || event.title, 260),
     payloadData ? previewText(payloadData, 260) : "",
-    refsText,
   ].filter(Boolean).join(" ");
 }
 
@@ -77,116 +67,124 @@ function useIsPhoneLayout() {
   return isPhone;
 }
 
-function FeedRow({
-  event,
-  selected,
-  onSelect,
-}: {
-  event: AuditEvent;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const sessionId = typeof event.refs?.sessionId === "string" ? event.refs.sessionId : "";
-  const runId = typeof event.refs?.runId === "string" ? event.refs.runId : "";
-  const preview = summarizeEvent(event);
+function getStatusColor(status: string): string {
+  switch (status) {
+    case "success": return "log-success";
+    case "info": return "log-info";
+    case "warning": return "log-warning";
+    case "error": return "log-error";
+    default: return "log-muted";
+  }
+}
 
+function getCategoryColor(category: string): string {
+  switch (category) {
+    case "ui": return "log-cyan";
+    case "terminal": return "log-success";
+    case "chat": return "log-magenta";
+    case "llm": return "log-yellow";
+    case "mcp": return "log-teal";
+    case "server": return "log-error";
+    default: return "log-muted";
+  }
+}
+
+/**
+ * TerminalLogLine - Renders a single formatted log entry in Docker BuildKit style
+ * Used ONLY for output that was pretty-printed (needsPrettyPrint returned true)
+ */
+function TerminalLogLine({ entry }: { entry: FormattedLogEntry }) {
+  const levelClass = getLevelClass(entry.level);
+  
   return (
-    <button
-      type="button"
-      className={`logs-row ${selected ? "is-selected" : ""}`}
-      onClick={onSelect}
-      title={preview || event.title}
-    >
-      <div className="logs-row__line">
-        <span className="logs-segment logs-segment--time">[{formatClock(event.ts)}]</span>
-        <span className={`logs-segment logs-segment--category is-${event.category}`}>[{event.category}]</span>
-        <span className="logs-segment logs-segment--action">[{event.action}]</span>
-        <span className={`logs-segment logs-segment--status is-${event.status}`}>[{event.status}]</span>
-        {event.usage?.totalTokens ? (
-          <span className="logs-segment logs-segment--usage">[tok={event.usage.totalTokens}]</span>
-        ) : null}
-        {sessionId ? (
-          <span className="logs-segment logs-segment--ref">[sid={sessionId.slice(0, 8)}]</span>
-        ) : null}
-        {!sessionId && runId ? (
-          <span className="logs-segment logs-segment--ref">[run={runId.slice(0, 8)}]</span>
-        ) : null}
-        <span className="logs-row__text">{preview || event.title}</span>
-      </div>
-    </button>
+    <div className="log-line">
+      {/* Prefix: [+], =>, #0, ERROR, WARNING - only shown for pretty-printed output */}
+      {entry.prefix && (
+        <span className={`log-prefix ${levelClass}`}>
+          {entry.prefix}
+        </span>
+      )}
+      {/* Content with proper wrapping */}
+      <span className="log-content">{entry.content}</span>
+    </div>
   );
 }
 
-function Inspector({ event }: { event: AuditEvent | null }) {
-  const [notice, setNotice] = useState("");
-
-  if (!event) {
+/**
+ * TerminalLine - Renders an AuditEvent with conditional formatting
+ * - Normal logs: rendered with original timestamped, tagged format
+ * - Messy terminal blobs: converted to vertical Docker-style output
+ */
+function TerminalLine({ event }: { event: AuditEvent }) {
+  // Extract raw output from event payload or summary
+  const rawOutput = useMemo(() => {
+    // Try to get raw terminal output from various payload locations
+    if (event.payload && typeof event.payload === 'object') {
+      const payload = event.payload as Record<string, unknown>;
+      if (typeof payload.output === 'string') return payload.output;
+      if (typeof payload.data === 'string') return payload.data;
+      if (typeof payload.message === 'string') return payload.message;
+    }
+    // Fallback to summary/title
+    return event.summary || event.title || '';
+  }, [event]);
+  
+  // Determine if this output needs pretty-printing
+  const shouldPrettyPrint = useMemo(() => {
+    return needsPrettyPrint(rawOutput);
+  }, [rawOutput]);
+  
+  // Format the output - conditional based on content
+  const formattedEntries = useMemo(() => {
+    if (!shouldPrettyPrint) {
+      // Return empty - we'll render with original format below
+      return [];
+    }
+    
+    return formatTerminalOutput(rawOutput, {
+      maxWidth: 120,
+      timestamp: event.ts,
+      category: event.category,
+      action: event.action,
+      status: event.status
+    });
+  }, [rawOutput, shouldPrettyPrint, event.ts, event.category, event.action, event.status]);
+  
+  // If output was pretty-printed, render formatted entries
+  if (shouldPrettyPrint && formattedEntries.length > 0) {
     return (
-      <aside className="logs-inspector">
-        <div className="logs-inspector__empty">
-          <ScrollText size={16} />
-          <span>select a log line to inspect raw payload and usage</span>
-        </div>
-      </aside>
+      <>
+        {formattedEntries.map((entry, index) => (
+          <TerminalLogLine key={`${event.seq}-${index}`} entry={entry} />
+        ))}
+      </>
     );
   }
-
-  const copyEvent = async () => {
-    await navigator.clipboard?.writeText(JSON.stringify(event, null, 2));
-    setNotice("copied");
-    window.setTimeout(() => setNotice(""), 1200);
-  };
-
+  
+  // Otherwise, render with ORIGINAL format - preserving timestamps, tags, colors
+  const preview = summarizeEvent(event);
+  const statusColor = getStatusColor(event.status);
+  const categoryColor = getCategoryColor(event.category);
+  
   return (
-    <aside className="logs-inspector">
-      <div className="logs-inspector__header">
-        <div className="logs-inspector__title">
-          <span className={`logs-segment logs-segment--category is-${event.category}`}>[{event.category}]</span>
-          <span className="logs-segment logs-segment--action">[{event.action}]</span>
-          <span className={`logs-segment logs-segment--status is-${event.status}`}>[{event.status}]</span>
-        </div>
-        <button type="button" className="logs-action-btn" onClick={() => void copyEvent()}>
-          <Clipboard size={12} />
-          {notice || "copy"}
-        </button>
-      </div>
-
-      <div className="logs-inspector__meta">
-        <div><span>time</span><code>{formatAbsoluteTime(event.ts)}</code></div>
-        <div><span>seq</span><code>{event.seq}</code></div>
-        <div><span>source</span><code>{event.source}</code></div>
-        <div><span>title</span><code>{event.title}</code></div>
-      </div>
-
-      <section className="logs-inspector__section">
-        <h3>summary</h3>
-        <pre>{event.summary || event.title}</pre>
-      </section>
-
-      <section className="logs-inspector__section">
-        <h3>refs</h3>
-        <pre>{JSON.stringify(event.refs || {}, null, 2)}</pre>
-      </section>
-
-      <section className="logs-inspector__section">
-        <h3>usage</h3>
-        <pre>{JSON.stringify(event.usage || null, null, 2)}</pre>
-      </section>
-
-      <section className="logs-inspector__section">
-        <h3>payload</h3>
-        <pre>{JSON.stringify(event.payload ?? null, null, 2)}</pre>
-      </section>
-    </aside>
+    <div className="log-line">
+      <span className="log-segment log-time">[{formatClock(event.ts)}]</span>
+      <span className={`log-segment ${categoryColor}`}>[{event.category}]</span>
+      <span className="log-segment log-action">[{event.action}]</span>
+      <span className={`log-segment ${statusColor}`}>[{event.status}]</span>
+      {event.usage?.totalTokens ? (
+        <span className="log-segment log-yellow">[tok={event.usage.totalTokens}]</span>
+      ) : null}
+      <span className="log-message">{preview}</span>
+    </div>
   );
 }
 
 export function LogsShell({ isActive = true }: { isActive?: boolean }) {
   const isPhone = useIsPhoneLayout();
   const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>("all");
-  const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("all");
+  const [statuses, setStatuses] = useState<Set<(typeof STATUS_OPTIONS)[number]>>(new Set());
   const [query, setQuery] = useState("");
   const [followLive, setFollowLive] = useState(true);
   const [clearedAfterSeq, setClearedAfterSeq] = useState(0);
@@ -231,9 +229,6 @@ export function LogsShell({ isActive = true }: { isActive?: boolean }) {
       try {
         const result = await refresh();
         if (!alive) return;
-        if (result.events.length > 0) {
-          setSelectedSeq(result.events[result.events.length - 1].seq);
-        }
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : "failed to load logs");
       } finally {
@@ -258,7 +253,7 @@ export function LogsShell({ isActive = true }: { isActive?: boolean }) {
     return events.filter((event) => {
       if (event.seq <= clearedAfterSeq) return false;
       if (category !== "all" && event.category !== category) return false;
-      if (status !== "all" && event.status !== status) return false;
+      if (statuses.size > 0 && !statuses.has(event.status as (typeof STATUS_OPTIONS)[number])) return false;
       if (deferredQuery) {
         const haystack = [
           event.source,
@@ -274,170 +269,153 @@ export function LogsShell({ isActive = true }: { isActive?: boolean }) {
       }
       return true;
     });
-  }, [category, clearedAfterSeq, deferredQuery, events, status]);
-
-  const selectedEvent = useMemo(() => {
-    return visibleEvents.find((event) => event.seq === selectedSeq)
-      || events.find((event) => event.seq === selectedSeq)
-      || null;
-  }, [events, selectedSeq, visibleEvents]);
+  }, [category, clearedAfterSeq, deferredQuery, events, statuses]);
 
   useEffect(() => {
     if (!followLive) return;
     const latest = visibleEvents[visibleEvents.length - 1];
     if (!latest) return;
-    setSelectedSeq(latest.seq);
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [followLive, visibleEvents]);
 
-  useEffect(() => {
-    if (selectedSeq != null && visibleEvents.some((event) => event.seq === selectedSeq)) return;
-    const latest = visibleEvents[visibleEvents.length - 1];
-    if (latest) setSelectedSeq(latest.seq);
-  }, [selectedSeq, visibleEvents]);
+  const copyEvent = async (event: AuditEvent) => {
+    await navigator.clipboard?.writeText(JSON.stringify(event, null, 2));
+  };
 
-  const toolbar = (
-    <>
-      <section className="tool-compact-card tool-compact-card--wide logs-toolbar">
-        <div className="tool-card-title">
-          <ScrollText size={14} />
-          <h2>Logs</h2>
-          {loading && <span className="tool-card-title__note">syncing</span>}
-          {error && <span className="tool-card-title__note">{error}</span>}
+  return (
+    <div className="log-page">
+      {/* Minimal toolbar */}
+      <header className="log-toolbar">
+        <div className="log-toolbar-left">
+          <Terminal size={14} className="log-icon" />
+          <span className="log-toolbar-title">logs</span>
+          {loading && <span className="log-status log-info">syncing...</span>}
+          {error && <span className="log-status log-error">{error}</span>}
+          <span className="log-status log-muted">
+            [{visibleEvents.length}]
+          </span>
         </div>
 
-        <div className="logs-toolbar__controls">
-          <div className="catalog-filter-chips logs-filter-row">
+        <div className="log-toolbar-right">
+          {/* Compact filter chips */}
+          <div className="log-filters log-filters--category">
+            <span className="log-filter-label">cat:</span>
             {CATEGORY_OPTIONS.map((entry) => (
               <button
                 key={entry}
                 type="button"
-                className={`catalog-filter-chip ${category === entry ? "is-active" : ""}`}
+                className={`log-chip ${category === entry ? "is-active" : ""}`}
+                data-type="category"
+                data-value={entry}
                 onClick={() => setCategory(entry)}
+                title={`Filter category: ${entry}`}
               >
                 {entry}
               </button>
             ))}
           </div>
 
-          <div className="logs-toolbar__secondary">
-            <div className="catalog-filter-chips logs-filter-row">
-              {STATUS_OPTIONS.map((entry) => (
+          <div className="log-filters">
+            <span className="log-filter-label">status:</span>
+            {STATUS_OPTIONS.map((entry) => {
+              const isActive = statuses.has(entry);
+              return (
                 <button
                   key={entry}
                   type="button"
-                  className={`catalog-filter-chip ${status === entry ? "is-active" : ""}`}
-                  onClick={() => setStatus(entry)}
+                  className={`log-chip ${isActive ? "is-active" : ""}`}
+                  data-type="status"
+                  data-value={entry}
+                  onClick={() => {
+                    setStatuses((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(entry)) {
+                        next.delete(entry);
+                      } else {
+                        next.add(entry);
+                      }
+                      return next;
+                    });
+                  }}
+                  title={`${isActive ? "Remove" : "Add"} status filter: ${entry}`}
                 >
                   {entry}
                 </button>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
-            <label className="catalog-search logs-search">
-              <Search size={12} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="grep logs" />
-            </label>
+          {/* Search */}
+          <label className="log-search">
+            <Search size={12} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="grep..."
+              aria-label="Search logs"
+            />
+          </label>
 
-            <button type="button" className="logs-action-btn" onClick={() => setFollowLive((value) => !value)}>
-              {followLive ? <Pause size={12} /> : <Play size={12} />}
-              {followLive ? "pause" : "live"}
-            </button>
+          {/* Controls */}
+          <button
+            type="button"
+            className="log-btn"
+            onClick={() => setFollowLive((value) => !value)}
+            title={followLive ? "Pause live updates" : "Resume live updates"}
+          >
+            {followLive ? <Pause size={12} /> : <Play size={12} />}
+          </button>
 
-            <button
-              type="button"
-              className="logs-action-btn"
-              onClick={() => {
-                setClearedAfterSeq(lastSeqRef.current);
-                setSelectedSeq(null);
-              }}
-            >
-              <Trash2 size={12} />
-              clear
-            </button>
+          <button
+            type="button"
+            className="log-btn"
+            onClick={() => {
+              setClearedAfterSeq(lastSeqRef.current);
+            }}
+            title="Clear logs"
+          >
+            <Trash2 size={12} />
+          </button>
 
-            <button
-              type="button"
-              className="logs-action-btn"
-              onClick={() => {
-                setError("");
-                void refresh(lastSeqRef.current).catch((err) => {
-                  setError(err instanceof Error ? err.message : "refresh failed");
-                });
-              }}
-            >
-              <RefreshCcw size={12} />
-              refresh
-            </button>
+          <button
+            type="button"
+            className="log-btn"
+            onClick={() => {
+              setError("");
+              void refresh(lastSeqRef.current).catch((err) => {
+                setError(err instanceof Error ? err.message : "refresh failed");
+              });
+            }}
+            title="Refresh logs"
+          >
+            <RefreshCcw size={12} />
+          </button>
+        </div>
+      </header>
+
+      {/* Terminal viewport */}
+      <main className="log-viewport">
+        <div className="log-container">
+          <div ref={feedRef} className="log-feed">
+            {visibleEvents.length === 0 ? (
+              <div className="log-empty">
+                <span className="log-muted">[00:00:00] [logs] [idle] [info] waiting for events...</span>
+              </div>
+            ) : (
+              visibleEvents.map((event) => (
+                <TerminalLine
+                  key={event.seq}
+                  event={event}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Terminal cursor indicator */}
+          <div className="log-cursor-line">
+            <span className="log-cursor">▋</span>
           </div>
         </div>
-      </section>
-
-      <section className="tool-compact-card tool-compact-card--wide logs-strip">
-        <span>[events={visibleEvents.length}]</span>
-        <span>[last_seq={lastSeqRef.current}]</span>
-        <span>[follow={followLive ? "on" : "off"}]</span>
-        {clearedAfterSeq > 0 ? <span>[screen_cleared_after={clearedAfterSeq}]</span> : null}
-      </section>
-    </>
-  );
-
-  const feed = (
-    <section className="tool-compact-card logs-feed-card">
-      <div className="tool-card-title">
-        <ScrollText size={14} />
-        <h2>stream</h2>
-      </div>
-
-      <div ref={feedRef} className="logs-feed">
-        {visibleEvents.length === 0 ? (
-          <div className="logs-empty">
-            <span>[00:00:00] [logs] [idle] [info] waiting for audit events</span>
-          </div>
-        ) : (
-          visibleEvents.map((event) => (
-            <FeedRow
-              key={event.seq}
-              event={event}
-              selected={selectedSeq === event.seq}
-              onSelect={() => {
-                setSelectedSeq(event.seq);
-                setFollowLive(false);
-              }}
-            />
-          ))
-        )}
-      </div>
-    </section>
-  );
-
-  return (
-    <div className="program-shell tool-compact-page logs-page">
-      <main className="tool-compact-body logs-page__body">
-        {toolbar}
-        {isPhone ? (
-          <div className="logs-stack">
-            {feed}
-            <Inspector event={selectedEvent} />
-          </div>
-        ) : (
-          <ResizablePanelGroup orientation="horizontal" className="logs-resizable-row">
-            <ResizablePanel minSize="520px">
-              {feed}
-            </ResizablePanel>
-
-            <ResizableHandle className="chat-resize-handle" />
-
-            <ResizablePanel
-              defaultSize="420px"
-              minSize="320px"
-              maxSize="620px"
-              groupResizeBehavior="preserve-pixel-size"
-            >
-              <Inspector event={selectedEvent} />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        )}
       </main>
     </div>
   );

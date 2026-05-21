@@ -48,11 +48,6 @@ const APP_ITEMS: ProgramMenuItem[] = [
     icon: Globe,
   },
   {
-    id: "logs",
-    label: "Logs",
-    icon: ScrollText,
-  },
-  {
     id: "forum",
     label: "forum",
     icon: MessageSquare,
@@ -69,6 +64,11 @@ const TOOL_ITEMS: SettingsItem[] = [
     id: "apps",
     label: "apps",
     icon: AppWindow,
+  },
+  {
+    id: "logs",
+    label: "Logs",
+    icon: ScrollText,
   },
   {
     id: "mcp",

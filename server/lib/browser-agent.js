@@ -59,14 +59,19 @@ function browserAgentRuntimeConfig() {
   ).trim().replace(/\/+$/, "").replace(/\/api$/, "");
   const redactedBaseUrl = baseUrl.replace(/([?&](?:token|key|api_key)=)[^&]+/ig, "$1***");
   const model = String(process.env.BROWSER_AGENT_MODEL || process.env.RUNTIME_BROWSER_AGENT_MODEL || "").trim();
+  const configured = envFlag("BROWSER_AGENT_LLM_ENABLED", false) && Boolean(baseUrl && model);
   return {
-    enabled: envFlag("BROWSER_AGENT_LLM_ENABLED", false) && Boolean(baseUrl && model),
+    configured,
+    enabled: false,
+    used: false,
     baseUrl: redactedBaseUrl,
     model,
     timeoutMs: Math.max(1000, Number(process.env.BROWSER_AGENT_TIMEOUT_MS || 60000)),
     think: envFlag("BROWSER_AGENT_THINK", false),
-    strategy: "deterministic-first",
-    note: "Runtime LLM is optional; browser_agent uses deterministic safety and action heuristics unless explicitly enabled.",
+    strategy: "deterministic-only",
+    note: configured
+      ? "Runtime model is configured but not used; browser_agent currently uses deterministic watcher/planner code only."
+      : "Browser_agent currently uses deterministic watcher/planner code only.",
   };
 }
 
@@ -225,15 +230,21 @@ function roundMs(value = 0) {
   return Math.round(Number(value || 0) * 10) / 10;
 }
 
-function browserAgentTokenUsage(reason = "Browser-agent runtime path uses deterministic JS parsing and direct MCP output.") {
+function browserAgentTokenUsage(reason = "No browser-agent model was used; watcher/planner decisions are deterministic JS plus browser tool output.") {
   return {
+    stage: "browser_agent",
+    model: "",
+    promptTokens: 0,
+    completionTokens: 0,
     totalTokens: 0,
     watcher: {
       type: "deterministic",
+      used: false,
       model: "",
       promptTokens: 0,
       completionTokens: 0,
       totalTokens: 0,
+      reason,
     },
     mainModel: {
       used: false,
@@ -501,6 +512,8 @@ function observationFromPageResult(result = {}) {
     url: page.url || "",
     title: page.title || "",
     textPreview: safeText(page.text || page.textPreview || "", 2400),
+    markdown: safeText(page.markdown || "", 12000),
+    accessibility: page.accessibility || null,
     links: Array.isArray(page.links) ? page.links.slice(0, 80) : [],
     buttons: Array.isArray(page.buttons) ? page.buttons.slice(0, 80) : [],
     inputs: Array.isArray(page.inputs) ? page.inputs.slice(0, 80) : [],
@@ -509,6 +522,9 @@ function observationFromPageResult(result = {}) {
     stats: page.stats || {},
     requestedUrl: page.requestedUrl || result?.requestedUrl || "",
     engine: page.engine || result?.engine || "",
+    extractionPath: page.extractionPath || "",
+    extractionSources: Array.isArray(page.extractionSources) ? page.extractionSources : [],
+    extractionCapabilities: page.extractionCapabilities || {},
     error: page.error || result?.error || "",
     snapshotError: page.snapshotError || result?.snapshotError || "",
     extractionErrors: page.extractionErrors || result?.extractionErrors || [],
@@ -698,6 +714,9 @@ function compactObservation(observation = {}) {
     title: observation.title || "",
     textPreview: safeText(observation.textPreview || "", 700),
     engine: observation.engine || "",
+    extractionPath: observation.extractionPath || "",
+    extractionSources: Array.isArray(observation.extractionSources) ? observation.extractionSources.slice(0, 8) : [],
+    extractionCapabilities: observation.extractionCapabilities || {},
     requestedUrl: observation.requestedUrl || "",
     error: observation.error || observation.snapshotError || "",
     isLoginPage: Boolean(observation.isLoginPage),
@@ -929,6 +948,7 @@ function compactToolResult(result = {}, command = {}) {
     status: result?.status || "",
     action: result?.action || command?.tool || "",
     engine: result?.engine || "",
+    extractionPath: result?.observation?.extractionPath || "",
     currentUrl: result?.currentUrl || result?.observation?.url || "",
     currentTitle: result?.currentTitle || result?.observation?.title || "",
     error: result?.error || "",

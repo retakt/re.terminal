@@ -334,6 +334,8 @@ set_env_if_missing "$VPS_PATH/server/.env" "LIGHTPANDA_CDP_URL" "$LIGHTPANDA_CDP
 set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_CDP_URL" "$BROWSER_CHROME_CDP_URL"
 set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_CDP_PORT" "$BROWSER_CHROME_CDP_PORT"
 set_env_if_missing_or_value "$VPS_PATH/server/.env" "BROWSER_AGENT_ENGINE_PRIORITY" "lightpanda_cdp,chrome_cdp,static_fetch" "lightpanda_cdp,static_fetch"
+set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_FALLBACK_ENABLED" "false"
+set_env_if_missing "$VPS_PATH/server/.env" "LIGHTPANDA_NATIVE_MCP_ENABLED" "false"
 set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_PAGE_SETTLE_MS" "45000"
 set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_AFTER_ACTION_SETTLE_MS" "12000"
 set_env_if_missing "$VPS_PATH/server/.env" "MEMORY_ENABLED" "true"
