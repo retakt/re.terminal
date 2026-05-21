@@ -1137,8 +1137,13 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
   useEffect(() => {
     let alive = true;
     listMcpToolDefinitions()
-      .then((tools) => {
-        if (alive) mcpToolsRef.current = tools;
+      .then((result) => {
+        if (!alive) return;
+        if (result.ok) {
+          mcpToolsRef.current = result.data;
+        } else {
+          console.warn("MCP tool refresh failed:", result.error);
+        }
       })
       .catch((err) => console.warn("MCP tool refresh failed:", err));
     return () => { alive = false; };

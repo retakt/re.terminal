@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from "react";
 import {
   Blocks,
   Clipboard,
@@ -20,7 +20,6 @@ import {
   listMcpLogs,
   listMcpServers,
   listMcpTools,
-  type ApiResult,
   type McpLog,
   type McpServer,
   type McpTool,
@@ -150,27 +149,13 @@ function isBuiltinTool(
   return builtinIds.has(tool.serverId);
 }
 
-function isExternalTool(
-  tool: McpTool & {
-    source?: string;
-    external?: boolean;
-    mcpNative?: boolean;
-  }
-): boolean {
-  if (tool.source === "external" || tool.external === true || tool.mcpNative === true)
-    return true;
-  return false;
-}
-
 // ============ MOBILE COMPONENT ============
 function MobileMcpShell({
-  servers, tools, logs, loading, filter, query, setFilter, setQuery, notice, refresh,
+  tools, logs, loading, filter, query, setFilter, setQuery, notice, refresh,
   builtinServers, externalServers, filteredBuiltinServers, filteredExternalServers,
-  filteredTools, groupedLogs, copyText, testServer, inspectServer, testTool,
-  toggleToolSchema, expandedToolSchemas, showLogs, setShowLogs,
-  inspectTitle, inspectBody, inspectExpanded, setInspectExpanded,
+  filteredTools, groupedLogs, copyText, inspectServer, testTool,
+  inspectTitle, inspectBody, inspectExpanded, setInspectExpanded, setInspectTitle, setInspectBody,
 }: {
-  servers: Array<McpServer & { source?: string; mcpNative?: boolean }>;
   tools: Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>;
   logs: McpLog[]; loading: boolean; filter: string; query: string;
   setFilter: (f: string) => void; setQuery: (q: string) => void; notice: string;
@@ -182,16 +167,13 @@ function MobileMcpShell({
   filteredTools: Array<McpTool & { source?: string; external?: boolean; mcpNative?: boolean }>;
   groupedLogs: Array<McpLog & { count: number }>;
   copyText: (text: string, label?: string) => Promise<void>;
-  testServer: (server: McpServer) => Promise<void>;
   inspectServer: (server: McpServer) => void;
   testTool: (tool: McpTool) => Promise<void>;
-  toggleToolSchema: (name: string) => void;
-  expandedToolSchemas: Set<string>; showLogs: boolean; setShowLogs: (s: boolean) => void;
   inspectTitle: string; inspectBody: string; inspectExpanded: boolean; setInspectExpanded: (e: boolean) => void;
+  setInspectTitle: (title: string) => void; setInspectBody: (body: string) => void;
 }) {
   const builtinReadyCount = builtinServers.filter((s) => s.status === "ready").length;
   const builtinToolCount = tools.filter((t) => isBuiltinTool(t) && t.enabled).length;
-  const externalConnectedCount = externalServers.filter((s) => s.status === "ready").length;
 
   // Mobile-specific state for collapsible sections
   const [mobileLogsOpen, setMobileLogsOpen] = useState(false);
@@ -384,8 +366,8 @@ function DesktopMcpShell({
   servers, tools, logs, loading, filter, query, setFilter, setQuery, notice, refresh,
   builtinServers, externalServers, filteredBuiltinServers, filteredExternalServers,
   filteredTools, groupedLogs, copyText, testServer, inspectServer, testTool,
-  toggleToolSchema, expandedToolSchemas, showLogs, setShowLogs,
-  inspectTitle, inspectBody, inspectExpanded, setInspectExpanded,
+  expandedToolSchemas, setExpandedToolSchemas, showLogs, setShowLogs,
+  inspectTitle, inspectBody, setInspectExpanded, setInspectTitle, setInspectBody, setNotice,
   externalConfiguredCount,
 }: {
   servers: Array<McpServer & { source?: string; mcpNative?: boolean }>;
@@ -403,9 +385,9 @@ function DesktopMcpShell({
   testServer: (server: McpServer) => Promise<void>;
   inspectServer: (server: McpServer) => void;
   testTool: (tool: McpTool) => Promise<void>;
-  toggleToolSchema: (name: string) => void;
-  expandedToolSchemas: Set<string>; showLogs: boolean; setShowLogs: (s: boolean) => void;
-  inspectTitle: string; inspectBody: string; inspectExpanded: boolean; setInspectExpanded: (e: boolean) => void;
+  expandedToolSchemas: Set<string>; setExpandedToolSchemas: Dispatch<SetStateAction<Set<string>>>; showLogs: boolean; setShowLogs: (s: boolean) => void;
+  inspectTitle: string; inspectBody: string; setInspectExpanded: (e: boolean) => void;
+  setInspectTitle: (title: string) => void; setInspectBody: (body: string) => void; setNotice: (notice: string) => void;
   externalConfiguredCount: number;
 }) {
   function externalServerStatus(server: McpServer) {
@@ -439,6 +421,9 @@ function DesktopMcpShell({
           <button type="button" className="mcp-action-btn" onClick={() => inspectServer(server)} title="Inspect details">
             <TerminalSquare size={14} /><span>Inspect</span>
           </button>
+          <button type="button" className="mcp-action-btn" onClick={() => void testServer(server)} title="Test a safe tool from this group">
+            <Stethoscope size={14} /><span>Test</span>
+          </button>
         </div>
       </article>
     );
@@ -468,6 +453,9 @@ function DesktopMcpShell({
               </button>
               <button type="button" className="mcp-action-btn" onClick={() => inspectServer(server)} title="Inspect details">
                 <TerminalSquare size={14} /><span>Inspect</span>
+              </button>
+              <button type="button" className="mcp-action-btn" onClick={() => void testServer(server)} title="Test a safe tool from this server">
+                <Stethoscope size={14} /><span>Test</span>
               </button>
             </>
           )}
@@ -665,9 +653,6 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
 
   const builtinServers = useMemo(() => servers.filter(isBuiltinServer), [servers]);
   const externalServers = useMemo(() => servers.filter(isExternalServer), [servers]);
-  const builtinReadyCount = useMemo(() => builtinServers.filter((s) => s.status === "ready").length, [builtinServers]);
-  const builtinToolCount = useMemo(() => tools.filter((t) => isBuiltinTool(t) && t.enabled).length, [tools]);
-  const externalConnectedCount = useMemo(() => externalServers.filter((s) => s.status === "ready").length, [externalServers]);
   const externalConfiguredCount = useMemo(() => externalServers.length, [externalServers]);
 
   const filteredBuiltinServers = useMemo(() => {
@@ -755,26 +740,22 @@ export function McpShell({ isActive = true }: { isActive?: boolean }) {
       setInspectBody(`tool: ${tool.name}\nstatus: error\nargs:\n${JSON.stringify(args, null, 2)}\n\nerror:\n${message}`);
     }
   };
-  const toggleToolSchema = (toolName: string) => {
-    setExpandedToolSchemas((prev) => { const next = new Set(prev); if (next.has(toolName)) next.delete(toolName); else next.add(toolName); return next; });
-  };
-
   // Conditional render: mobile gets simplified layout, desktop gets full layout
   if (isPhone) {
-    return <MobileMcpShell servers={servers} tools={tools} logs={logs} loading={loading} filter={filter} query={query}
+    return <MobileMcpShell tools={tools} logs={logs} loading={loading} filter={filter} query={query}
       setFilter={setFilter} setQuery={setQuery} notice={notice} refresh={refresh} builtinServers={builtinServers}
       externalServers={externalServers} filteredBuiltinServers={filteredBuiltinServers} filteredExternalServers={filteredExternalServers}
-      filteredTools={filteredTools} groupedLogs={groupedLogs} copyText={copyText} testServer={testServer} inspectServer={inspectServer}
-      testTool={testTool} toggleToolSchema={toggleToolSchema} expandedToolSchemas={expandedToolSchemas} showLogs={showLogs}
-      setShowLogs={setShowLogs} inspectTitle={inspectTitle} inspectBody={inspectBody} inspectExpanded={inspectExpanded}
-      setInspectExpanded={setInspectExpanded} />;
+      filteredTools={filteredTools} groupedLogs={groupedLogs} copyText={copyText} inspectServer={inspectServer}
+      testTool={testTool} inspectTitle={inspectTitle} inspectBody={inspectBody} inspectExpanded={inspectExpanded}
+      setInspectExpanded={setInspectExpanded} setInspectTitle={setInspectTitle} setInspectBody={setInspectBody} />;
   }
 
   return <DesktopMcpShell servers={servers} tools={tools} logs={logs} loading={loading} filter={filter} query={query}
     setFilter={setFilter} setQuery={setQuery} notice={notice} refresh={refresh} builtinServers={builtinServers}
     externalServers={externalServers} filteredBuiltinServers={filteredBuiltinServers} filteredExternalServers={filteredExternalServers}
     filteredTools={filteredTools} groupedLogs={groupedLogs} copyText={copyText} testServer={testServer} inspectServer={inspectServer}
-    testTool={testTool} toggleToolSchema={toggleToolSchema} expandedToolSchemas={expandedToolSchemas} showLogs={showLogs}
-    setShowLogs={setShowLogs} inspectTitle={inspectTitle} inspectBody={inspectBody} inspectExpanded={inspectExpanded}
-    setInspectExpanded={setInspectExpanded} externalConfiguredCount={externalConfiguredCount} />;
+    testTool={testTool} expandedToolSchemas={expandedToolSchemas} setExpandedToolSchemas={setExpandedToolSchemas} showLogs={showLogs}
+    setShowLogs={setShowLogs} inspectTitle={inspectTitle} inspectBody={inspectBody}
+    setInspectExpanded={setInspectExpanded} setInspectTitle={setInspectTitle} setInspectBody={setInspectBody}
+    setNotice={setNotice} externalConfiguredCount={externalConfiguredCount} />;
 }
