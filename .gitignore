@@ -3,6 +3,7 @@
 node_modules/
 artifacts/
 client/artifacts/
+
 # Environment
 .env
 .env.local

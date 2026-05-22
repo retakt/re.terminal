@@ -1,0 +1,771 @@
+.program-shell.community-native,
+.program-shell.program-shell--community.community-native,
+.community-native {
+  position: absolute !important;
+  inset: 0 !important;
+  display: grid !important;
+  grid-template-columns: 260px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  background: var(--bg-base);
+  color: var(--fg-base);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.community-native::before,
+.community-native::after {
+  display: none !important;
+  content: none !important;
+}
+
+/* Login is full-screen, not a two-column grid. */
+.program-shell.community-native--login,
+.community-native--login {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  grid-template-columns: none !important;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────────────── */
+
+.community-sidebar {
+  grid-column: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.community-sidebar-scrim {
+  display: none;
+}
+
+.community-titlebar {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-overlay);
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+.community-dot,
+.community-login-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fg-subtle);
+  opacity: 0.56;
+}
+
+.community-title {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.community-search {
+  height: 34px;
+  margin: 8px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-base);
+  color: var(--accent-blue);
+  font-family: var(--font-mono);
+}
+
+.community-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg-base);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.community-search input::placeholder {
+  color: var(--fg-subtle);
+}
+
+.community-chat-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+
+.community-chat {
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 5px;
+  padding: 7px;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-base);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.community-chat--active,
+.community-chat:hover {
+  background: color-mix(in srgb, var(--fg-base) 6%, var(--bg-highlight));
+  border-color: var(--border-subtle);
+}
+
+.community-chat--active {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-blue) 72%, transparent);
+}
+
+.community-avatar {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent-blue) 18%, var(--bg-overlay));
+  color: var(--accent-blue);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.community-chat-copy {
+  min-width: 0;
+}
+
+.community-chat strong,
+.community-chat small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.community-chat strong {
+  color: var(--fg-base);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.community-chat small {
+  margin-top: 1px;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.community-unread {
+  min-width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent-teal, var(--accent-blue));
+  color: var(--bg-base);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+/* ─── Main ───────────────────────────────────────────────────────────── */
+
+.community-main {
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 36px minmax(0, 1fr) 40px;
+  margin: 0;
+  background: var(--bg-base);
+}
+
+.community-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.community-header-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.community-header strong,
+.community-header small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.community-header strong {
+  color: var(--fg-base);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.community-header small {
+  margin-top: 1px;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.community-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.community-header-action,
+.community-mobile-sidebar-btn {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-base);
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.community-header-action:hover,
+.community-mobile-sidebar-btn:hover {
+  color: var(--fg-base);
+  border-color: color-mix(in srgb, var(--accent-blue) 40%, var(--border));
+}
+
+.community-mobile-sidebar-btn {
+  display: none;
+  width: 28px;
+  justify-content: center;
+  padding: 0;
+}
+
+.community-messages {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 6px;
+}
+
+.community-message {
+  width: fit-content;
+  max-width: min(560px, 74%);
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--fg-base);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.035);
+}
+
+.community-message--outgoing {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--accent-blue) 9%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--accent-blue) 32%, var(--border));
+}
+
+.community-message span {
+  font-size: 12.5px;
+  line-height: 1.36;
+  font-weight: 400;
+}
+
+.community-message time {
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  justify-self: end;
+}
+
+/* ─── Composer ───────────────────────────────────────────────────────── */
+
+.community-composer {
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.community-composer-prompt {
+  display: inline-flex;
+  color: var(--accent-blue);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.community-composer input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  outline: 0;
+  background: var(--bg-base);
+  color: var(--fg-base);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.community-composer input:focus {
+  border-color: color-mix(in srgb, var(--accent-blue) 56%, var(--border));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-blue) 78%, transparent), 0 0 0 1px color-mix(in srgb, var(--accent-blue) 18%, transparent);
+}
+
+.community-composer input::placeholder {
+  color: var(--fg-subtle);
+}
+
+.community-composer button,
+.community-login-btn {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 42%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-blue) 22%, var(--bg-overlay));
+  color: var(--fg-base);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.community-composer button:hover,
+.community-login-btn:hover {
+  background: color-mix(in srgb, var(--accent-blue) 34%, var(--bg-overlay));
+  border-color: color-mix(in srgb, var(--accent-blue) 60%, var(--border));
+}
+
+/* ─── Login ──────────────────────────────────────────────────────────── */
+
+.community-login {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 64%, transparent), transparent 170px), var(--bg-base);
+}
+
+.community-login-card {
+  position: relative;
+  width: 100%;
+  max-width: 390px;
+  padding: 0 16px 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.community-login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--accent-blue);
+  opacity: 0.86;
+}
+
+.community-login-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  margin: 0 -16px 15px;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-overlay);
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.community-login-title {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.community-login-logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--fg-base);
+  font-size: 18px;
+  font-weight: 560;
+  margin-bottom: 4px;
+}
+
+.community-login-logo svg {
+  color: var(--accent-blue);
+}
+
+.community-login-subtitle,
+.community-login-note {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.community-login-subtitle {
+  margin-bottom: 17px;
+}
+
+.community-login-note {
+  margin-top: 13px;
+  color: var(--fg-subtle);
+}
+
+.community-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.community-login-field {
+  display: grid;
+  gap: 5px;
+}
+
+.community-login-label {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.community-login-command {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 36px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-base);
+}
+
+.community-login-prompt {
+  width: 16px;
+  color: var(--accent-blue);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.community-login-input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0 8px 1px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg-base);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.community-login-input::placeholder {
+  color: var(--fg-subtle);
+}
+
+.community-login-actions {
+  margin-top: 12px;
+}
+
+.community-login-link {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-base);
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.community-login-link:hover {
+  color: var(--fg-base);
+  border-color: color-mix(in srgb, var(--accent-blue) 40%, var(--border));
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────── */
+
+/* Desktop/tablet: sidebar is default. */
+@media (min-width: 641px) {
+  .community-sidebar {
+    transform: none !important;
+  }
+}
+
+/* Phone: sidebar becomes drawer. */
+@media (max-width: 640px) {
+  .program-shell.community-native,
+  .program-shell.program-shell--community.community-native,
+  .community-native {
+    grid-template-columns: 1fr !important;
+  }
+
+  .community-main {
+    grid-column: 1;
+  }
+
+  .community-mobile-sidebar-btn {
+    display: inline-flex;
+  }
+
+  .community-header-action {
+    padding: 0 7px;
+  }
+
+  .community-header-action svg {
+    display: none;
+  }
+
+  .community-sidebar {
+    position: absolute;
+    z-index: 30;
+    inset: 0 auto 0 0;
+    width: min(82vw, 290px);
+    transform: translateX(-102%);
+    transition: transform var(--motion-med, 180ms) var(--motion-ease, ease);
+    box-shadow: 18px 0 40px rgba(0, 0, 0, 0.36);
+  }
+
+  .community-native--sidebar-open .community-sidebar {
+    transform: translateX(0);
+  }
+
+  .community-sidebar-scrim {
+    display: block;
+    position: absolute;
+    z-index: 20;
+    inset: 0;
+    border: 0;
+    background: rgba(0, 0, 0, 0.42);
+    padding: 0;
+    margin: 0;
+  }
+
+  .community-message {
+    max-width: 86%;
+  }
+
+  .community-composer button {
+    width: 34px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .community-composer button svg {
+    margin: 0;
+  }
+
+  .community-composer button {
+    font-size: 0;
+  }
+}
+
+/* ─── Sidebar titlebar close + height alignment ─────────────────────── */
+
+.community-titlebar {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 8px !important;
+}
+
+.community-title {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+
+.community-sidebar-close {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.community-sidebar-close:hover {
+  color: var(--fg-base);
+  background: var(--bg-highlight);
+  border-color: var(--border);
+}
+
+
+
+/* phone: close button closes the drawer */
+@media (max-width: 640px) {
+  .community-titlebar {
+    height: 36px !important;
+    min-height: 36px !important;
+  }
+
+  .community-sidebar-close {
+    display: inline-flex;
+  }
+}
+
+/* ─── Sidebar titlebar close + height alignment ─────────────────────── */
+
+.community-titlebar {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 8px !important;
+}
+
+.community-title {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+
+.community-sidebar-close {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.community-sidebar-close:hover {
+  color: var(--fg-base);
+  background: var(--bg-highlight);
+  border-color: var(--border);
+}
+
+
+
+/* phone: close button closes the drawer */
+@media (max-width: 640px) {
+  .community-titlebar {
+    height: 36px !important;
+    min-height: 36px !important;
+  }
+
+  .community-sidebar-close {
+    display: inline-flex;
+  }
+}
+
+/* hide sidebar close on desktop/tablet, keep it on phones */
+@media (min-width: 641px) {
+  .community-sidebar-close {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .community-sidebar-close {
+    display: inline-flex !important;
+  }
+}
+
+/* ─── Force native telegram login to center ─────────────────────────── */
+
+.program-shell.community-native--login,
+.program-shell.program-shell--community.community-native--login,
+.community-native--login {
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  grid-template-columns: none !important;
+  overflow: hidden !important;
+}
+
+.community-native--login .community-login {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 18px !important;
+  box-sizing: border-box !important;
+}
+
+.community-native--login .community-login-card {
+  margin: auto !important;
+  flex: 0 1 390px !important;
+}

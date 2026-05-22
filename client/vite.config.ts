@@ -11,23 +11,29 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    host: true,   // bind to 0.0.0.0 — reachable on Tailscale (100.77.70.7) and LAN
+    host: true,
     allowedHosts: [
       "localhost",
       "127.0.0.1",
       "takt-pc.reverse-cliff.ts.net",
     ],
-    // Proxy WebSocket connections to the terminal server in dev
     proxy: {
-      "/ws": {
-        target:      "ws://localhost:3003",
-        ws:          true,
+
+      // ─── WebSocket to Terminal Server ───────────────────
+      '/ws': {
+        target: 'ws://localhost:3003',
+        ws: true,
         changeOrigin: true,
       },
-      "/api": {
-        target: "http://localhost:3003",
+      // ─── API to Backend Server ──────────────────────────
+      '/api': {
+        target: 'http://localhost:3003',
         changeOrigin: true,
       },
     },
+  },
+  // Optional: optimize deps for faster dev
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'lucide-react'],
   },
 });
