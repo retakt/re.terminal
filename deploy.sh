@@ -2,39 +2,39 @@
 
 set -euo pipefail
 
-# deploy.sh - Build locally, package the app, and deploy to VPS.
+# deploy.sh - Build on VPS, install only production-ready files.
 # Usage: ./deploy.sh [user] [host] [target_path] [public_url]
 
 VPS_USER="${1:-root}"
 VPS_HOST="${2:-157.173.127.84}"
 VPS_PATH="${3:-/opt/re-term}"
 PUBLIC_URL="${4:-https://tmux.retakt.cc}"
+
 LIGHTPANDA_CDP_URL="${LIGHTPANDA_CDP_URL:-ws://127.0.0.1:9222}"
 BROWSER_CHROME_CDP_PORT="${BROWSER_CHROME_CDP_PORT:-9223}"
 BROWSER_CHROME_CDP_URL="${BROWSER_CHROME_CDP_URL:-ws://127.0.0.1:${BROWSER_CHROME_CDP_PORT}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STAGING_DIR="$(mktemp -d)"
-PACKAGE_DIR="$STAGING_DIR/package"
-ARCHIVE_PATH="$STAGING_DIR/re-term-deploy.tar.gz"
-REMOTE_ARCHIVE="/tmp/re-term-deploy.tar.gz"
+LOCAL_TMP="$(mktemp -d)"
+SOURCE_ARCHIVE="$LOCAL_TMP/re-term-source.tar.gz"
+REMOTE_SOURCE_ARCHIVE="/tmp/re-term-source.tar.gz"
 
-cleanup() {
-  rm -rf "$STAGING_DIR"
+cleanup_local() {
+  rm -rf "$LOCAL_TMP"
 }
-trap cleanup EXIT
+trap cleanup_local EXIT
 
 case "$VPS_PATH" in
   ""|"/")
-    echo "Error: refusing to deploy to an empty or root path"
+    echo "Error: refusing to deploy to empty/root path"
     exit 1
     ;;
 esac
 
 cd "$SCRIPT_DIR"
 
-if [ ! -f "package.json" ]; then
-  echo "Error: run this script from the re.Term repository"
+if [ ! -f package.json ] || [ ! -d client ] || [ ! -d server ]; then
+  echo "Error: run this from the re.Term repo root"
   exit 1
 fi
 
@@ -43,198 +43,98 @@ if command -v rsync >/dev/null 2>&1; then
 elif command -v scp >/dev/null 2>&1; then
   TRANSFER_TOOL="scp"
 else
-  echo "Error: rsync or scp is required but neither was found"
+  echo "Error: rsync or scp required"
   exit 1
 fi
 
-echo "=== re.Term VPS Deployment Script ==="
+echo "=== re.Term production deploy ==="
 echo "Target: ${VPS_USER}@${VPS_HOST}:${VPS_PATH}"
 echo "Public URL: ${PUBLIC_URL}"
 echo ""
 
-echo "Cleaning old local builds and temp files..."
-rm -rf \
-  client/dist \
-  client/.vite \
-  client/.cache \
-  client/.temp \
-  server/dist \
-  server/build \
-  server/.cache \
-  server/.temp \
-  server/tmp \
-  server/temp \
-  server/coverage \
-  dist \
-  build \
-  .cache \
-  .temp \
-  tmp \
-  temp \
-  coverage
+echo "Creating clean source archive for VPS build..."
 
-find "$SCRIPT_DIR" -type f \( \
-  -name "*.log" -o \
-  -name "*.tmp" -o \
-  -name "*.map" \
-\) -delete || true
+tar -czf "$SOURCE_ARCHIVE" \
+  --exclude=".git" \
+  --exclude=".github" \
+  --exclude=".vscode" \
+  --exclude="node_modules" \
+  --exclude="*/node_modules" \
+  --exclude="client/dist" \
+  --exclude="client/.vite" \
+  --exclude="client/.cache" \
+  --exclude="client/.temp" \
+  --exclude="server/dist" \
+  --exclude="server/build" \
+  --exclude="server/.cache" \
+  --exclude="server/.temp" \
+  --exclude="server/tmp" \
+  --exclude="server/temp" \
+  --exclude="server/coverage" \
+  --exclude="server/.playwright-mcp" \
+  --exclude="dist" \
+  --exclude="build" \
+  --exclude=".cache" \
+  --exclude=".temp" \
+  --exclude="tmp" \
+  --exclude="temp" \
+  --exclude="coverage" \
+  --exclude="*.log" \
+  --exclude="*.tmp" \
+  --exclude="*.map" \
+  --exclude=".env" \
+  --exclude=".env.local" \
+  --exclude=".env.*" \
+  --exclude="client/.env" \
+  --exclude="client/.env.local" \
+  --exclude="server/.env" \
+  --exclude="server/.env.local" \
+  --exclude="server/.env.*" \
+  --exclude="server/scripts/smoke-*" \
+  --exclude="server/scripts/test-*" \
+  --exclude="server/test-*" \
+  --exclude="server/*.test.*" \
+  --exclude="server/*.spec.*" \
+  -C "$SCRIPT_DIR" .
 
-echo "Building client locally..."
-NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}" npm run build
+echo "Source archive size:"
+du -h "$SOURCE_ARCHIVE" 2>/dev/null || ls -lh "$SOURCE_ARCHIVE"
 
-echo "Preparing deployment package..."
-mkdir -p "$PACKAGE_DIR"
+echo "Uploading source archive..."
+if [ "$TRANSFER_TOOL" = "rsync" ]; then
+  rsync -avzP -e "ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10" \
+    "$SOURCE_ARCHIVE" "${VPS_USER}@${VPS_HOST}:${REMOTE_SOURCE_ARCHIVE}"
+else
+  scp -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+    "$SOURCE_ARCHIVE" "${VPS_USER}@${VPS_HOST}:${REMOTE_SOURCE_ARCHIVE}"
+fi
+
+echo "Building and deploying on VPS..."
+ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${VPS_USER}@${VPS_HOST}" \
+  "VPS_PATH='$VPS_PATH' PUBLIC_URL='$PUBLIC_URL' REMOTE_SOURCE_ARCHIVE='$REMOTE_SOURCE_ARCHIVE' LIGHTPANDA_CDP_URL='$LIGHTPANDA_CDP_URL' BROWSER_CHROME_CDP_URL='$BROWSER_CHROME_CDP_URL' BROWSER_CHROME_CDP_PORT='$BROWSER_CHROME_CDP_PORT' bash -s" <<'REMOTE'
+set -euo pipefail
+
+BUILD_ROOT="$(mktemp -d /tmp/re-term-build.XXXXXX)"
+SOURCE_DIR="$BUILD_ROOT/source"
+RELEASE_DIR="$BUILD_ROOT/release"
+BACKUP_DIR="$(mktemp -d /tmp/re-term-env-backup.XXXXXX)"
+
+cleanup_remote() {
+  rm -rf "$BUILD_ROOT" "$BACKUP_DIR" "$REMOTE_SOURCE_ARCHIVE"
+}
+trap cleanup_remote EXIT
 
 copy_if_exists() {
   local source="$1"
   local target="$2"
-
   if [ -e "$source" ]; then
     mkdir -p "$(dirname "$target")"
     cp -a "$source" "$target"
   fi
 }
 
-copy_if_exists "$SCRIPT_DIR/package.json" "$PACKAGE_DIR/package.json"
-copy_if_exists "$SCRIPT_DIR/package-lock.json" "$PACKAGE_DIR/package-lock.json"
-copy_if_exists "$SCRIPT_DIR/Caddyfile" "$PACKAGE_DIR/Caddyfile"
-copy_if_exists "$SCRIPT_DIR/re-term.service" "$PACKAGE_DIR/re-term.service"
-copy_if_exists "$SCRIPT_DIR/README.md" "$PACKAGE_DIR/README.md"
-copy_if_exists "$SCRIPT_DIR/deploy.sh" "$PACKAGE_DIR/deploy.sh"
-copy_if_exists "$SCRIPT_DIR/scripts" "$PACKAGE_DIR/scripts"
-
-mkdir -p "$PACKAGE_DIR/client"
-copy_if_exists "$SCRIPT_DIR/client/dist" "$PACKAGE_DIR/client/dist"
-
-copy_if_exists "$SCRIPT_DIR/server" "$PACKAGE_DIR/server"
-
-if [ ! -f "$PACKAGE_DIR/server/lib/memory-client.js" ]; then
-  echo "Error: server/lib/memory-client.js missing from deployment package"
-  exit 1
-fi
-
-if [ ! -f "$PACKAGE_DIR/server/lib/mcp-gateway.js" ]; then
-  echo "Error: server/lib/mcp-gateway.js missing from deployment package"
-  exit 1
-fi
-
-if [ ! -f "$PACKAGE_DIR/server/config/mcp-servers.json" ]; then
-  echo "Error: server/config/mcp-servers.json missing from deployment package"
-  exit 1
-fi
-
-find "$PACKAGE_DIR/server" -type d \( \
-  -name node_modules -o \
-  -name dist -o \
-  -name build -o \
-  -name coverage -o \
-  -name .cache -o \
-  -name .temp -o \
-  -name tmp -o \
-  -name temp -o \
-  -name __tests__ -o \
-  -name test -o \
-  -name tests -o \
-  -name .playwright-mcp \
-\) -prune -exec rm -rf {} + 2>/dev/null || true
-
-find "$PACKAGE_DIR/server" -type f \( \
-  -name "*.log" -o \
-  -name "*.tmp" -o \
-  -name "*.map" -o \
-  -name ".env" -o \
-  -name ".env.local" -o \
-  -name ".env.*" -o \
-  -name "*.test.*" -o \
-  -name "*.spec.*" -o \
-  -name "test-*" -o \
-  -name "smoke-*" \
-\) ! -name ".env.example" -delete || true
-
-mkdir -p "$PACKAGE_DIR/graphiti"
-copy_if_exists "$SCRIPT_DIR/graphiti/docker-compose.yml" "$PACKAGE_DIR/graphiti/docker-compose.yml"
-copy_if_exists "$SCRIPT_DIR/graphiti/.env.example" "$PACKAGE_DIR/graphiti/.env.example"
-copy_if_exists "$SCRIPT_DIR/graphiti/scripts" "$PACKAGE_DIR/graphiti/scripts"
-copy_if_exists "$SCRIPT_DIR/graphiti/README.md" "$PACKAGE_DIR/graphiti/README.md"
-
-if [ ! -d "$PACKAGE_DIR/client/dist" ]; then
-  echo "Error: client build output was not found at client/dist"
-  exit 1
-fi
-
-echo "Checking env files included in package..."
-for env_file in ".env" ".env.local" "server/.env" "server/.env.local" "client/.env" "client/.env.local"; do
-  if [ -f "$PACKAGE_DIR/$env_file" ]; then
-    echo "  included: $env_file"
-  fi
-done
-echo "Verifying package does not contain smoke/test files..."
-if find "$PACKAGE_DIR" -type f \( \
-  -name "smoke-*" -o \
-  -name "test-*" -o \
-  -name "*.test.*" -o \
-  -name "*.spec.*" -o \
-  -path "*/__tests__/*" -o \
-  -path "*/tests/*" -o \
-  -path "*/test/*" \
-\) | grep -q .; then
-  echo "Error: production package contains smoke/test files:"
-  find "$PACKAGE_DIR" -type f \( \
-    -name "smoke-*" -o \
-    -name "test-*" -o \
-    -name "*.test.*" -o \
-    -name "*.spec.*" -o \
-    -path "*/__tests__/*" -o \
-    -path "*/tests/*" -o \
-    -path "*/test/*" \
-  \)
-  exit 1
-fi
-
-if [ ! -f "$PACKAGE_DIR/server/server.js" ]; then
-  echo "Error: server/server.js missing from deployment package"
-  exit 1
-fi
-
-if [ ! -f "$PACKAGE_DIR/server/package.json" ]; then
-  echo "Error: server/package.json missing from deployment package"
-  exit 1
-fi
-
-tar -C "$PACKAGE_DIR" -czf "$ARCHIVE_PATH" .
-
-echo "Archive size:"
-du -h "$ARCHIVE_PATH" 2>/dev/null || ls -lh "$ARCHIVE_PATH"
-
-if [ "$TRANSFER_TOOL" = "rsync" ]; then
-  echo "Copying package to VPS with rsync..."
-  rsync -avzP \
-    -e "ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10" \
-    "$ARCHIVE_PATH" \
-    "${VPS_USER}@${VPS_HOST}:${REMOTE_ARCHIVE}"
-else
-  echo "Copying package to VPS with scp..."
-  scp -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-    "$ARCHIVE_PATH" \
-    "${VPS_USER}@${VPS_HOST}:${REMOTE_ARCHIVE}"
-fi
-
-echo "Critical package files:"
-ls -la "$PACKAGE_DIR/server/server.js"
-ls -la "$PACKAGE_DIR/server/package.json"
-
-echo "Deploying on VPS..."
-ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${VPS_USER}@${VPS_HOST}" \
-  "VPS_PATH='$VPS_PATH' VPS_HOST='$VPS_HOST' PUBLIC_URL='$PUBLIC_URL' REMOTE_ARCHIVE='$REMOTE_ARCHIVE' LIGHTPANDA_CDP_URL='$LIGHTPANDA_CDP_URL' BROWSER_CHROME_CDP_URL='$BROWSER_CHROME_CDP_URL' BROWSER_CHROME_CDP_PORT='$BROWSER_CHROME_CDP_PORT' bash -s" <<'EOF'
-set -euo pipefail
-
-mkdir -p "$VPS_PATH"
-
-BACKUP_DIR="$(mktemp -d)"
-
 backup_file() {
   local source="$1"
-
   if [ -f "$source" ]; then
     local relative="${source#$VPS_PATH/}"
     mkdir -p "$BACKUP_DIR/$(dirname "$relative")"
@@ -245,43 +145,48 @@ backup_file() {
 restore_if_missing() {
   local target="$1"
   local backup="$2"
-
   if [ ! -f "$target" ] && [ -f "$backup" ]; then
     mkdir -p "$(dirname "$target")"
     cp -a "$backup" "$target"
-    echo "Restored old env because package did not include: $target"
+    echo "Restored env: $target"
   fi
 }
 
-echo "Backing up env files..."
-backup_file "$VPS_PATH/.env"
-backup_file "$VPS_PATH/.env.local"
-backup_file "$VPS_PATH/server/.env"
-backup_file "$VPS_PATH/server/.env.local"
-backup_file "$VPS_PATH/client/.env"
-backup_file "$VPS_PATH/client/.env.local"
+prune_non_production() {
+  local root="$1"
+  [ -d "$root" ] || return 0
 
-echo "Stopping old app if running..."
-pm2 stop re-term >/dev/null 2>&1 || true
+  find "$root" -type d \( \
+    -name node_modules -o \
+    -name .git -o \
+    -name .github -o \
+    -name .vscode -o \
+    -name dist -o \
+    -name build -o \
+    -name coverage -o \
+    -name .cache -o \
+    -name .temp -o \
+    -name tmp -o \
+    -name temp -o \
+    -name __tests__ -o \
+    -name test -o \
+    -name tests -o \
+    -name .playwright-mcp \
+  \) -prune -exec rm -rf {} + 2>/dev/null || true
 
-echo "Cleaning old remote app files..."
-find "$VPS_PATH" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-
-echo "Extracting new release..."
-tar -xzf "$REMOTE_ARCHIVE" -C "$VPS_PATH"
-rm -f "$REMOTE_ARCHIVE"
-
-echo "Restoring old env files only if new package did not include them..."
-restore_if_missing "$VPS_PATH/.env" "$BACKUP_DIR/.env"
-restore_if_missing "$VPS_PATH/.env.local" "$BACKUP_DIR/.env.local"
-restore_if_missing "$VPS_PATH/server/.env" "$BACKUP_DIR/server/.env"
-restore_if_missing "$VPS_PATH/server/.env.local" "$BACKUP_DIR/server/.env.local"
-restore_if_missing "$VPS_PATH/client/.env" "$BACKUP_DIR/client/.env"
-restore_if_missing "$VPS_PATH/client/.env.local" "$BACKUP_DIR/client/.env.local"
-
-rm -rf "$BACKUP_DIR"
-
-cd "$VPS_PATH"
+  find "$root" -type f \( \
+    -name "*.log" -o \
+    -name "*.tmp" -o \
+    -name "*.map" -o \
+    -name ".env" -o \
+    -name ".env.local" -o \
+    -name ".env.*" -o \
+    -name "*.test.*" -o \
+    -name "*.spec.*" -o \
+    -name "test-*" -o \
+    -name "smoke-*" \
+  \) ! -name ".env.example" -delete || true
+}
 
 set_env_if_missing() {
   local file="$1"
@@ -315,6 +220,35 @@ set_env_if_missing_or_value() {
   set_env_if_missing "$file" "$key" "$value"
 }
 
+wait_for_endpoint() {
+  local url="$1"
+  local attempts="${2:-30}"
+
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    echo "Warning: curl/wget missing; skipping endpoint check"
+    return 0
+  fi
+
+  for attempt in $(seq 1 "$attempts"); do
+    if command -v curl >/dev/null 2>&1; then
+      if curl -fsS --max-time 3 "$url" >/dev/null; then
+        echo "OK: $url"
+        return 0
+      fi
+    elif wget -qO- --timeout=3 "$url" >/dev/null; then
+      echo "OK: $url"
+      return 0
+    fi
+
+    echo "Waiting for $url ($attempt/$attempts)..."
+    sleep 1
+  done
+
+  echo "Error: endpoint did not become ready: $url"
+  pm2 logs re-term --lines 100 --nostream || true
+  return 1
+}
+
 install_lightpanda() {
   local target="/usr/local/bin/lightpanda"
   local arch
@@ -323,25 +257,21 @@ install_lightpanda() {
   arch="$(uname -m)"
 
   case "$arch" in
-    x86_64|amd64)
-      url="https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux"
-      ;;
-    aarch64|arm64)
-      url="https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-aarch64-linux"
-      ;;
+    x86_64|amd64) url="https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux" ;;
+    aarch64|arm64) url="https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-aarch64-linux" ;;
     *)
-      echo "Warning: unsupported Lightpanda arch '$arch'; skipping Lightpanda install"
+      echo "Warning: unsupported Lightpanda arch '$arch'; skipping"
       return 0
       ;;
   esac
 
   if ! command -v curl >/dev/null 2>&1; then
-    echo "Warning: curl not found; skipping Lightpanda install"
+    echo "Warning: curl missing; skipping Lightpanda"
     return 0
   fi
 
   if ! command -v lightpanda >/dev/null 2>&1; then
-    echo "Installing Lightpanda nightly for $arch..."
+    echo "Installing Lightpanda..."
     curl -fL -o "$target" "$url"
     chmod 0755 "$target"
   fi
@@ -363,7 +293,6 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 SYSTEMD
-
     systemctl daemon-reload
     systemctl enable --now lightpanda
     systemctl restart lightpanda
@@ -379,29 +308,164 @@ install_chrome() {
     return 0
   fi
 
-  if ! command -v apt-get >/dev/null 2>&1; then
-    echo "Warning: apt-get not found; skipping Chrome install"
+  if ! command -v apt-get >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+    echo "Warning: apt-get/curl missing; skipping Chrome"
     return 0
   fi
 
-  if ! command -v curl >/dev/null 2>&1; then
-    echo "Warning: curl not found; skipping Chrome install"
-    return 0
-  fi
-
-  echo "Installing Google Chrome stable for JS-heavy browser fallback..."
-  apt-get update
+  echo "Installing Google Chrome stable..."
+  apt-get update || true
   apt-get install -y ca-certificates fonts-liberation libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libcups2 libdrm2 libgbm1 libgtk-3-0 libnss3 libxcomposite1 libxdamage1 libxrandr2 xdg-utils wget gnupg || true
   rm -f /usr/share/keyrings/google-linux-signing-keyring.gpg
   curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor --yes -o /usr/share/keyrings/google-linux-signing-keyring.gpg
   echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-signing-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >/etc/apt/sources.list.d/google-chrome.list
-  apt-get update
-  apt-get install -y google-chrome-stable
+  apt-get update || true
+  apt-get install -y google-chrome-stable || true
 }
 
-install_lightpanda
-install_chrome
+install_playwright() {
+  echo "Checking Playwright MCP/browser setup..."
 
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "Warning: npm missing; skipping Playwright"
+    return 0
+  fi
+
+  npx -y @playwright/mcp@latest --version >/dev/null 2>&1 || true
+
+  if ! (cd "$VPS_PATH/server" && node -e "import('playwright').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1); then
+    npm install --prefix "$VPS_PATH/server" --omit=dev playwright
+  fi
+
+  if [ -x "$VPS_PATH/server/node_modules/.bin/playwright" ]; then
+    npx --prefix "$VPS_PATH/server" playwright install --with-deps chromium \
+      || npx --prefix "$VPS_PATH/server" playwright install chromium \
+      || echo "Warning: Playwright browser install failed"
+  fi
+}
+
+echo "Extracting source to temporary build folder..."
+mkdir -p "$SOURCE_DIR" "$RELEASE_DIR"
+tar -xzf "$REMOTE_SOURCE_ARCHIVE" -C "$SOURCE_DIR"
+
+cd "$SOURCE_DIR"
+
+if [ ! -f package.json ] || [ ! -d client ] || [ ! -d server ]; then
+  echo "Error: source archive is invalid"
+  exit 1
+fi
+
+echo "Installing root/client dependencies for VPS build..."
+npm ci
+npm ci --prefix client
+
+echo "Building client on VPS..."
+NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}" npm --prefix client run build
+
+echo "Preparing clean production release..."
+copy_if_exists "$SOURCE_DIR/package.json" "$RELEASE_DIR/package.json"
+copy_if_exists "$SOURCE_DIR/package-lock.json" "$RELEASE_DIR/package-lock.json"
+copy_if_exists "$SOURCE_DIR/Caddyfile" "$RELEASE_DIR/Caddyfile"
+copy_if_exists "$SOURCE_DIR/re-term.service" "$RELEASE_DIR/re-term.service"
+copy_if_exists "$SOURCE_DIR/README.md" "$RELEASE_DIR/README.md"
+copy_if_exists "$SOURCE_DIR/deploy.sh" "$RELEASE_DIR/deploy.sh"
+copy_if_exists "$SOURCE_DIR/scripts" "$RELEASE_DIR/scripts"
+
+mkdir -p "$RELEASE_DIR/client"
+copy_if_exists "$SOURCE_DIR/client/dist" "$RELEASE_DIR/client/dist"
+
+copy_if_exists "$SOURCE_DIR/server" "$RELEASE_DIR/server"
+prune_non_production "$RELEASE_DIR/server"
+
+mkdir -p "$RELEASE_DIR/graphiti"
+copy_if_exists "$SOURCE_DIR/graphiti/docker-compose.yml" "$RELEASE_DIR/graphiti/docker-compose.yml"
+copy_if_exists "$SOURCE_DIR/graphiti/.env.example" "$RELEASE_DIR/graphiti/.env.example"
+copy_if_exists "$SOURCE_DIR/graphiti/scripts" "$RELEASE_DIR/graphiti/scripts"
+copy_if_exists "$SOURCE_DIR/graphiti/README.md" "$RELEASE_DIR/graphiti/README.md"
+prune_non_production "$RELEASE_DIR/graphiti"
+prune_non_production "$RELEASE_DIR/scripts"
+
+echo "Validating production release..."
+for required in \
+  "$RELEASE_DIR/client/dist" \
+  "$RELEASE_DIR/server/server.js" \
+  "$RELEASE_DIR/server/package.json" \
+  "$RELEASE_DIR/server/lib/memory-client.js" \
+  "$RELEASE_DIR/server/lib/mcp-gateway.js" \
+  "$RELEASE_DIR/server/config/mcp-servers.json"
+do
+  if [ ! -e "$required" ]; then
+    echo "Error: required production file missing: $required"
+    exit 1
+  fi
+done
+
+if find "$RELEASE_DIR" -type f \( \
+  -name "smoke-*" -o \
+  -name "test-*" -o \
+  -name "*.test.*" -o \
+  -name "*.spec.*" -o \
+  -path "*/__tests__/*" -o \
+  -path "*/tests/*" -o \
+  -path "*/test/*" \
+\) | grep -q .; then
+  echo "Error: release contains smoke/test files:"
+  find "$RELEASE_DIR" -type f \( \
+    -name "smoke-*" -o \
+    -name "test-*" -o \
+    -name "*.test.*" -o \
+    -name "*.spec.*" -o \
+    -path "*/__tests__/*" -o \
+    -path "*/tests/*" -o \
+    -path "*/test/*" \
+  \)
+  exit 1
+fi
+
+if find "$RELEASE_DIR" -type f \( \
+  -name ".env" -o \
+  -name ".env.local" -o \
+  -name ".env.*" \
+\) ! -name ".env.example" | grep -q .; then
+  echo "Error: release contains secret env files:"
+  find "$RELEASE_DIR" -type f \( \
+    -name ".env" -o \
+    -name ".env.local" -o \
+    -name ".env.*" \
+  \) ! -name ".env.example"
+  exit 1
+fi
+
+echo "Release size:"
+du -sh "$RELEASE_DIR"
+
+echo "Backing up existing env files..."
+mkdir -p "$VPS_PATH"
+backup_file "$VPS_PATH/.env"
+backup_file "$VPS_PATH/.env.local"
+backup_file "$VPS_PATH/server/.env"
+backup_file "$VPS_PATH/server/.env.local"
+backup_file "$VPS_PATH/client/.env"
+backup_file "$VPS_PATH/client/.env.local"
+
+echo "Stopping app..."
+pm2 stop re-term >/dev/null 2>&1 || true
+
+echo "Replacing app with clean production release..."
+find "$VPS_PATH" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+cp -a "$RELEASE_DIR/." "$VPS_PATH/"
+
+echo "Restoring env files..."
+restore_if_missing "$VPS_PATH/.env" "$BACKUP_DIR/.env"
+restore_if_missing "$VPS_PATH/.env.local" "$BACKUP_DIR/.env.local"
+restore_if_missing "$VPS_PATH/server/.env" "$BACKUP_DIR/server/.env"
+restore_if_missing "$VPS_PATH/server/.env.local" "$BACKUP_DIR/server/.env.local"
+restore_if_missing "$VPS_PATH/client/.env" "$BACKUP_DIR/client/.env"
+restore_if_missing "$VPS_PATH/client/.env.local" "$BACKUP_DIR/client/.env.local"
+
+cd "$VPS_PATH"
+
+echo "Writing safe default server env values..."
 set_env_if_missing "$VPS_PATH/server/.env" "LIGHTPANDA_CDP_URL" "$LIGHTPANDA_CDP_URL"
 set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_CDP_URL" "$BROWSER_CHROME_CDP_URL"
 set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_CDP_PORT" "$BROWSER_CHROME_CDP_PORT"
@@ -418,32 +482,19 @@ set_env_if_missing "$VPS_PATH/server/.env" "FALKORDB_PORT" "6380"
 set_env_if_missing "$VPS_PATH/server/.env" "FALKORDB_DATABASE" "graphiti_memory"
 set_env_if_missing "$VPS_PATH/server/.env" "SEARXNG_URL" "https://search-api.retakt.cc"
 
+echo "Installing production server dependencies..."
+npm ci --prefix server --omit=dev
+
+install_lightpanda
+install_chrome
+install_playwright
+
 if [ -d "$VPS_PATH/graphiti" ] && command -v docker >/dev/null 2>&1; then
   echo "Starting FalkorDB memory sidecar..."
   if [ -f "$VPS_PATH/graphiti/.env.example" ] && [ ! -f "$VPS_PATH/graphiti/.env" ]; then
     cp "$VPS_PATH/graphiti/.env.example" "$VPS_PATH/graphiti/.env"
   fi
-  (cd "$VPS_PATH/graphiti" && docker compose up -d falkordb) || echo "Warning: failed to start FalkorDB sidecar"
-fi
-
-echo "Installing server dependencies..."
-npm ci --prefix server --omit=dev
-
-echo "Checking Playwright MCP/browser setup..."
-
-npx -y @playwright/mcp@latest --version >/dev/null 2>&1 || true
-
-if ! (cd "$VPS_PATH/server" && node -e "import('playwright').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1); then
-  echo "Installing Playwright package into server node_modules..."
-  npm install --prefix "$VPS_PATH/server" --omit=dev playwright
-fi
-
-if [ -x "$VPS_PATH/server/node_modules/.bin/playwright" ]; then
-  echo "Installing/checking Playwright chromium browser..."
-  npx --prefix "$VPS_PATH/server" playwright install --with-deps chromium \
-    || npx --prefix "$VPS_PATH/server" playwright install chromium
-else
-  echo "Warning: Playwright binary not found after install"
+  (cd "$VPS_PATH/graphiti" && docker compose up -d falkordb) || echo "Warning: failed to start FalkorDB"
 fi
 
 if ! command -v pm2 >/dev/null 2>&1; then
@@ -457,58 +508,25 @@ else
   pm2 start server/server.js --name re-term --update-env
 fi
 
-echo "Checking local server endpoints on VPS..."
-
-wait_for_endpoint() {
-  local url="$1"
-  local attempts="${2:-30}"
-
-  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-    echo "Warning: curl/wget not found; skipping endpoint smoke checks"
-    return 0
-  fi
-
-  for attempt in $(seq 1 "$attempts"); do
-    if command -v curl >/dev/null 2>&1; then
-      if curl -fsS --max-time 2 "$url" >/dev/null; then
-        echo "OK: $url"
-        return 0
-      fi
-    elif wget -qO- --timeout=2 "$url" >/dev/null; then
-      echo "OK: $url"
-      return 0
-    fi
-
-    echo "Waiting for $url ($attempt/$attempts)..."
-    sleep 1
-  done
-
-  echo "Error: endpoint did not become ready: $url"
-  pm2 logs re-term --lines 80 --nostream || true
-  return 1
-}
-
-wait_for_endpoint "http://127.0.0.1:3003/health" 30
+echo "Checking local server endpoints..."
+wait_for_endpoint "http://127.0.0.1:3003/api/stats" 30
 wait_for_endpoint "http://127.0.0.1:3003/api/files?path=/" 30
 wait_for_endpoint "http://127.0.0.1:3003/api/browser/status" 30
 wait_for_endpoint "http://127.0.0.1:3003/api/services/status" 30
 
-if command -v curl >/dev/null 2>&1; then
-  echo "Browser status:"
-  curl -fsS --max-time 5 "http://127.0.0.1:3003/api/browser/status" || true
-  echo ""
-fi
-
 pm2 save
 
-echo "Cleaning remote temp junk..."
-rm -f "$REMOTE_ARCHIVE"
+echo "Cleaning Docker build cache lightly..."
+docker builder prune -af >/dev/null 2>&1 || true
+
+echo "Final disk usage:"
+df -h /
 
 echo "Deployment complete."
 echo "Access: ${PUBLIC_URL}"
-EOF
+REMOTE
 
 echo ""
 echo "=== Deployment Complete ==="
-echo "Built locally and deployed to ${VPS_USER}@${VPS_HOST}:${VPS_PATH}"
+echo "Built on VPS and deployed production files to ${VPS_USER}@${VPS_HOST}:${VPS_PATH}"
 echo "Access: ${PUBLIC_URL}"
