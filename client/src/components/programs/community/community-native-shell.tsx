@@ -1,5 +1,5 @@
 import "./community.css";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TelegramChatList } from "./telegram-chat-list";
 import { TelegramMessageList } from "./telegram-message-list";
 import { TelegramComposer } from "./telegram-composer";
@@ -66,11 +66,28 @@ function writeStoredMessages(messages: TelegramMessage[]) {
 export function CommunityNativeShell() {
   const [activeChatId, setActiveChatId] = useState(MOCK_CHATS[0].id);
   const [showLogin, setShowLogin] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarClosed, setSidebarClosed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 641px)").matches;
+  });
   const [messagesState, setMessagesState] = useState<TelegramMessage[]>(() =>
     readStoredMessages()
   );
+
+  useEffect(() => {
+    const media = window.matchMedia(DESKTOP_QUERY);
+
+    const syncSidebarForViewport = () => {
+      setSidebarOpen(media.matches);
+    };
+
+    syncSidebarForViewport();
+    media.addEventListener("change", syncSidebarForViewport);
+
+    return () => {
+      media.removeEventListener("change", syncSidebarForViewport);
+    };
+  }, []);
 
   const activeChat =
     MOCK_CHATS.find((chat) => chat.id === activeChatId) ?? MOCK_CHATS[0];
@@ -85,14 +102,8 @@ export function CommunityNativeShell() {
     setSidebarOpen(false);
   };
 
-  const handleOpenSidebar = () => {
-    setSidebarClosed(false);
-    setSidebarOpen(true);
-  };
-
-  const handleCloseSidebar = () => {
-    setSidebarOpen(false);
-    setSidebarClosed(true);
+  const handleToggleSidebar = () => {
+    setSidebarOpen((current) => !current);
   };
 
   const handleClearMessages = () => {
@@ -135,8 +146,7 @@ export function CommunityNativeShell() {
     <div
       className={[
         "community-native",
-        sidebarOpen ? "community-native--sidebar-open" : "",
-        sidebarClosed ? "community-native--sidebar-closed" : "",
+        sidebarOpen ? "community-native--sidebar-open" : "community-native--sidebar-closed",
         "program-shell",
         "program-shell--community",
       ].filter(Boolean).join(" ")}
@@ -145,7 +155,6 @@ export function CommunityNativeShell() {
         chats={MOCK_CHATS}
         activeChatId={activeChat.id}
         onSelectChat={handleSelectChat}
-        onCloseSidebar={handleCloseSidebar}
       />
 
       {sidebarOpen ? (
@@ -163,7 +172,8 @@ export function CommunityNativeShell() {
           messages={messages}
           onClearMessages={handleClearMessages}
           onOpenLogin={() => setShowLogin(true)}
-          onOpenSidebar={handleOpenSidebar}
+          onToggleSidebar={handleToggleSidebar}
+          sidebarOpen={sidebarOpen}
         />
 
         <TelegramComposer onSendMessage={handleSendMessage} />
