@@ -13624,3 +13624,77 @@ display: flex !important;
 .browser-link-list small, .browser-link-list em { color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 11px; font-style: normal; }
 @media (max-width: 980px) { .browser-stage { grid-template-columns: minmax(0, 1fr); } .browser-ai-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) { .browser-workbench { padding: 8px; } .browser-topbar { align-items: flex-start; flex-direction: column; } .browser-commandbar { grid-template-columns: 34px 34px 34px minmax(0, 1fr); } .browser-commandbar select, .browser-commandbar .browser-primary-action, .browser-commandbar button:last-child { grid-column: span 2; } .browser-ai-panel { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* ─── xterm right-gutter correction ─────────────────────────────────────── */
+/* Do not use both-edges here. We want to push the rendered grid right. */
+
+.terminal-instance {
+  --xterm-left-gutter: 0px;
+  background: #040404 !important;
+}
+
+[data-theme="light"] .terminal-instance {
+  background: #ffffff !important;
+}
+
+.terminal-instance .xterm {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  background: #040404 !important;
+}
+
+[data-theme="light"] .terminal-instance .xterm {
+  background: #ffffff !important;
+}
+
+.terminal-instance .xterm-viewport {
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+
+  /* Keep normal right scrollbar gutter only. */
+  scrollbar-gutter: stable !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  background: #040404 !important;
+}
+
+[data-theme="light"] .terminal-instance .xterm-viewport {
+  background: #ffffff !important;
+}
+
+/* Keep scrollbar measured but invisible. */
+.terminal-instance .xterm-viewport::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+  display: block !important;
+}
+
+.terminal-instance .xterm-viewport::-webkit-scrollbar-track,
+.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb,
+.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb:hover,
+.terminal-instance .xterm-viewport::-webkit-scrollbar-corner {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Important: do NOT force min-width: 100%; let xterm's real grid width measure. */
+.terminal-instance .xterm-screen {
+  min-width: 0 !important;
+  min-height: 100% !important;
+  margin-left: var(--xterm-left-gutter) !important;
+  background: #040404 !important;
+}
+
+[data-theme="light"] .terminal-instance .xterm-screen {
+  background: #ffffff !important;
+}
