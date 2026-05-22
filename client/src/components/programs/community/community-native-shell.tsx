@@ -1,4 +1,5 @@
 import "./community.css";
+import "./community-phone-match.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LogIn,
@@ -51,6 +52,20 @@ const STORAGE_KEY = "reterm.community.messages";
 const COMPACT_PANE_WIDTH = 767;
 const COMPACT_POINTER_QUERY = "(hover: none) and (pointer: coarse)";
 
+function isTelegramMessage(value: unknown): value is TelegramMessage {
+  if (!value || typeof value !== "object") return false;
+
+  const message = value as Partial<TelegramMessage>;
+
+  return (
+    typeof message.id === "string" &&
+    typeof message.chatId === "string" &&
+    typeof message.text === "string" &&
+    typeof message.time === "string" &&
+    (message.outgoing === undefined || typeof message.outgoing === "boolean")
+  );
+}
+
 function readStoredMessages(): TelegramMessage[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -59,7 +74,8 @@ function readStoredMessages(): TelegramMessage[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return MOCK_MESSAGES;
 
-    return parsed;
+    const messages = parsed.filter(isTelegramMessage);
+    return messages.length > 0 ? messages : MOCK_MESSAGES;
   } catch {
     return MOCK_MESSAGES;
   }
@@ -78,6 +94,7 @@ export function CommunityNativeShell() {
   const [showLogin, setShowLogin] = useState(false);
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatQuery, setChatQuery] = useState("");
   const [messagesState, setMessagesState] = useState<TelegramMessage[]>(() =>
     readStoredMessages()
   );
@@ -94,8 +111,6 @@ export function CommunityNativeShell() {
         pointerQuery.matches;
 
       setIsCompactLayout(compact);
-
-      // Keep the user's drawer state across pane-size changes.
     };
 
     syncLayout();
@@ -109,6 +124,15 @@ export function CommunityNativeShell() {
       pointerQuery.removeEventListener("change", syncLayout);
     };
   }, []);
+
+  const visibleChats = useMemo(() => {
+    const query = chatQuery.trim().toLowerCase();
+    if (!query) return MOCK_CHATS;
+
+    return MOCK_CHATS.filter((chat) =>
+      `${chat.title} ${chat.subtitle}`.toLowerCase().includes(query)
+    );
+  }, [chatQuery]);
 
   const activeChat =
     MOCK_CHATS.find((chat) => chat.id === activeChatId) ?? MOCK_CHATS[0];
@@ -187,7 +211,7 @@ export function CommunityNativeShell() {
               title={sidebarOpen ? "close chats" : "open chats"}
               aria-label={sidebarOpen ? "close chats" : "open chats"}
             >
-              {isCompactLayout && sidebarOpen ? (
+              {sidebarOpen ? (
                 <PanelLeftCloseIcon className="community-panel-icon" />
               ) : (
                 <PanelLeftOpenIcon className="community-panel-icon" />
@@ -199,6 +223,7 @@ export function CommunityNativeShell() {
             type="button"
             className="community-session-title chat-session-title"
             title="telegram community"
+            aria-label={`active chat: ${activeChat.title}`}
           >
             <span>{activeChat.title}</span>
           </button>
@@ -213,7 +238,8 @@ export function CommunityNativeShell() {
             type="button"
             className="chat-tool-button community-panel-button text-muted-foreground"
             onClick={() => setShowLogin(true)}
-            title="connect telegram"
+            title="mock telegram login"
+            aria-label="open mock telegram login"
           >
             <LogIn className="community-panel-icon" />
           </button>
@@ -223,6 +249,7 @@ export function CommunityNativeShell() {
             className="chat-tool-button community-panel-button text-muted-foreground"
             onClick={handleClearMessages}
             title="reset mock messages"
+            aria-label="reset mock messages"
           >
             <RotateCcw className="community-panel-icon" />
           </button>
@@ -231,16 +258,19 @@ export function CommunityNativeShell() {
 
       <div className="community-workspace">
         <TelegramChatList
-          chats={MOCK_CHATS}
+          chats={visibleChats}
           activeChatId={activeChat.id}
+          query={chatQuery}
+          onQueryChange={setChatQuery}
           onSelectChat={handleSelectChat}
         />
 
-        {isCompactLayout && sidebarOpen ? (
+        {isCompactLayout ? (
           <button
             type="button"
-            className="community-sidebar-scrim"
+            className={`community-sidebar-scrim `}
             aria-label="close chats"
+            disabled={!sidebarOpen}
             onClick={() => setSidebarOpen(false)}
           />
         ) : null}
