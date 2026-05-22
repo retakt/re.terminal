@@ -843,7 +843,6 @@ body {
   width: 100% !important;
   height: 100% !important;
   right: 0 !important;
-  scrollbar-gutter: stable !important;
 }
 
 .terminal-instance .xterm-viewport::-webkit-scrollbar-track {
@@ -855,7 +854,6 @@ body {
 }
 
 .terminal-instance .xterm-screen {
-  min-width: 100% !important;
   min-height: 100% !important;
 }
 .terminal-instance .xterm-viewport::-webkit-scrollbar-corner {
@@ -13626,62 +13624,75 @@ display: flex !important;
 @media (max-width: 720px) { .browser-workbench { padding: 8px; } .browser-topbar { align-items: flex-start; flex-direction: column; } .browser-commandbar { grid-template-columns: 34px 34px 34px minmax(0, 1fr); } .browser-commandbar select, .browser-commandbar .browser-primary-action, .browser-commandbar button:last-child { grid-column: span 2; } .browser-ai-panel { grid-template-columns: minmax(0, 1fr); } }
 
 
-/* ─── xterm right-gutter correction ─────────────────────────────────────── */
-/* Do not use both-edges here. We want to push the rendered grid right. */
-
-/* ─── Terminal frame: match Logs container feel ─────────────────────────── */
+/* ─── Terminal frame: contained like Logs ───────────────────────────────── */
 
 .terminal-instance {
   --terminal-frame-inset: 4px;
 
   box-sizing: border-box;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 22%, var(--border-subtle));
   border-radius: 4px;
   overflow: hidden;
-  background: #040404 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  background: color-mix(in srgb, #040404 84%, transparent) !important;
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    0 4px 12px rgba(0,0,0,0.18);
 }
 
 [data-theme="light"] .terminal-instance {
-  background: #ffffff !important;
+  background: color-mix(in srgb, #ffffff 82%, transparent) !important;
   border-color: var(--border);
-  box-shadow: 0 4px 12px rgba(31, 35, 40, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.8),
+    0 4px 12px rgba(31,35,40,0.08);
 }
 
+/* Let xterm fill the frame without stealing border space. */
 .terminal-instance .xterm {
+  position: absolute !important;
+  inset: 0 !important;
+  box-sizing: border-box !important;
+
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+
   padding: 0 !important;
   margin: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: #040404 !important;
+  overflow: hidden !important;
+
+  background: transparent !important;
 }
 
-[data-theme="light"] .terminal-instance .xterm {
-  background: #ffffff !important;
-}
-
-.terminal-instance .xterm-viewport,
-.terminal-instance .xterm-screen {
-  background: #040404 !important;
-}
-
-[data-theme="light"] .terminal-instance .xterm-viewport,
-[data-theme="light"] .terminal-instance .xterm-screen {
-  background: #ffffff !important;
-}
-
-/* Keep scrollbar real but invisible. */
+/* IMPORTANT:
+   no scrollbar-gutter here. It was the cause of the right-side clipping. */
 .terminal-instance .xterm-viewport {
+  position: absolute !important;
+  inset: 0 !important;
+
+  width: auto !important;
+  height: auto !important;
+
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  scrollbar-gutter: stable !important;
+
+  scrollbar-gutter: auto !important;
   scrollbar-width: thin !important;
   scrollbar-color: transparent transparent !important;
+
+  background: transparent !important;
 }
 
+/* Keep the scrollbar real, but invisible. */
 .terminal-instance .xterm-viewport::-webkit-scrollbar {
   width: 6px !important;
   height: 6px !important;
+  display: block !important;
 }
 
 .terminal-instance .xterm-viewport::-webkit-scrollbar-track,
@@ -13691,6 +13702,21 @@ display: flex !important;
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
+}
+
+/* Do NOT force min-width: 100%.
+   xterm should own its grid width after FitAddon runs. */
+.terminal-instance .xterm-screen {
+  min-width: 0 !important;
+  min-height: 100% !important;
+  background: transparent !important;
+}
+
+.terminal-instance .xterm-helpers,
+.terminal-instance .xterm-scroll-area,
+.terminal-instance .xterm-rows,
+.terminal-instance .xterm-rows > div {
+  background: transparent !important;
 }
 
 @media (max-width: 640px) {
