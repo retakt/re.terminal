@@ -1,0 +1,1303 @@
+{
+  "sessionId": "cb6abb3e-06e2-49bc-a9c0-640d45de54a7",
+  "mode": "browser",
+  "currentUrl": "https://ezhrmsys.com/attendance-employee",
+  "currentTitle": "",
+  "currentExtensionId": "",
+  "currentPageKey": "attendance-employee",
+  "lastObservation": {
+    "url": "https://ezhrmsys.com/attendance-employee",
+    "title": "",
+    "textPreview": "### Open tabs - 0: [](about:blank) - 1: [](about:blank) - 2: [](about:blank) - 3: (current) [](https://ezhrmsys.com/attendance-employee) ### Page - Page URL: https://ezhrmsys.com/attendance-employee ### Snapshot ```yaml - generic [active] [ref=e1]: - generic [ref=e2]: - generic [ref=e3]: - link \"Logo\" [ref=e5] [cursor=pointer]: - /url: https://ezhrmsys.com/attendance-employee - img \"Logo\" [ref=e6] - link: - /url: javascript:void(0); - link \"\" [ref=e7] [cursor=pointer]: - /url: \"#sidebar\" - generic [ref=e8]:  - list [ref=e9]: - listitem [ref=e10]: - button \"\" [ref=e11] [cursor=pointer]: - generic [ref=e13]:  - text:    - listitem [ref=e14]: - button \"Flag\" [ref=e15] [cursor=pointer]: -",
+    "engine": "playwright_mcp",
+    "extractionPath": "playwright_mcp.snapshot",
+    "extractionSources": [
+      "playwright_mcp.snapshot"
+    ],
+    "extractionCapabilities": {
+      "accessibilityTree": true,
+      "selectors": true
+    },
+    "requestedUrl": "https://ezhrmsys.com/attendance-employee",
+    "error": "",
+    "isLoginPage": false,
+    "forms": [
+      {
+        "action": "",
+        "method": "",
+        "selector": "",
+        "fields": [
+          {
+            "name": "",
+            "id": "",
+            "type": "textbox",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "e142",
+            "secret": false
+          },
+          {
+            "name": "",
+            "id": "",
+            "type": "textbox",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "e147",
+            "secret": false
+          },
+          {
+            "name": "entries per page",
+            "id": "",
+            "type": "combobox",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "e159",
+            "secret": false
+          },
+          {
+            "name": "Search:",
+            "id": "",
+            "type": "textbox",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "e164",
+            "secret": false
+          }
+        ],
+        "buttons": []
+      }
+    ],
+    "buttons": [
+      {
+        "text": "",
+        "selector": "e11",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "Flag",
+        "selector": "e15",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "Check In",
+        "selector": "e101",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "View Deduction Details",
+        "selector": "e120",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "",
+        "selector": "e149",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "Search",
+        "selector": "e151",
+        "tag": "",
+        "type": ""
+      }
+    ],
+    "links": [
+      {
+        "text": "Logo",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "User Image",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Attendance",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Leave Application",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Other Leaves Application",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Leave Status",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Passport Request Form",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Passport Request Status",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Salary Deduction",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Manage Bank Accounts",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " System Documentation",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "Dashboard",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "First",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "Previous",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "1",
+        "href": "",
+        "selector": ""
+      }
+    ],
+    "inputs": [
+      {
+        "name": "",
+        "id": "",
+        "type": "textbox",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "e142",
+        "secret": false
+      },
+      {
+        "name": "",
+        "id": "",
+        "type": "textbox",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "e147",
+        "secret": false
+      },
+      {
+        "name": "entries per page",
+        "id": "",
+        "type": "combobox",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "e159",
+        "secret": false
+      },
+      {
+        "name": "Search:",
+        "id": "",
+        "type": "textbox",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "e164",
+        "secret": false
+      }
+    ],
+    "interactiveElements": [
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e1",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e2",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e3",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "",
+        "text": "Logo",
+        "selector": "e5",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "img",
+        "tag": "",
+        "text": "Logo",
+        "selector": "e6",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "",
+        "text": "",
+        "selector": "e7",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e8",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "list",
+        "tag": "",
+        "text": "",
+        "selector": "e9",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e10",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "button",
+        "tag": "",
+        "text": "",
+        "selector": "e11",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e13",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e14",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "button",
+        "tag": "",
+        "text": "Flag",
+        "selector": "e15",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "img",
+        "tag": "",
+        "text": "Flag",
+        "selector": "e16",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e17",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "",
+        "text": "User Image",
+        "selector": "e18",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "img",
+        "tag": "",
+        "text": "User Image",
+        "selector": "e20",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "list",
+        "tag": "",
+        "text": "",
+        "selector": "e26",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e27",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e28",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e29",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "",
+        "text": " Attendance",
+        "selector": "e30",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e31",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e32",
+        "href": "",
+        "type": ""
+      }
+    ]
+  },
+  "lastValidObservation": {
+    "url": "https://ezhrmsys.com/attendance-employee",
+    "title": "",
+    "textPreview": "### Open tabs - 0: [](about:blank) - 1: [](about:blank) - 2: [](about:blank) - 3: (current) [](https://ezhrmsys.com/attendance-employee) ### Page - Page URL: https://ezhrmsys.com/attendance-employee ### Snapshot ```yaml - generic [active] [ref=e1]: - generic [ref=e2]: - generic [ref=e3]: - link \"Logo\" [ref=e5] [cursor=pointer]: - /url: https://ezhrmsys.com/attendance-employee - img \"Logo\" [ref=e6] - link: - /url: javascript:void(0); - link \"\" [ref=e7] [cursor=pointer]: - /url: \"#sidebar\" - generic [ref=e8]:  - list [ref=e9]: - listitem [ref=e10]: - button \"\" [ref=e11] [cursor=pointer]: - generic [ref=e13]:  - text:    - listitem [ref=e14]: - button \"Flag\" [ref=e15] [cursor=pointer]: -",
+    "engine": "playwright_mcp",
+    "extractionPath": "playwright_mcp.snapshot",
+    "extractionSources": [
+      "playwright_mcp.snapshot"
+    ],
+    "extractionCapabilities": {
+      "accessibilityTree": true,
+      "selectors": true
+    },
+    "requestedUrl": "https://ezhrmsys.com/attendance-employee",
+    "error": "",
+    "isLoginPage": false,
+    "forms": [
+      {
+        "action": "",
+        "method": "",
+        "selector": "",
+        "fields": [
+          {
+            "name": "",
+            "id": "",
+            "type": "textbox",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "e142",
+            "secret": false
+          },
+          {
+            "name": "",
+            "id": "",
+            "type": "textbox",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "e147",
+            "secret": false
+          },
+          {
+            "name": "entries per page",
+            "id": "",
+            "type": "combobox",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "e159",
+            "secret": false
+          },
+          {
+            "name": "Search:",
+            "id": "",
+            "type": "textbox",
+            "placeholder": "",
+            "ariaLabel": "",
+            "selector": "e164",
+            "secret": false
+          }
+        ],
+        "buttons": []
+      }
+    ],
+    "buttons": [
+      {
+        "text": "",
+        "selector": "e11",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "Flag",
+        "selector": "e15",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "Check In",
+        "selector": "e101",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "View Deduction Details",
+        "selector": "e120",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "",
+        "selector": "e149",
+        "tag": "",
+        "type": ""
+      },
+      {
+        "text": "Search",
+        "selector": "e151",
+        "tag": "",
+        "type": ""
+      }
+    ],
+    "links": [
+      {
+        "text": "Logo",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "User Image",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Attendance",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Leave Application",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Other Leaves Application",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Leave Status",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Passport Request Form",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Passport Request Status",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Salary Deduction",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " Manage Bank Accounts",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": " System Documentation",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "Dashboard",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "First",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "Previous",
+        "href": "",
+        "selector": ""
+      },
+      {
+        "text": "1",
+        "href": "",
+        "selector": ""
+      }
+    ],
+    "inputs": [
+      {
+        "name": "",
+        "id": "",
+        "type": "textbox",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "e142",
+        "secret": false
+      },
+      {
+        "name": "",
+        "id": "",
+        "type": "textbox",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "e147",
+        "secret": false
+      },
+      {
+        "name": "entries per page",
+        "id": "",
+        "type": "combobox",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "e159",
+        "secret": false
+      },
+      {
+        "name": "Search:",
+        "id": "",
+        "type": "textbox",
+        "placeholder": "",
+        "ariaLabel": "",
+        "selector": "e164",
+        "secret": false
+      }
+    ],
+    "interactiveElements": [
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e1",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e2",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e3",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "",
+        "text": "Logo",
+        "selector": "e5",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "img",
+        "tag": "",
+        "text": "Logo",
+        "selector": "e6",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "",
+        "text": "",
+        "selector": "e7",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e8",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "list",
+        "tag": "",
+        "text": "",
+        "selector": "e9",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e10",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "button",
+        "tag": "",
+        "text": "",
+        "selector": "e11",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e13",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e14",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "button",
+        "tag": "",
+        "text": "Flag",
+        "selector": "e15",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "img",
+        "tag": "",
+        "text": "Flag",
+        "selector": "e16",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e17",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "",
+        "text": "User Image",
+        "selector": "e18",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "img",
+        "tag": "",
+        "text": "User Image",
+        "selector": "e20",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "list",
+        "tag": "",
+        "text": "",
+        "selector": "e26",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e27",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e28",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "listitem",
+        "tag": "",
+        "text": "",
+        "selector": "e29",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "link",
+        "tag": "",
+        "text": " Attendance",
+        "selector": "e30",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e31",
+        "href": "",
+        "type": ""
+      },
+      {
+        "role": "generic",
+        "tag": "",
+        "text": "",
+        "selector": "e32",
+        "href": "",
+        "type": ""
+      }
+    ]
+  },
+  "lastFailedObservation": null,
+  "pendingForm": null,
+  "activeEngine": "playwright_mcp",
+  "engineFailures": {},
+  "pendingInstruction": "",
+  "pendingAction": null,
+  "lastIntent": "click_or_open",
+  "lastCommand": {
+    "tool": "browserClickByText",
+    "args": {
+      "currentUrl": "https://ezhrmsys.com/login",
+      "text": "Login Access to dashboard ![](https://ezhrmsys.com/assets/img/logo/logo.png) Employee ID Password: [redacted]",
+      "backend": "playwright_mcp"
+    },
+    "backend": "playwright_mcp"
+  },
+  "lastToolResult": {
+    "ok": true,
+    "status": "success",
+    "action": "click",
+    "engine": "playwright_mcp",
+    "extractionPath": "playwright_mcp.snapshot",
+    "currentUrl": "https://ezhrmsys.com/attendance-employee",
+    "currentTitle": "",
+    "error": "",
+    "attempts": [],
+    "steps": [
+      {
+        "type": "playwright_mcp",
+        "tool": "browser_snapshot",
+        "engine": "",
+        "ok": true,
+        "valid": true,
+        "error": "",
+        "currentUrl": "https://ezhrmsys.com/attendance-employee"
+      },
+      {
+        "type": "playwright_mcp",
+        "tool": "browser_click",
+        "engine": "",
+        "ok": true,
+        "valid": false,
+        "error": "",
+        "currentUrl": "https://ezhrmsys.com/attendance-employee"
+      },
+      {
+        "type": "playwright_mcp",
+        "tool": "browser_snapshot",
+        "engine": "",
+        "ok": true,
+        "valid": true,
+        "error": "",
+        "currentUrl": "https://ezhrmsys.com/attendance-employee"
+      }
+    ],
+    "filledFields": [],
+    "missingFields": [],
+    "submitStatus": ""
+  },
+  "visited": [
+    "https://ezhrmsys.com/",
+    "https://ezhrmsys.com/attendance-employee",
+    "https://ezhrmsys.com/login"
+  ],
+  "learnedAliases": [],
+  "lastToolResults": [
+    {
+      "ok": true,
+      "status": "success",
+      "action": "navigate",
+      "engine": "static_fetch",
+      "extractionPath": "static_fetch",
+      "currentUrl": "https://ezhrmsys.com/",
+      "currentTitle": "Login - HRM",
+      "error": "",
+      "attempts": [
+        {
+          "engine": "lightpanda_cdp",
+          "ok": false,
+          "valid": false,
+          "error": "lightpanda_cdp CDP timeout: Page.navigate",
+          "requestedUrl": "https://ezhrmsys.com",
+          "currentUrl": ""
+        },
+        {
+          "engine": "chrome_cdp",
+          "ok": false,
+          "valid": false,
+          "error": "connect ECONNREFUSED 127.0.0.1:9223",
+          "requestedUrl": "https://ezhrmsys.com",
+          "currentUrl": ""
+        },
+        {
+          "engine": "static_fetch",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "requestedUrl": "https://ezhrmsys.com",
+          "currentUrl": "https://ezhrmsys.com/"
+        }
+      ],
+      "steps": [
+        {
+          "type": "observe",
+          "tool": "navigate",
+          "engine": "static_fetch",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": ""
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "fill",
+      "engine": "playwright_mcp",
+      "extractionPath": "playwright_mcp.snapshot",
+      "currentUrl": "https://ezhrmsys.com/",
+      "currentTitle": "Login - HRM",
+      "error": "",
+      "attempts": [],
+      "steps": [
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_snapshot",
+          "engine": "",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/"
+        },
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_fill_form",
+          "engine": "",
+          "ok": true,
+          "valid": false,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/"
+        },
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_snapshot",
+          "engine": "",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/"
+        }
+      ],
+      "filledFields": [
+        {
+          "label": "employee_id",
+          "type": "",
+          "value": "ezgb000121",
+          "secret": false
+        },
+        {
+          "label": "password",
+          "type": "",
+          "value": "[redacted]",
+          "secret": true
+        }
+      ],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "click",
+      "engine": "playwright_mcp",
+      "extractionPath": "playwright_mcp.snapshot",
+      "currentUrl": "https://ezhrmsys.com/attendance-employee",
+      "currentTitle": "",
+      "error": "",
+      "attempts": [],
+      "steps": [
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_snapshot",
+          "engine": "",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/"
+        },
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_click",
+          "engine": "",
+          "ok": true,
+          "valid": false,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/"
+        },
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_snapshot",
+          "engine": "",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/attendance-employee"
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "observe",
+      "engine": "lightpanda_cdp",
+      "extractionPath": "lightpanda_cdp.markdown,lightpanda_cdp.axtree,dom_eval",
+      "currentUrl": "https://ezhrmsys.com/login",
+      "currentTitle": "Login - HRM",
+      "error": "",
+      "attempts": [
+        {
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "requestedUrl": "https://ezhrmsys.com/attendance-employee",
+          "currentUrl": "https://ezhrmsys.com/login"
+        }
+      ],
+      "steps": [
+        {
+          "type": "observe",
+          "tool": "observe",
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": ""
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "observe",
+      "engine": "lightpanda_cdp",
+      "extractionPath": "lightpanda_cdp.markdown,lightpanda_cdp.axtree,dom_eval",
+      "currentUrl": "https://ezhrmsys.com/login",
+      "currentTitle": "Login - HRM",
+      "error": "",
+      "attempts": [
+        {
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "requestedUrl": "https://ezhrmsys.com/login",
+          "currentUrl": "https://ezhrmsys.com/login"
+        }
+      ],
+      "steps": [
+        {
+          "type": "observe",
+          "tool": "observe",
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": ""
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "observe",
+      "engine": "lightpanda_cdp",
+      "extractionPath": "lightpanda_cdp.markdown,lightpanda_cdp.axtree,dom_eval",
+      "currentUrl": "https://ezhrmsys.com/login",
+      "currentTitle": "Login - HRM",
+      "error": "",
+      "attempts": [
+        {
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "requestedUrl": "https://ezhrmsys.com/login",
+          "currentUrl": "https://ezhrmsys.com/login"
+        }
+      ],
+      "steps": [
+        {
+          "type": "observe",
+          "tool": "observe",
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": ""
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "observe",
+      "engine": "lightpanda_cdp",
+      "extractionPath": "lightpanda_cdp.markdown,lightpanda_cdp.axtree,dom_eval",
+      "currentUrl": "https://ezhrmsys.com/login",
+      "currentTitle": "Login - HRM",
+      "error": "",
+      "attempts": [
+        {
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "requestedUrl": "https://ezhrmsys.com/login",
+          "currentUrl": "https://ezhrmsys.com/login"
+        }
+      ],
+      "steps": [
+        {
+          "type": "observe",
+          "tool": "observe",
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": ""
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "observe",
+      "engine": "lightpanda_cdp",
+      "extractionPath": "lightpanda_cdp.markdown,lightpanda_cdp.axtree,dom_eval",
+      "currentUrl": "https://ezhrmsys.com/login",
+      "currentTitle": "Login - HRM",
+      "error": "",
+      "attempts": [
+        {
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "requestedUrl": "https://ezhrmsys.com/login",
+          "currentUrl": "https://ezhrmsys.com/login"
+        }
+      ],
+      "steps": [
+        {
+          "type": "observe",
+          "tool": "observe",
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": ""
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "observe",
+      "engine": "lightpanda_cdp",
+      "extractionPath": "lightpanda_cdp.markdown,lightpanda_cdp.axtree,dom_eval",
+      "currentUrl": "https://ezhrmsys.com/login",
+      "currentTitle": "Login - HRM",
+      "error": "",
+      "attempts": [
+        {
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "requestedUrl": "https://ezhrmsys.com/login",
+          "currentUrl": "https://ezhrmsys.com/login"
+        }
+      ],
+      "steps": [
+        {
+          "type": "observe",
+          "tool": "observe",
+          "engine": "lightpanda_cdp",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": ""
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    },
+    {
+      "ok": true,
+      "status": "success",
+      "action": "click",
+      "engine": "playwright_mcp",
+      "extractionPath": "playwright_mcp.snapshot",
+      "currentUrl": "https://ezhrmsys.com/attendance-employee",
+      "currentTitle": "",
+      "error": "",
+      "attempts": [],
+      "steps": [
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_snapshot",
+          "engine": "",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/attendance-employee"
+        },
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_click",
+          "engine": "",
+          "ok": true,
+          "valid": false,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/attendance-employee"
+        },
+        {
+          "type": "playwright_mcp",
+          "tool": "browser_snapshot",
+          "engine": "",
+          "ok": true,
+          "valid": true,
+          "error": "",
+          "currentUrl": "https://ezhrmsys.com/attendance-employee"
+        }
+      ],
+      "filledFields": [],
+      "missingFields": [],
+      "submitStatus": ""
+    }
+  ],
+  "failureCount": 0,
+  "updatedAt": "2026-05-22T17:07:58.684Z"
+}

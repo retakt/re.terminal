@@ -3072,6 +3072,63 @@ export async function browserAgentRun(args = {}) {
   }
 
   const command = validation.command;
+
+  const readOnlyMode = ["1", "true", "yes", "on"].includes(String(process.env.BROWSER_AGENT_READ_ONLY || "").toLowerCase());
+  const blockRiskyClicks = ["1", "true", "yes", "on"].includes(String(process.env.BROWSER_AGENT_BLOCK_RISKY_CLICKS || "").toLowerCase());
+
+  const commandText = String(
+    command?.args?.text ||
+    command?.args?.buttonText ||
+    command?.args?.submitText ||
+    command?.args?.label ||
+    ""
+  );
+
+  const dangerousClickText = /\b(check\s*in|check\s*out|submit|save|delete|approve|confirm|pay|payment|attendance|clock\s*in|clock\s*out)\b/i;
+
+  if (
+    readOnlyMode &&
+    !["browserNavigate", "browserObserve", "browserScrape", "browserStatus", "browserReset"].includes(command.tool)
+  ) {
+    return responseBase({
+      ok: false,
+      status: "blocked",
+      instruction,
+      state,
+      steps: stepsFromPlanResult(planner, redactedGuardrail, {}, command),
+      summary: "I stopped before touching the page. Browser read-only mode is enabled, so I can observe and explain, but I will not click, fill, submit, or change anything.",
+      requiresUser: true,
+      blockedReason: "browser_read_only_mode",
+      watcher: redactedGuardrail,
+      planner,
+      nextSafeAction: "Use observe/scrape only, or disable BROWSER_AGENT_READ_ONLY after adding exact target verification.",
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: browserAgentTokenUsage(plannerCall.usage, null),
+    });
+  }
+
+  if (
+    blockRiskyClicks &&
+    ["browserClickByText", "browserSubmitForm", "browserFillAndSubmit"].includes(command.tool) &&
+    dangerousClickText.test(commandText || instruction)
+  ) {
+    return responseBase({
+      ok: false,
+      status: "blocked",
+      instruction,
+      state,
+      steps: stepsFromPlanResult(planner, redactedGuardrail, {}, command),
+      summary: `I blocked this because it could change attendance/payroll/state. The requested or inferred target looked risky: "${commandText || instruction}".`,
+      requiresUser: true,
+      blockedReason: "risky_click_blocked",
+      watcher: redactedGuardrail,
+      planner,
+      nextSafeAction: "Use manual browser control for attendance/payroll actions. The agent should only observe this page.",
+      runtimeTiming: runtimeTiming(),
+      tokenUsage: browserAgentTokenUsage(plannerCall.usage, null),
+    });
+  }
+
   const browserToolStartedAt = nowMs();
   let result = await executeBrowserCommand(command, baseArgs, state);
   if (

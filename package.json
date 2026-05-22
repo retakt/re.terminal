@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "node server/server.js",
+    "dev:server": "node --env-file=server/.env server/server.js",
     "dev:client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
-    "start": "npm run build && node server/server.js",
-    "start:prod": "npm run build && NODE_ENV=production node server/server.js",
+    "start": "npm run build && node --env-file=server/.env server/server.js",
+    "start:prod": "npm run build && node --env-file=server/.env server/server.js",
     "smoke:mcp-architecture": "node server/scripts/smoke-mcp-architecture.js",
     "smoke:readiness": "node server/scripts/smoke-production-readiness.js",
     "smoke:all": "npm run smoke:mcp-architecture && npm run smoke:readiness"
