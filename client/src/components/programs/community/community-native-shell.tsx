@@ -336,7 +336,11 @@ export function CommunityNativeShell() {
           chats={visibleChats}
           activeChatId={activeChat.id}
           query={chatQuery}
-          className={isCompactLayout ? sidebarMotionClass : undefined}
+          className={
+            isCompactLayout
+              ? `chat-mobile-context-drawer community-mobile-drawer ${sidebarMotionClass}`
+              : undefined
+          }
           onQueryChange={setChatQuery}
           onSelectChat={handleSelectChat}
         />
@@ -344,9 +348,9 @@ export function CommunityNativeShell() {
         {isCompactLayout ? (
           <button
             type="button"
-            className={`community-sidebar-scrim ${sidebarMotionClass}`}
+            className={`chat-mobile-context-backdrop ${sidebarMotionClass}`}
             aria-label="close chats"
-            disabled={!sidebarOpen}
+            disabled={sidebarClosing}
             onClick={closeSidebar}
           />
         ) : null}

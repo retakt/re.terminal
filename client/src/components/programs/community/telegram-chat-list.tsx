@@ -18,7 +18,7 @@ export function TelegramChatList({
   onSelectChat,
 }: TelegramChatListProps) {
   return (
-    <aside className={["community-sidebar", className].filter(Boolean).join(" ")}>
+    <aside className={className || "community-sidebar"}>
       <div className="community-titlebar">
         <span className="community-title">telegram</span>
       </div>

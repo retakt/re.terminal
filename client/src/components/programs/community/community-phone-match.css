@@ -1,4 +1,4 @@
-/* Keep toolbar matched/centered. Do not change bar height. */
+/* Phone toolbar center only. Do not change bar height. */
 .community-native--compact > .chat-toolbar-row {
   width: 100% !important;
   display: flex !important;
@@ -37,41 +37,19 @@
   line-height: 1 !important;
 }
 
-/* AI chat mobile context drawer behavior */
-.community-native--compact .community-sidebar {
-  transition: transform 180ms var(--motion-ease) !important;
-  will-change: transform !important;
+/* Community content inside the actual AI chat drawer. */
+.community-mobile-drawer {
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-panel, var(--bg-surface));
+  color: var(--ui-text, var(--fg-base));
 }
 
-.community-native--compact .community-sidebar.is-open {
-  transform: translateX(0) !important;
+.community-mobile-drawer .community-titlebar {
+  flex: 0 0 36px;
 }
 
-.community-native--compact .community-sidebar.is-closing,
-.community-native--compact .community-sidebar.is-closed {
-  transform: translateX(-102%) !important;
-}
-
-.community-native--compact .community-sidebar-scrim {
-  display: block !important;
-  position: absolute !important;
-  z-index: 20 !important;
-  inset: 0 !important;
-  border: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  background: rgba(0, 0, 0, 0.26) !important;
-  transition: opacity 180ms var(--motion-ease) !important;
-  will-change: opacity !important;
-}
-
-.community-native--compact .community-sidebar-scrim.is-open {
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
-
-.community-native--compact .community-sidebar-scrim.is-closing,
-.community-native--compact .community-sidebar-scrim.is-closed {
-  opacity: 0 !important;
-  pointer-events: none !important;
+.community-mobile-drawer .community-chat-list {
+  flex: 1 1 auto;
+  min-height: 0;
 }
