@@ -118,23 +118,7 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
       console.error("xterm open failed", error);
       return;
     }
-const applyGridOffset = () => {
-  const viewport = el.querySelector<HTMLElement>(".xterm-viewport");
-  const screen = el.querySelector<HTMLElement>(".xterm-screen");
-  if (!viewport || !screen) return;
-
-  const viewportWidth = viewport.clientWidth;
-  const screenWidth = screen.offsetWidth;
-
-  // xterm renders whole character cells. Any leftover width appears as a right gutter.
-  // Move the xterm grid right so the leftover is on the left instead of the right.
-  const leftover = Math.max(0, viewportWidth - screenWidth);
-
-  // Clamp avoids weird huge shifts if xterm reports bad measurements during layout.
-  const offset = Math.min(leftover, 24);
-
-  el.style.setProperty("--xterm-left-gutter", `${offset}px`);
-};
+    
 
     const fitAndResize = () => {
       if (disposed) return;
@@ -142,7 +126,6 @@ const applyGridOffset = () => {
 
       try {
         fitAddon.fit();
-        applyGridOffset();
         sendResize(sessionId, xterm.cols, xterm.rows);
       } catch {
         window.setTimeout(() => {
@@ -150,7 +133,6 @@ const applyGridOffset = () => {
           if (!el.isConnected || el.clientWidth <= 0 || el.clientHeight <= 0) return;
           try {
             fitAddon.fit();
-            applyGridOffset();
             sendResize(sessionId, xterm.cols, xterm.rows);
           } catch {
             // xterm can briefly lack renderer dimensions while layout settles.
@@ -319,7 +301,7 @@ window.setTimeout(() => {
       onPointerDown={handlePointerDown}
       style={{
         position:   "absolute",
-        inset:      0,
+        inset:      "var(--terminal-frame-inset, 4px)",
         opacity:     isActive ? 1 : 0,
         // Keep pointer events only when active — prevents ghost touches on hidden tabs
         pointerEvents: isActive ? "auto" : "none",
