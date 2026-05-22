@@ -1,4 +1,6 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+
+import { Cursor } from "@/components/ui/custom-cursor";
 import { Pause, Play, RefreshCcw, Search, Trash2, Terminal } from "lucide-react";
 import { listAuditEvents, type AuditEvent } from "@/lib/logs-api";
 import {
@@ -277,8 +279,18 @@ function LogTooltipContent({
   );
 }
 
-function TerminalLine({ event, isPhone }: { event: AuditEvent; isPhone: boolean }) {
-  const [phoneOpen, setPhoneOpen] = useState(false);
+function TerminalLine({
+  event,
+  isPhone,
+  activePhoneTooltipSeq,
+  setActivePhoneTooltipSeq,
+}: {
+  event: AuditEvent;
+  isPhone: boolean;
+  activePhoneTooltipSeq: number | null;
+  setActivePhoneTooltipSeq: React.Dispatch<React.SetStateAction<number | null>>;
+}) {
+  const phoneOpen = isPhone && activePhoneTooltipSeq === event.seq;
   const statusColor = getStatusColor(event.status);
   const categoryColor = getCategoryColor(event.category);
 
@@ -321,21 +333,11 @@ function TerminalLine({ event, isPhone }: { event: AuditEvent; isPhone: boolean 
   const tokenText = event.usage?.totalTokens ? `${event.usage.totalTokens}t` : "";
   const preview = buildPreview(event, rawTitle, durationMs);
 
-  const rowTitle = [
-    `[${formatClock(event.ts)}]`,
-    `[${event.category}]`,
-    `[${actionText}]`,
-    `[${event.status}]`,
-    titleText,
-    scopeText,
-    metricText,
-    tokenText,
-    preview,
-  ].filter(Boolean).join(" ");
 
   return (
     <Cursor
       disabled={isPhone}
+      hideNativeCursor={false}
       content={
         <LogTooltipContent
           event={event}
@@ -350,11 +352,18 @@ function TerminalLine({ event, isPhone }: { event: AuditEvent; isPhone: boolean 
         />
       }
     >
-      <div
-        className={`log-line ${phoneOpen ? "is-tooltip-open" : ""}`}
-        onClick={() => {
-          if (isPhone) setPhoneOpen((value) => !value);
-        }}
+<div
+  className={`log-line ${phoneOpen ? "is-tooltip-open" : ""}`}
+  onClick={(eventClick) => {
+    if (!isPhone) return;
+
+    eventClick.preventDefault();
+    eventClick.stopPropagation();
+
+    setActivePhoneTooltipSeq((current) =>
+      current === event.seq ? null : event.seq,
+    );
+  }}
       >
         <span className="log-cell log-time log-time-cell">[{formatClock(event.ts)}]</span>
         <span className={`log-cell log-category ${categoryColor}`}>[{event.category}]</span>
@@ -388,6 +397,7 @@ function TerminalLine({ event, isPhone }: { event: AuditEvent; isPhone: boolean 
 
 export function LogsShell({ isActive = true }: { isActive?: boolean }) {
   const isPhone = useIsPhoneLayout();
+  const [activePhoneTooltipSeq, setActivePhoneTooltipSeq] = useState<number | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>("all");
   const [statuses, setStatuses] = useState<Set<(typeof STATUS_OPTIONS)[number]>>(new Set());
@@ -485,7 +495,12 @@ export function LogsShell({ isActive = true }: { isActive?: boolean }) {
   }, [followLive, visibleEvents]);
 
   return (
-    <div className="log-page">
+    <div
+  className="log-page"
+  onClick={() => {
+    if (isPhone) setActivePhoneTooltipSeq(null);
+  }}
+>
       {/* Minimal toolbar */}
       <header className="log-toolbar">
         <div className="log-toolbar-left">
@@ -608,7 +623,9 @@ export function LogsShell({ isActive = true }: { isActive?: boolean }) {
                 <TerminalLine
                   key={event.seq}
                   event={event}
-                  isPhone={isPhone}
+  isPhone={isPhone}
+  activePhoneTooltipSeq={activePhoneTooltipSeq}
+  setActivePhoneTooltipSeq={setActivePhoneTooltipSeq}
                 />
               ))
             )}
