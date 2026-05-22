@@ -206,30 +206,71 @@ function buildPreview(event: AuditEvent, titleText: string, durationMs: number |
   return summary || previewText(event.title || event.action, 440);
 }
 
+function compactLogLabel(value: string, limit = 20) {
+  let label = sanitizeControlChars(stripAnsiCodes(String(value || ""))).trim();
+
+  label = label
+    // display-only cleanup; real refs/tool/action values stay untouched
+    .replace(/^mcp[_\-\s:]+/i, "")
+    .replace(/^mcp(?=[A-Z])/i, "")
+    .replace(/__+/g, "_")
+    .replace(/--+/g, "-")
+    .replace(/^ops[_-]local[_-]docker[_-]/i, "docker/")
+    .replace(/^ops[_-]monitor[_-]/i, "mon/")
+    .replace(/^ops[_-]ollama[_-]/i, "ollama/")
+    .replace(/^ops[_-]/i, "")
+    .replace(/^web[_-]search$/i, "web")
+    .replace(/^web[_-]/i, "web/")
+    .replace(/^browser[_-]lightpanda/i, "browser")
+    .replace(/^browser[_-]/i, "browser/")
+    .replace(/^git[_-]/i, "git/")
+    .replace(/^memory[_-]/i, "mem/")
+    .replace(/^terminal[_-]/i, "term/");
+
+  if (!label) label = "event";
+  return label.length > limit ? `${label.slice(0, Math.max(0, limit - 1))}…` : label;
+}
+
+function compactActionLabel(value: string) {
+  return String(value || "")
+    .replace(/^gateway\.call$/i, "call")
+    .replace(/^session\.resized$/i, "resize")
+    .replace(/^shell\.output$/i, "out")
+    .replace(/^llm\./i, "")
+    .replace(/^mcp\./i, "");
+}
+
 function TerminalLine({ event }: { event: AuditEvent }) {
   const statusColor = getStatusColor(event.status);
   const categoryColor = getCategoryColor(event.category);
+
   const tool = typeof event.refs?.tool === "string" ? event.refs.tool : "";
   const sessionId = typeof event.refs?.sessionId === "string" ? event.refs.sessionId : "";
   const pageType = typeof event.refs?.pageType === "string" ? event.refs.pageType : "";
   const serverId = typeof event.refs?.serverId === "string" ? event.refs.serverId : "";
+
   const durationMs = typeof event.refs?.durationMs === "number"
     ? event.refs.durationMs
     : typeof event.payload === "object" && event.payload && typeof (event.payload as Record<string, unknown>).durationMs === "number"
       ? (event.payload as Record<string, unknown>).durationMs as number
       : null;
+
   const bytes = typeof event.refs?.bytes === "number" ? event.refs.bytes : null;
   const cols = typeof event.refs?.cols === "number" ? event.refs.cols : null;
   const rows = typeof event.refs?.rows === "number" ? event.refs.rows : null;
+
   const rawTitle = tool || event.title || event.action || event.category;
-  const titleText = previewText(rawTitle, 52);
+  const titleText = compactLogLabel(rawTitle, 26);
+  const actionText = compactActionLabel(event.action);
+
   const scopeText = previewText(
     serverId
       || pageType
-      || (sessionId ? compactId(sessionId, 14) : "")
+      || (sessionId ? compactId(sessionId, 10) : "")
       || compactSource(event.source),
-    22,
+    16,
   );
+
   const metricText = durationMs != null && durationMs > 0
     ? `${durationMs}ms`
     : bytes != null && bytes > 0
@@ -237,13 +278,15 @@ function TerminalLine({ event }: { event: AuditEvent }) {
       : cols != null && rows != null
         ? `${cols}x${rows}`
         : "";
+
   const metricColor = durationMs != null ? getDurationColor(durationMs) : "log-muted";
-  const tokenText = event.usage?.totalTokens ? `${event.usage.totalTokens} tok` : "";
+  const tokenText = event.usage?.totalTokens ? `${event.usage.totalTokens}t` : "";
   const preview = buildPreview(event, rawTitle, durationMs);
+
   const rowTitle = [
     `[${formatClock(event.ts)}]`,
     `[${event.category}]`,
-    `[${event.action}]`,
+    `[${actionText}]`,
     `[${event.status}]`,
     titleText,
     scopeText,
@@ -254,14 +297,14 @@ function TerminalLine({ event }: { event: AuditEvent }) {
 
   return (
     <div className="log-line" title={rowTitle}>
-      <span className="log-cell log-time">[{formatClock(event.ts)}]</span>
-      <span className={`log-cell ${categoryColor}`}>[{event.category}]</span>
-      <span className="log-cell log-action">[{event.action}]</span>
-      <span className={`log-cell ${statusColor}`}>[{event.status}]</span>
-      <span className="log-cell log-magenta">[{titleText}]</span>
-      <span className="log-cell log-teal">{scopeText ? `[${scopeText}]` : ""}</span>
-      <span className={`log-cell ${metricColor}`}>{metricText ? `[${metricText}]` : ""}</span>
-      <span className="log-cell log-yellow">{tokenText ? `[${tokenText}]` : ""}</span>
+      <span className="log-cell log-time log-time-cell">[{formatClock(event.ts)}]</span>
+      <span className={`log-cell log-category ${categoryColor}`}>[{event.category}]</span>
+      <span className="log-cell log-action">[{actionText}]</span>
+      <span className={`log-cell log-status-cell ${statusColor}`}>[{event.status}]</span>
+      <span className="log-cell log-title log-magenta">[{titleText}]</span>
+      <span className="log-cell log-scope log-teal">{scopeText ? `[${scopeText}]` : ""}</span>
+      <span className={`log-cell log-metric ${metricColor}`}>{metricText ? `[${metricText}]` : ""}</span>
+      <span className="log-cell log-tokens log-yellow">{tokenText ? `[${tokenText}]` : ""}</span>
       <span className="log-message">{renderPreview(preview)}</span>
     </div>
   );
