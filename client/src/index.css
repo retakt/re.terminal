@@ -746,18 +746,36 @@ body {
   animation: reterm-screen-on 240ms var(--motion-ease) both;
 }
 
-/* xterm.js stays inside the app shell; only its viewport scrolls. */
-.xterm {
-  padding: 9px 12px 8px;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  position: relative;
-  overflow: hidden;
+/* xterm.js: fill the terminal page edge-to-edge. */
+.terminal-instance {
+  background: #040404 !important;
 }
 
-.xterm-viewport { 
-  background: var(--bg-base) !important;
+[data-theme="light"] .terminal-instance {
+  background: #ffffff !important;
+}
+
+.terminal-instance .xterm {
+  box-sizing: border-box;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 !important;
+  position: relative;
+  overflow: hidden;
+  background: #040404 !important;
+}
+
+[data-theme="light"] .terminal-instance .xterm {
+  background: #ffffff !important;
+}
+
+.terminal-instance .xterm-viewport {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: #040404 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
   -webkit-overflow-scrolling: touch;
@@ -765,6 +783,29 @@ body {
   touch-action: pan-y;
   scrollbar-width: thin;
   scrollbar-color: var(--ui-scrollbar-thumb, var(--ui-teal)) transparent;
+}
+
+[data-theme="light"] .terminal-instance .xterm-viewport {
+  background: #ffffff !important;
+}
+
+.terminal-instance .xterm-screen {
+  min-width: 100% !important;
+  min-height: 100% !important;
+  background: #040404 !important;
+}
+
+[data-theme="light"] .terminal-instance .xterm-screen {
+  background: #ffffff !important;
+}
+
+.terminal-instance .xterm-rows,
+.terminal-instance .xterm-rows > div {
+  background: transparent !important;
+}
+
+.terminal-instance .xterm-scroll-area {
+  width: 100% !important;
 }
 .xterm-viewport::-webkit-scrollbar { width: 6px; }
 .xterm-viewport::-webkit-scrollbar-thumb { background: var(--ui-scrollbar-thumb, var(--ui-teal)); border-radius: 3px; }
@@ -1392,7 +1433,6 @@ body {
   .reterm-login-label { font-size: 11px; }
 
   /* xterm padding tighter on mobile */
-  .xterm { padding: 0 !important; font-size: 13px; }
   
   .keybar {
     gap: 4px;
@@ -8599,8 +8639,8 @@ body,
   }
 
   .terminal-instance .xterm {
-    padding: 0 !important;
-  }
+  padding: 4px 6px !important;
+}
 }
 
 /* Edge-to-edge mobile shells: avoid internal gutters before browser/devtools handles. */
