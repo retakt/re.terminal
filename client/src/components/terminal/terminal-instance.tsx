@@ -218,6 +218,12 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
   });
 });
 
+window.setTimeout(() => {
+  if (disposed) return;
+  fitAndResize();
+  applyTheme();
+}, 120);
+
     xtermRef.current = xterm;
     fitRef.current   = fitAddon;
 
