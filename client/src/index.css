@@ -13885,13 +13885,13 @@ display: flex !important;
   .log-line.is-tooltip-open {
     background: rgba(88, 166, 255, 0.08);
   }
+.log-phone-tooltip {
+  position: absolute !important;
+  left: 4px !important;
+  right: 4px !important;
+  top: calc(100% + 4px) !important;
+  bottom: auto !important;
 
-  .log-phone-tooltip {
-    position: fixed !important;
-    left: 12px !important;
-    right: 12px !important;
-    bottom: 64px !important;
-    top: auto !important;
     z-index: 999999 !important;
 
     width: auto !important;
