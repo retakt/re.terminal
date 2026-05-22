@@ -12975,10 +12975,11 @@ display: flex !important;
 }
 
 .log-cell {
-  display: block;
+  display: inline-flex;
+  align-items: center;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -12986,9 +12987,12 @@ display: flex !important;
 }
 
 .log-bracket-cell {
-  display: inline-grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .log-bracket {
@@ -12996,12 +13000,13 @@ display: flex !important;
 }
 
 .log-bracket-value {
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .log-message {
   display: block;
   min-width: 0;
