@@ -1006,3 +1006,394 @@
   display: grid !important;
   grid-template-rows: minmax(0, 1fr) 40px !important;
 }
+
+/* ─── Community cleanup override ────────────────────────────────────── */
+
+.program-shell.community-native,
+.program-shell.program-shell--community.community-native,
+.community-native {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: none !important;
+  overflow: hidden !important;
+}
+
+.community-topbar.chat-toolbar-row {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  min-height: 52px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  padding: 10px 12px !important;
+  box-sizing: border-box !important;
+  border-bottom: 1px solid var(--ui-border-soft, var(--border-subtle)) !important;
+  background: var(--ui-panel, var(--bg-surface)) !important;
+}
+
+.community-workspace {
+  position: relative !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  overflow: hidden !important;
+}
+
+.community-native--desktop .community-workspace {
+  grid-template-columns: 280px minmax(0, 1fr) !important;
+}
+
+.community-native--desktop .community-sidebar {
+  grid-column: 1 !important;
+  display: flex !important;
+  position: relative !important;
+  z-index: auto !important;
+  inset: auto !important;
+  width: auto !important;
+  transform: none !important;
+}
+
+.community-native--desktop .community-main {
+  grid-column: 2 !important;
+}
+
+.community-native--desktop .community-sidebar-scrim {
+  display: none !important;
+}
+
+.community-native--compact .community-workspace {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.community-native--compact .community-main {
+  grid-column: 1 !important;
+}
+
+.community-native--compact .community-sidebar {
+  display: flex !important;
+  position: absolute !important;
+  z-index: 30 !important;
+  inset: 0 auto 0 0 !important;
+  width: min(82vw, 280px) !important;
+  transform: translateX(-102%) !important;
+  transition: transform 150ms ease !important;
+  box-shadow: 18px 0 40px rgba(0, 0, 0, 0.36) !important;
+}
+
+.community-native--compact.community-native--sidebar-open .community-sidebar {
+  transform: translateX(0) !important;
+}
+
+.community-native--compact.community-native--sidebar-open .community-sidebar-scrim {
+  display: block !important;
+  position: absolute !important;
+  z-index: 20 !important;
+  inset: 0 !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: rgba(0, 0, 0, 0.42) !important;
+}
+
+.community-main {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) 40px !important;
+}
+
+.community-search {
+  cursor: text;
+}
+
+.community-empty {
+  margin: 12px 4px;
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* ─── Community topbar compact sizing + desktop connect fix ─────────── */
+
+.community-topbar.chat-toolbar-row {
+  min-height: 44px !important;
+  padding: 7px 10px !important;
+  gap: 8px !important;
+}
+
+.community-topbar-left {
+  gap: 8px !important;
+}
+
+.community-topbar-actions {
+  gap: 5px !important;
+}
+
+.community-session-title,
+.community-session-title.chat-session-title {
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  max-width: 150px !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+
+.community-session-subtitle {
+  font-size: 9.5px !important;
+}
+
+.community-panel-button {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  border-radius: 4px !important;
+}
+
+.community-panel-icon {
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
+}
+
+/* Previous CSS hid the first desktop panel button; on desktop that is connect. */
+.community-native--desktop .community-topbar-actions .community-panel-button:first-child {
+  display: inline-flex !important;
+}
+
+/* Show a small "connect" label on desktop only. */
+.community-native--desktop .community-topbar-actions .community-panel-button:first-child {
+  width: auto !important;
+  max-width: none !important;
+  min-width: 78px !important;
+  padding: 0 9px !important;
+  gap: 5px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+}
+
+.community-native--desktop .community-topbar-actions .community-panel-button:first-child::after {
+  content: "connect";
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Keep compact/mobile actions icon-only. */
+.community-native--compact .community-topbar-actions .community-panel-button:first-child::after {
+  content: none !important;
+}
+
+/* ─── Community topbar: one notch smaller to match AI chat icons ─────── */
+
+.community-topbar.chat-toolbar-row {
+  min-height: 40px !important;
+  padding: 6px 9px !important;
+}
+
+.community-session-title,
+.community-session-title.chat-session-title {
+  height: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+  font-size: 11.5px !important;
+}
+
+.community-panel-button {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+}
+
+.community-panel-icon {
+  width: 13px !important;
+  height: 13px !important;
+  min-width: 13px !important;
+  min-height: 13px !important;
+}
+
+.community-native--desktop .community-topbar-actions .community-panel-button:first-child {
+  min-width: 72px !important;
+  padding: 0 8px !important;
+  font-size: 10.5px !important;
+}
+
+.community-native--desktop .community-topbar-actions .community-panel-button:first-child::after {
+  font-size: 10.5px !important;
+}
+
+/* ─── Community topbar: tiny bump up after compact pass ─────────────── */
+
+.community-topbar.chat-toolbar-row {
+  min-height: 42px !important;
+  padding: 6px 10px !important;
+}
+
+.community-session-title,
+.community-session-title.chat-session-title {
+  height: 27px !important;
+  min-height: 27px !important;
+  max-height: 27px !important;
+  font-size: 11.75px !important;
+}
+
+.community-panel-button {
+  width: 27px !important;
+  height: 27px !important;
+  min-width: 27px !important;
+  max-width: 27px !important;
+  min-height: 27px !important;
+  max-height: 27px !important;
+}
+
+.community-panel-icon {
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
+}
+
+.community-native--desktop .community-topbar-actions .community-panel-button:first-child {
+  min-width: 74px !important;
+  padding: 0 8px !important;
+  font-size: 10.75px !important;
+}
+
+.community-native--desktop .community-topbar-actions .community-panel-button:first-child::after {
+  font-size: 10.75px !important;
+}
+
+/* ─── Phone community drawer: AI chat panel motion + smaller icon ───── */
+
+.community-native--compact .community-topbar-left .community-panel-button {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+}
+
+.community-native--compact .community-topbar-left .community-panel-icon {
+  width: 13px !important;
+  height: 13px !important;
+  min-width: 13px !important;
+  min-height: 13px !important;
+}
+
+/* Match AI chat mobile context drawer timing exactly. */
+.community-native--compact .community-sidebar {
+  transform: translateX(-100%) !important;
+  transition: transform 180ms var(--motion-ease) !important;
+}
+
+.community-native--compact.community-native--sidebar-open .community-sidebar {
+  transform: translateX(0) !important;
+}
+
+/* Keep scrim mounted on phone so close can fade instead of disappearing. */
+.community-native--compact .community-sidebar-scrim {
+  display: block !important;
+  position: absolute !important;
+  z-index: 20 !important;
+  inset: 0 !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: rgba(0, 0, 0, 0.26) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 180ms var(--motion-ease) !important;
+}
+
+.community-native--compact .community-sidebar-scrim.is-open {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.community-native--compact .community-sidebar-scrim.is-closing {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ─── Phone only: match AI chat toolbar exactly ─────────────────────── */
+
+.community-native--compact .community-topbar.chat-toolbar-row {
+  min-height: 52px !important;
+  height: 52px !important;
+  max-height: 52px !important;
+  padding: 10px 12px !important;
+  gap: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  box-sizing: border-box !important;
+}
+
+.community-native--compact .community-topbar-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.community-native--compact .community-topbar-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex: 0 0 auto !important;
+}
+
+/* AI chat toggle button = size-8 */
+.community-native--compact .community-topbar-left .community-panel-button,
+.community-native--compact .community-topbar-actions .community-panel-button {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  padding: 0 !important;
+  border-radius: 4px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* AI chat icon = size-4 */
+.community-native--compact .community-panel-icon {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  stroke-width: 2 !important;
+}
+
+/* AI chat title position/height */
+.community-native--compact .community-session-title,
+.community-native--compact .community-session-title.chat-session-title {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  line-height: 1 !important;
+  max-width: 180px !important;
+  box-sizing: border-box !important;
+}
+
+.community-native--compact .community-session-subtitle {
+  display: none !important;
+}

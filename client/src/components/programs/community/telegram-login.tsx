@@ -12,16 +12,16 @@ export function TelegramLogin({ onDone }: TelegramLoginProps) {
           <span className="community-login-dot" />
           <span className="community-login-dot" />
           <span className="community-login-dot" />
-          <span className="community-login-title">telegram auth</span>
+          <span className="community-login-title">mock telegram auth</span>
         </div>
 
         <div className="community-login-logo">
           <MessageSquare size={22} strokeWidth={1.8} />
-          <span>telegram</span>
+          <span>telegram preview</span>
         </div>
 
         <p className="community-login-subtitle">
-          connect your telegram account to re.Term
+          preview the telegram connection flow before tdlib is wired up
         </p>
 
         <form
@@ -35,11 +35,12 @@ export function TelegramLogin({ onDone }: TelegramLoginProps) {
             <span className="community-login-label">phone number</span>
 
             <div className="community-login-command">
-              <span className="community-login-prompt">&gt;</span>
+              <span className="community-login-prompt" aria-hidden="true">&gt;</span>
               <input
                 className="community-login-input"
                 placeholder="+1 555 000 0000"
                 inputMode="tel"
+                aria-label="phone number"
               />
 
               <button className="community-login-btn" type="submit">
@@ -58,7 +59,7 @@ export function TelegramLogin({ onDone }: TelegramLoginProps) {
         </div>
 
         <p className="community-login-note">
-          this is still mock auth. next step is wiring this flow to tdlib.
+          mock auth only. next step is wiring this flow to tdlib.
         </p>
       </div>
     </div>

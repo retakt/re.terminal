@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { TelegramMessage } from "./telegram-types";
 
 type TelegramMessageListProps = {
@@ -5,8 +6,14 @@ type TelegramMessageListProps = {
 };
 
 export function TelegramMessageList({ messages }: TelegramMessageListProps) {
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [messages]);
+
   return (
-    <section className="community-messages">
+    <section className="community-messages" aria-label="messages">
       {messages.map((message) => (
         <div
           key={message.id}
@@ -20,6 +27,7 @@ export function TelegramMessageList({ messages }: TelegramMessageListProps) {
           <time>{message.time}</time>
         </div>
       ))}
+      <div ref={bottomRef} aria-hidden="true" />
     </section>
   );
 }
