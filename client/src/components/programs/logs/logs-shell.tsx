@@ -334,7 +334,22 @@ function TerminalLine({ event }: { event: AuditEvent }) {
   ].filter(Boolean).join(" ");
 
   return (
-    <div className="log-line" data-tooltip={rowTitle}>
+    <div
+  className="log-line"
+  data-tooltip={rowTitle}
+  onMouseMove={(event) => {
+    const row = event.currentTarget;
+    const rect = row.getBoundingClientRect();
+    const tooltipWidth = Math.min(820, window.innerWidth - 48);
+    const rawX = event.clientX - rect.left;
+    const minX = 16;
+    const maxX = Math.max(minX, rect.width - tooltipWidth - 16);
+    const x = Math.max(minX, Math.min(rawX, maxX));
+
+    row.style.setProperty("--tooltip-x", `${x}px`);
+    row.style.setProperty("--tooltip-arrow-x", `${Math.max(20, rawX)}px`);
+  }}
+>
 <BracketedCell className="log-cell log-time log-time-cell">
   {formatClock(event.ts)}
 </BracketedCell>
