@@ -112,14 +112,8 @@ function getHttpStatusColor(statusCode: number) {
 function getPreviewMatchColor(segment: string) {
   const normalized = segment.trim();
   if (!normalized) return "";
-
-  if (normalized === "=>") return "log-preview-arrow";
-
-  if (/^args=/i.test(normalized)) return "log-preview-args";
-  if (/^query[:=]/i.test(normalized) || /"query"\s*:/i.test(normalized)) return "log-preview-query";
-  if (/^url[:=]/i.test(normalized) || /^https?:\/\//i.test(normalized)) return "log-preview-url";
-  if (/^path[:=]/i.test(normalized) || /^[A-Za-z]:\\/.test(normalized) || /^\/[\w./-]+/.test(normalized)) return "log-preview-path";
-  if (/^id[:=]/i.test(normalized) || /"ID"\s*:/i.test(normalized)) return "log-preview-id";
+  if (/^args=/i.test(normalized)) return "log-cyan";
+  if (normalized === "=>") return "log-muted";
 
   const durationMatch = normalized.match(/durationMs"?\s*[:=]\s*(\d+)/i);
   if (durationMatch) return getDurationColor(Number(durationMatch[1]));
@@ -127,10 +121,8 @@ function getPreviewMatchColor(segment: string) {
   const statusMatch = normalized.match(/status"?\s*[:=]\s*(\d{3})/i);
   if (statusMatch) return getHttpStatusColor(Number(statusMatch[1]));
 
-  if (/ok"?\s*[:=]\s*true/i.test(normalized)) return "log-preview-bool-true";
-  if (/ok"?\s*[:=]\s*false/i.test(normalized)) return "log-preview-bool-false";
-
-  if (/\bready\b/i.test(normalized)) return "log-preview-ready";
+  if (/ok"?\s*[:=]\s*true/i.test(normalized)) return "log-success";
+  if (/ok"?\s*[:=]\s*false/i.test(normalized)) return "log-error";
   if (/\bsuccess\b/i.test(normalized)) return "log-success";
   if (/\bwarning\b/i.test(normalized)) return "log-warning";
   if (/\berror\b/i.test(normalized) || /\bfailed\b/i.test(normalized)) return "log-error";
@@ -139,18 +131,14 @@ function getPreviewMatchColor(segment: string) {
 }
 
 function renderPreview(preview: string) {
-  const pattern = /(args=.*?(?=\s=>|$)|=>|"?ok"?\s*[:=]\s*(?:true|false)|"?status"?\s*[:=]\s*\d{3}|"?durationMs"?\s*[:=]\s*\d+|"?query"?\s*[:=]\s*"[^"]*"|"?url"?\s*[:=]\s*"[^"]*"|https?:\/\/[^\s",}]+|"?ID"?\s*[:=]\s*"?[a-z0-9-]{8,}"?|[A-Za-z]:\\[^\s",}]+|\/[\w./-]+|\b(?:ready|success|warning|error|failed)\b)/gi;
+  const pattern = /(args=.*?(?=\s=>|$)|=>|"?ok"?\s*[:=]\s*(?:true|false)|"?status"?\s*[:=]\s*\d{3}|"?durationMs"?\s*[:=]\s*\d+|\b(?:success|warning|error|failed)\b)/gi;
   const pieces: JSX.Element[] = [];
   let cursor = 0;
 
   for (const match of preview.matchAll(pattern)) {
     const index = match.index ?? 0;
     if (index > cursor) {
-      pieces.push(
-  <span key={`plain-${index}`} className="log-preview-plain">
-    {preview.slice(cursor, index)}
-  </span>,
-);
+      pieces.push(<span key={`plain-${index}`}>{preview.slice(cursor, index)}</span>);
     }
 
     const segment = match[0];
@@ -164,11 +152,7 @@ function renderPreview(preview: string) {
   }
 
   if (cursor < preview.length) {
-    pieces.push(
-  <span key={`tail-${cursor}`} className="log-preview-plain">
-    {preview.slice(cursor)}
-  </span>,
-);
+    pieces.push(<span key={`tail-${cursor}`}>{preview.slice(cursor)}</span>);
   }
 
   return pieces;
@@ -222,30 +206,22 @@ function buildPreview(event: AuditEvent, titleText: string, durationMs: number |
   return summary || previewText(event.title || event.action, 440);
 }
 
-function compactLogLabel(value: string, limit = 20) {
+function compactLogLabel(value: string, limit = 24) {
   let label = sanitizeControlChars(stripAnsiCodes(String(value || ""))).trim();
 
   label = label
-    // display-only cleanup; real refs/tool/action values stay untouched
+    // hide visual-only MCP prefix; does not mutate actual refs/tool/action values
     .replace(/^mcp[_\-\s:]+/i, "")
     .replace(/^mcp(?=[A-Z])/i, "")
+    // collapse noisy separators
     .replace(/__+/g, "_")
     .replace(/--+/g, "-")
-    .replace(/^ops[_-]local[_-]docker[_-]/i, "docker/")
-    .replace(/^ops[_-]monitor[_-]/i, "mon/")
-    .replace(/^ops[_-]ollama[_-]/i, "ollama/")
-    .replace(/^ops[_-]/i, "")
-    .replace(/^web[_-]search$/i, "web")
+    // common compact aliases
+    .replace(/^ops[_-]/i, "ops/")
     .replace(/^web[_-]/i, "web/")
-    .replace(/^browser[_-]lightpanda/i, "browser")
     .replace(/^browser[_-]/i, "browser/")
     .replace(/^git[_-]/i, "git/")
-    .replace(/^memory[_-]/i, "mem/")
-    .replace(/^terminal[_-]/i, "term/")
-.replace(/^client\s+connected$/i, "client conn")
-.replace(/^client\s+disconnected$/i, "client disc")
-.replace(/^client[_-]connected$/i, "client conn")
-.replace(/^client[_-]disconnected$/i, "client disc");
+    .replace(/^memory[_-]/i, "memory/");
 
   if (!label) label = "event";
   return label.length > limit ? `${label.slice(0, Math.max(0, limit - 1))}…` : label;
@@ -260,25 +236,49 @@ function compactActionLabel(value: string) {
     .replace(/^mcp\./i, "");
 }
 
-function BracketedCell({
-  className,
-  children,
-}: {
-  className: string;
-  children: string;
-}) {
-  if (!children) return <span className={className} />;
 
+function LogTooltipContent({
+  event,
+  categoryColor,
+  statusColor,
+  actionText,
+  titleText,
+  scopeText,
+  metricText,
+  metricColor,
+  preview,
+}: {
+  event: AuditEvent;
+  categoryColor: string;
+  statusColor: string;
+  actionText: string;
+  titleText: string;
+  scopeText: string;
+  metricText: string;
+  metricColor: string;
+  preview: string;
+}) {
   return (
-    <span className={`${className} log-bracket-cell`}>
-      <span className="log-bracket">[</span>
-      <span className="log-bracket-value">{children}</span>
-      <span className="log-bracket">]</span>
-    </span>
+    <div className="log-tooltip-card">
+      <div className="log-tooltip-meta">
+        <span className="log-cell log-time log-time-cell">[{formatClock(event.ts)}]</span>
+        <span className={`log-cell log-category ${categoryColor}`}>[{event.category}]</span>
+        <span className="log-cell log-action">[{actionText}]</span>
+        <span className={`log-cell log-status-cell ${statusColor}`}>[{event.status}]</span>
+        <span className="log-cell log-title log-magenta">[{titleText}]</span>
+        {scopeText ? <span className="log-cell log-scope log-teal">[{scopeText}]</span> : null}
+        {metricText ? <span className={`log-cell log-metric ${metricColor}`}>[{metricText}]</span> : null}
+      </div>
+
+      <div className="log-tooltip-preview">
+        {renderPreview(preview)}
+      </div>
+    </div>
   );
 }
 
-function TerminalLine({ event }: { event: AuditEvent }) {
+function TerminalLine({ event, isPhone }: { event: AuditEvent; isPhone: boolean }) {
+  const [phoneOpen, setPhoneOpen] = useState(false);
   const statusColor = getStatusColor(event.status);
   const categoryColor = getCategoryColor(event.category);
 
@@ -334,61 +334,60 @@ function TerminalLine({ event }: { event: AuditEvent }) {
   ].filter(Boolean).join(" ");
 
   return (
-    <div
-  className="log-line"
-  data-tooltip={rowTitle}
-  onMouseMove={(event) => {
-    const row = event.currentTarget;
-    const rect = row.getBoundingClientRect();
-    const tooltipWidth = Math.min(820, window.innerWidth - 48);
-    const rawX = event.clientX - rect.left;
-    const minX = 16;
-    const maxX = Math.max(minX, rect.width - tooltipWidth - 16);
-    const x = Math.max(minX, Math.min(rawX, maxX));
+    <Cursor
+      disabled={isPhone}
+      content={
+        <LogTooltipContent
+          event={event}
+          categoryColor={categoryColor}
+          statusColor={statusColor}
+          actionText={actionText}
+          titleText={titleText}
+          scopeText={scopeText}
+          metricText={metricText}
+          metricColor={metricColor}
+          preview={preview}
+        />
+      }
+    >
+      <div
+        className={`log-line ${phoneOpen ? "is-tooltip-open" : ""}`}
+        onClick={() => {
+          if (isPhone) setPhoneOpen((value) => !value);
+        }}
+      >
+        <span className="log-cell log-time log-time-cell">[{formatClock(event.ts)}]</span>
+        <span className={`log-cell log-category ${categoryColor}`}>[{event.category}]</span>
+        <span className="log-cell log-action">[{actionText}]</span>
+        <span className={`log-cell log-status-cell ${statusColor}`}>[{event.status}]</span>
+        <span className="log-cell log-title log-magenta">[{titleText}]</span>
+        <span className="log-cell log-scope log-teal">{scopeText ? `[${scopeText}]` : ""}</span>
+        <span className={`log-cell log-metric ${metricColor}`}>{metricText ? `[${metricText}]` : ""}</span>
+        <span className="log-cell log-tokens log-yellow">{tokenText ? `[${tokenText}]` : ""}</span>
+        <span className="log-message">{renderPreview(preview)}</span>
 
-    row.style.setProperty("--tooltip-x", `${x}px`);
-    row.style.setProperty("--tooltip-arrow-x", `${Math.max(20, rawX)}px`);
-  }}
->
-<BracketedCell className="log-cell log-time log-time-cell">
-  {formatClock(event.ts)}
-</BracketedCell>
-
-<BracketedCell className={`log-cell log-category ${categoryColor}`}>
-  {event.category}
-</BracketedCell>
-
-<BracketedCell className="log-cell log-action">
-  {actionText}
-</BracketedCell>
-
-<BracketedCell className={`log-cell log-status-cell ${statusColor}`}>
-  {event.status}
-</BracketedCell>
-
-<BracketedCell className="log-cell log-title log-magenta">
-  {titleText}
-</BracketedCell>
-
-<BracketedCell className="log-cell log-scope log-teal">
-  {scopeText}
-</BracketedCell>
-
-<BracketedCell className={`log-cell log-metric ${metricColor}`}>
-  {metricText}
-</BracketedCell>
-
-<BracketedCell className="log-cell log-tokens log-yellow">
-  {tokenText}
-</BracketedCell>
-
-<span className="log-message">{renderPreview(preview)}</span>
-    </div>
+        {isPhone && phoneOpen && (
+          <div className="log-phone-tooltip">
+            <LogTooltipContent
+              event={event}
+              categoryColor={categoryColor}
+              statusColor={statusColor}
+              actionText={actionText}
+              titleText={titleText}
+              scopeText={scopeText}
+              metricText={metricText}
+              metricColor={metricColor}
+              preview={preview}
+            />
+          </div>
+        )}
+      </div>
+    </Cursor>
   );
 }
 
 export function LogsShell({ isActive = true }: { isActive?: boolean }) {
-  useIsPhoneLayout();
+  const isPhone = useIsPhoneLayout();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>("all");
   const [statuses, setStatuses] = useState<Set<(typeof STATUS_OPTIONS)[number]>>(new Set());
@@ -609,6 +608,7 @@ export function LogsShell({ isActive = true }: { isActive?: boolean }) {
                 <TerminalLine
                   key={event.seq}
                   event={event}
+                  isPhone={isPhone}
                 />
               ))
             )}
