@@ -52,6 +52,8 @@ const STORAGE_KEY = "reterm.community.messages";
 const COMPACT_PANE_WIDTH = 767;
 const COMPACT_POINTER_QUERY = "(hover: none) and (pointer: coarse)";
 const MOBILE_PANEL_EXIT_MS = 380;
+const TELEGRAM_STATUS = "preview" as const;
+const TELEGRAM_ACCOUNT_LABEL = "tdlib not connected";
 
 function isTelegramMessage(value: unknown): value is TelegramMessage {
   if (!value || typeof value !== "object") return false;
@@ -278,16 +280,21 @@ export function CommunityNativeShell() {
                 ? "chat-session-title"
                 : "community-session-title chat-session-title"
             }
-            title="telegram community"
+            title="telegram community preview"
             aria-label={`active chat: ${activeChat.title}`}
           >
             <span>{activeChat.title}</span>
           </button>
 
           {!isCompactLayout ? (
-            <span className="community-session-subtitle">
-              {activeChat.subtitle}
-            </span>
+            <>
+              <span className="community-session-subtitle">
+                {activeChat.subtitle}
+              </span>
+              <span className="community-status-pill community-status-pill--preview">
+                {TELEGRAM_STATUS}
+              </span>
+            </>
           ) : null}
         </div>
 
@@ -306,8 +313,8 @@ export function CommunityNativeShell() {
                 : "chat-tool-button community-panel-button text-muted-foreground"
             }
             onClick={() => setShowLogin(true)}
-            title="mock telegram login"
-            aria-label="open mock telegram login"
+            title="open telegram preview login"
+            aria-label="open telegram preview login"
           >
             <LogIn className={isCompactLayout ? "size-4" : "community-panel-icon"} />
           </button>
@@ -320,8 +327,8 @@ export function CommunityNativeShell() {
                 : "chat-tool-button community-panel-button text-muted-foreground"
             }
             onClick={handleClearMessages}
-            title="reset mock messages"
-            aria-label="reset mock messages"
+            title="reset preview messages"
+            aria-label="reset preview messages"
           >
             <RotateCcw className={isCompactLayout ? "size-4" : "community-panel-icon"} />
           </button>
@@ -335,6 +342,8 @@ export function CommunityNativeShell() {
               chats={visibleChats}
               activeChatId={activeChat.id}
               query={chatQuery}
+              status={TELEGRAM_STATUS}
+              accountLabel={TELEGRAM_ACCOUNT_LABEL}
               className={`chat-mobile-context-drawer community-mobile-drawer ${sidebarMotionClass}`}
               onQueryChange={setChatQuery}
               onSelectChat={handleSelectChat}

@@ -4,6 +4,8 @@ type TelegramChatListProps = {
   chats: TelegramChat[];
   activeChatId: string;
   query: string;
+  status?: "preview" | "connecting" | "connected" | "error";
+  accountLabel?: string;
   className?: string;
   onQueryChange: (query: string) => void;
   onSelectChat: (chatId: string) => void;
@@ -13,14 +15,19 @@ export function TelegramChatList({
   chats,
   activeChatId,
   query,
+  status = "preview",
+  accountLabel = "tdlib not connected",
   className,
   onQueryChange,
   onSelectChat,
 }: TelegramChatListProps) {
   return (
     <aside className={className || "community-sidebar"}>
-      <div className="community-titlebar">
+      <div className="community-titlebar community-titlebar--stacked">
         <span className="community-title">telegram</span>
+        <span className={`community-sidebar-status community-sidebar-status--${status}`}>
+          {accountLabel}
+        </span>
       </div>
 
       <label className="community-search">

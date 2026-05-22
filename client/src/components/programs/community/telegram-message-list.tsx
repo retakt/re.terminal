@@ -14,6 +14,13 @@ export function TelegramMessageList({ messages }: TelegramMessageListProps) {
 
   return (
     <section className="community-messages" aria-label="messages">
+      {messages.length === 0 ? (
+        <div className="community-message-empty">
+          <strong>telegram preview</strong>
+          <span>connect tdlib next to load live chats and messages.</span>
+        </div>
+      ) : null}
+
       {messages.map((message) => (
         <div
           key={message.id}
