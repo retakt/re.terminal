@@ -14009,3 +14009,73 @@ display: flex !important;
     inset 2px 0 0 color-mix(in srgb, var(--accent-blue) 68%, transparent),
     0 0 18px color-mix(in srgb, var(--accent-blue) 8%, transparent) !important;
 }
+
+/* ─── Log tooltip: light mode readability ───────────────────────────────── */
+
+[data-theme="light"] .log-cursor-tooltip {
+  color: #24292f;
+}
+
+[data-theme="light"] .log-tooltip-card,
+[data-theme="light"] .log-phone-tooltip {
+  border-color: color-mix(in srgb, var(--accent-cyan) 34%, rgba(31, 35, 40, 0.18));
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.92),
+      rgba(255, 255, 255, 0.78)
+    ),
+    rgba(246, 248, 250, 0.96);
+
+  color: #24292f;
+
+  box-shadow:
+    0 14px 34px rgba(31, 35, 40, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="light"] .log-tooltip-preview,
+[data-theme="light"] .log-tooltip-preview .log-preview-plain {
+  color: #57606a;
+}
+
+[data-theme="light"] .log-tooltip-preview .log-preview-arrow {
+  color: #6e7781;
+}
+
+[data-theme="light"] .log-tooltip-preview .log-preview-args {
+  color: #0969da;
+}
+
+[data-theme="light"] .log-tooltip-preview .log-preview-query,
+[data-theme="light"] .log-tooltip-preview .log-magenta {
+  color: #8250df;
+}
+
+[data-theme="light"] .log-tooltip-preview .log-preview-url,
+[data-theme="light"] .log-tooltip-preview .log-info {
+  color: #0969da;
+}
+
+[data-theme="light"] .log-tooltip-preview .log-preview-path,
+[data-theme="light"] .log-tooltip-preview .log-yellow,
+[data-theme="light"] .log-tooltip-preview .log-warning {
+  color: #9a6700;
+}
+
+[data-theme="light"] .log-tooltip-preview .log-preview-id,
+[data-theme="light"] .log-tooltip-preview .log-teal {
+  color: #1f6feb;
+}
+
+[data-theme="light"] .log-tooltip-preview .log-preview-ready,
+[data-theme="light"] .log-tooltip-preview .log-preview-bool-true,
+[data-theme="light"] .log-tooltip-preview .log-success {
+  color: #1a7f37;
+}
+
+[data-theme="light"] .log-tooltip-preview .log-preview-bool-false,
+[data-theme="light"] .log-tooltip-preview .log-error {
+  color: #cf222e;
+}
