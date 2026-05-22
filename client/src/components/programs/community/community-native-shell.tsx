@@ -179,11 +179,8 @@ export function CommunityNativeShell() {
     return () => clearSidebarCloseTimer();
   }, []);
 
-  const sidebarMotionClass = sidebarOpen
-    ? "is-open"
-    : sidebarClosing
-      ? "is-closing"
-      : "is-closed";
+  const sidebarMounted = isCompactLayout && (sidebarOpen || sidebarClosing);
+  const sidebarMotionClass = sidebarClosing ? "is-closing" : "is-open";
 
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
@@ -332,20 +329,28 @@ export function CommunityNativeShell() {
       </header>
 
       <div className="community-workspace">
-        <TelegramChatList
-          chats={visibleChats}
-          activeChatId={activeChat.id}
-          query={chatQuery}
-          className={
-            isCompactLayout
-              ? `chat-mobile-context-drawer community-mobile-drawer ${sidebarMotionClass}`
-              : undefined
-          }
-          onQueryChange={setChatQuery}
-          onSelectChat={handleSelectChat}
-        />
-
         {isCompactLayout ? (
+          sidebarMounted ? (
+            <TelegramChatList
+              chats={visibleChats}
+              activeChatId={activeChat.id}
+              query={chatQuery}
+              className={`chat-mobile-context-drawer community-mobile-drawer ${sidebarMotionClass}`}
+              onQueryChange={setChatQuery}
+              onSelectChat={handleSelectChat}
+            />
+          ) : null
+        ) : (
+          <TelegramChatList
+            chats={visibleChats}
+            activeChatId={activeChat.id}
+            query={chatQuery}
+            onQueryChange={setChatQuery}
+            onSelectChat={handleSelectChat}
+          />
+        )}
+
+        {sidebarMounted ? (
           <button
             type="button"
             className={`chat-mobile-context-backdrop ${sidebarMotionClass}`}
