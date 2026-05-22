@@ -13818,3 +13818,166 @@ display: flex !important;
 .log-line[data-tooltip]:hover::before {
   opacity: 1;
 }
+
+/* Stronger glass log tooltip */
+.log-cursor-tooltip {
+  pointer-events: none;
+  min-width: 320px;
+  max-width: min(820px, calc(100vw - 24px));
+}
+
+.log-tooltip-card,
+.log-phone-tooltip {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 34%, rgba(255,255,255,0.2));
+  border-radius: 8px;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.08),
+      rgba(255,255,255,0.025)
+    ),
+    rgba(8, 12, 18, 0.92);
+
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+
+  box-shadow:
+    0 16px 42px rgba(0,0,0,0.58),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+
+  color: var(--log-message-fg, var(--fg-muted));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.35;
+  text-transform: none;
+  white-space: normal;
+}
+
+[data-theme="light"] .log-tooltip-card,
+[data-theme="light"] .log-phone-tooltip {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.76),
+      rgba(255,255,255,0.54)
+    ),
+    rgba(246, 248, 250, 0.94);
+
+  color: #24292f;
+  box-shadow:
+    0 14px 34px rgba(31,35,40,0.18),
+    inset 0 1px 0 rgba(255,255,255,0.95);
+}
+.log-tooltip-preview,
+.log-tooltip-preview .log-preview-plain {
+  color: #d6dce5;
+}
+
+/* ─── Phone log details: single tap-open hover-style card ───────────────── */
+
+@media (max-width: 980px), (hover: none) and (pointer: coarse) {
+  .log-cursor-tooltip {
+    display: none !important;
+  }
+
+  .log-line.is-tooltip-open {
+    background: rgba(88, 166, 255, 0.08);
+  }
+
+  .log-phone-tooltip {
+    position: fixed !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 64px !important;
+    top: auto !important;
+    z-index: 999999 !important;
+
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: min(34vh, 240px) !important;
+
+    overflow: auto !important;
+    pointer-events: none !important;
+
+    padding: 8px 9px !important;
+    border: 1px solid color-mix(in srgb, var(--accent-cyan) 34%, rgba(255,255,255,0.2));
+    border-radius: 8px;
+
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255,255,255,0.08),
+        rgba(255,255,255,0.025)
+      ),
+      rgba(8, 12, 18, 0.94);
+
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+
+    box-shadow:
+      0 16px 42px rgba(0,0,0,0.58),
+      inset 0 1px 0 rgba(255,255,255,0.12);
+
+    color: #d6dce5;
+
+    animation: log-phone-tooltip-in 90ms ease-out both;
+  }
+
+  .log-phone-tooltip .log-tooltip-card {
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .log-phone-tooltip .log-tooltip-meta {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 2px 5px !important;
+    margin-bottom: 5px !important;
+    white-space: normal !important;
+  }
+
+  .log-phone-tooltip .log-tooltip-meta .log-cell {
+    width: auto !important;
+    max-width: 100% !important;
+    font-size: 9.5px !important;
+  }
+
+  .log-phone-tooltip .log-tooltip-preview,
+  .log-phone-tooltip .log-tooltip-preview .log-preview-plain {
+    color: #d6dce5 !important;
+  }
+
+  .log-phone-tooltip .log-tooltip-preview {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+}
+
+@keyframes log-phone-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
