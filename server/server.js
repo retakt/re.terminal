@@ -73,6 +73,11 @@ import {
   listCommunityChats,
   listCommunityMessages,
   sendCommunityMessage,
+  beginCommunityLogin,
+  submitCommunityPhone,
+  submitCommunityCode,
+  submitCommunityPassword,
+  logoutCommunityService,
 } from "./lib/community/index.js";
 import {
   appendAuditEvent,
@@ -750,6 +755,47 @@ app.post("/api/community/:service/chats/:chatId/messages", async (req, res) => {
       req.params.chatId,
       req.body?.text || "",
     ));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+app.post("/api/community/:service/auth/begin", async (req, res) => {
+  try {
+    res.json(await beginCommunityLogin(req.params.service));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/community/:service/auth/phone", async (req, res) => {
+  try {
+    res.json(await submitCommunityPhone(req.params.service, req.body?.phone || ""));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/community/:service/auth/code", async (req, res) => {
+  try {
+    res.json(await submitCommunityCode(req.params.service, req.body?.code || ""));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/community/:service/auth/password", async (req, res) => {
+  try {
+    res.json(await submitCommunityPassword(req.params.service, req.body?.password || ""));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/community/:service/logout", async (req, res) => {
+  try {
+    res.json(await logoutCommunityService(req.params.service));
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

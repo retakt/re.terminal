@@ -1,4 +1,11 @@
 import { makeCommunityChatId, splitCommunityChatId } from "../types.js";
+import { telegramTdlibClient } from "./telegram-tdlib-client.js";
+
+function tdlibEnabled() {
+  return ["1", "true", "yes", "on"].includes(
+    String(process.env.TELEGRAM_TDLIB_ENABLED || "").toLowerCase()
+  );
+}
 
 const MOCK_CHATS = [
   {
@@ -6,24 +13,8 @@ const MOCK_CHATS = [
     nativeId: "reterm",
     service: "telegram",
     title: "re.Term",
-    subtitle: "tdlib adapter preview",
+    subtitle: "tdlib disabled preview",
     unread: 1,
-  },
-  {
-    id: makeCommunityChatId("telegram", "updates"),
-    nativeId: "updates",
-    service: "telegram",
-    title: "Telegram Updates",
-    subtitle: "waiting for tdlib",
-    unread: 0,
-  },
-  {
-    id: makeCommunityChatId("telegram", "saved"),
-    nativeId: "saved",
-    service: "telegram",
-    title: "Saved Messages",
-    subtitle: "local preview",
-    unread: 0,
   },
 ];
 
@@ -33,19 +24,9 @@ const INITIAL_MESSAGES = [
     nativeId: "m1",
     service: "telegram",
     chatId: makeCommunityChatId("telegram", "reterm"),
-    text: "telegram adapter boundary is ready.",
+    text: "tdlib adapter is installed. set TDLIB_LIBRARY_PATH and enable TELEGRAM_TDLIB_ENABLED=1.",
     time: "12:04",
     outgoing: false,
-    status: "sent",
-  },
-  {
-    id: "telegram:m2",
-    nativeId: "m2",
-    service: "telegram",
-    chatId: makeCommunityChatId("telegram", "reterm"),
-    text: "next step is replacing this mock with tdlib.",
-    time: "12:05",
-    outgoing: true,
     status: "sent",
   },
 ];
@@ -57,16 +38,28 @@ export class TelegramAdapter {
   }
 
   async getStatus() {
+    if (tdlibEnabled()) {
+      return telegramTdlibClient.getStatus();
+    }
+
     return {
       ok: true,
       service: this.service,
       state: "preview",
-      accountLabel: "tdlib not connected",
+      accountLabel: "tdlib disabled",
       connected: false,
     };
   }
 
   async listChats() {
+    if (tdlibEnabled()) {
+      return {
+        ok: true,
+        service: this.service,
+        chats: await telegramTdlibClient.listChats(),
+      };
+    }
+
     return {
       ok: true,
       service: this.service,
@@ -75,6 +68,15 @@ export class TelegramAdapter {
   }
 
   async listMessages(chatId) {
+    if (tdlibEnabled()) {
+      return {
+        ok: true,
+        service: this.service,
+        chatId,
+        messages: await telegramTdlibClient.listMessages(chatId),
+      };
+    }
+
     const { nativeId } = splitCommunityChatId(chatId);
     const fullChatId = makeCommunityChatId(this.service, nativeId);
 
@@ -87,6 +89,16 @@ export class TelegramAdapter {
   }
 
   async sendMessage(chatId, text) {
+    if (tdlibEnabled()) {
+      const message = await telegramTdlibClient.sendMessage(chatId, text);
+      return {
+        ok: true,
+        service: this.service,
+        chatId,
+        message,
+      };
+    }
+
     const clean = String(text || "").trim();
     if (!clean) {
       return { ok: false, service: this.service, error: "message is empty" };
@@ -118,6 +130,26 @@ export class TelegramAdapter {
       chatId: fullChatId,
       message,
     };
+  }
+
+  async beginLogin() {
+    return telegramTdlibClient.beginLogin();
+  }
+
+  async submitPhone(phone) {
+    return telegramTdlibClient.submitPhone(phone);
+  }
+
+  async submitCode(code) {
+    return telegramTdlibClient.submitCode(code);
+  }
+
+  async submitPassword(password) {
+    return telegramTdlibClient.submitPassword(password);
+  }
+
+  async logout() {
+    return telegramTdlibClient.logout();
   }
 }
 
