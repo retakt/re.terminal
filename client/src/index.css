@@ -13018,6 +13018,116 @@ display: flex !important;
   white-space: nowrap;
 }
 
+/* Main log payload should be readable but not pure white. */
+.log-message {
+  color: var(--log-message-fg, color-mix(in srgb, var(--fg-muted) 82%, var(--fg-base)));
+}
+
+[data-theme="dark"] {
+  --log-message-fg: #8f98a3;
+}
+
+[data-theme="light"] {
+  --log-message-fg: #59636e;
+}
+
+.log-message,
+.log-preview-plain {
+  color: var(--log-message-fg);
+}
+
+/* Softer but still distinct payload colors */
+.log-message .log-preview-arrow {
+  color: #6f7782;
+}
+
+.log-message .log-preview-args {
+  color: #58b6b4;
+}
+
+.log-message .log-preview-query {
+  color: #b48cf0;
+}
+
+.log-message .log-preview-url {
+  color: #78a8e8;
+}
+
+.log-message .log-preview-path {
+  color: #c7a15a;
+}
+
+.log-message .log-preview-id {
+  color: #65b8c8;
+}
+
+.log-message .log-preview-ready,
+.log-message .log-preview-bool-true {
+  color: #69b87a;
+}
+
+.log-message .log-preview-bool-false {
+  color: #e06c75;
+}
+
+.log-message .log-success {
+  color: #69b87a;
+}
+
+.log-message .log-warning {
+  color: #d6a85d;
+}
+
+.log-message .log-error {
+  color: #e06c75;
+}
+
+.log-message .log-info {
+  color: #78a8e8;
+}
+
+/* Payload syntax accents. Keep them softer than the left metadata columns. */
+.log-preview-arrow {
+  color: color-mix(in srgb, var(--fg-subtle) 88%, var(--fg-base));
+}
+
+.log-preview-args {
+  color: color-mix(in srgb, var(--accent-cyan) 62%, var(--fg-muted));
+}
+
+.log-preview-query {
+  color: color-mix(in srgb, var(--accent-magenta, #bc8cff) 62%, var(--fg-muted));
+}
+
+.log-preview-url {
+  color: color-mix(in srgb, var(--accent-blue, #58a6ff) 68%, var(--fg-muted));
+}
+
+.log-preview-path {
+  color: color-mix(in srgb, var(--accent-yellow, #d29922) 62%, var(--fg-muted));
+}
+
+.log-preview-id {
+  color: color-mix(in srgb, var(--accent-teal, #56d4dd) 58%, var(--fg-muted));
+}
+
+.log-preview-ready,
+.log-preview-bool-true {
+  color: color-mix(in srgb, var(--accent-green, #2ea043) 70%, var(--fg-muted));
+}
+
+.log-preview-bool-false {
+  color: color-mix(in srgb, var(--accent-red, #f85149) 70%, var(--fg-muted));
+}
+
+[data-theme="dark"] {
+  --log-message-fg: #8f98a3;
+}
+
+[data-theme="light"] {
+  --log-message-fg: #59636e;
+}
+
 /* ─── Terminal colors (ANSI-style) ──────────────────────────────────────── */
 
 .log-success, .terminal-green {
@@ -13185,22 +13295,23 @@ display: flex !important;
   }
 
   .log-feed {
-    padding: 6px 8px;
-    font-size: 10px;
+    padding: 4px 4px;
+    font-size: 9px;
+    line-height: 1.12;
   }
 
   .log-line {
-    grid-template-columns: 55px 36px 38px 50px minmax(0, 1fr) 44px;
+    grid-template-columns: 52px 34px 36px minmax(0, 1fr) 42px;
     grid-template-areas:
-      "time cat action status title metric"
-      "scope scope msg msg msg msg";
+      "time cat action title metric"
+      "status scope msg msg msg";
     column-gap: 2px;
     row-gap: 0;
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    padding: 1px 2px;
-    line-height: 1.15;
+    padding: 0 1px;
+    line-height: 1.12;
   }
 
   .log-time-cell { grid-area: time; }
@@ -13212,9 +13323,11 @@ display: flex !important;
   .log-metric { grid-area: metric; }
   .log-message { grid-area: msg; }
 
+
   .log-tokens {
     display: none !important;
   }
+
 .log-line > .log-cell:nth-child(1) { grid-area: time; }
 .log-line > .log-cell:nth-child(2) { grid-area: cat; }
 .log-line > .log-cell:nth-child(3) { grid-area: action; }

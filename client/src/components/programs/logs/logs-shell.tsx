@@ -112,8 +112,14 @@ function getHttpStatusColor(statusCode: number) {
 function getPreviewMatchColor(segment: string) {
   const normalized = segment.trim();
   if (!normalized) return "";
-  if (/^args=/i.test(normalized)) return "log-cyan";
-  if (normalized === "=>") return "log-muted";
+
+  if (normalized === "=>") return "log-preview-arrow";
+
+  if (/^args=/i.test(normalized)) return "log-preview-args";
+  if (/^query[:=]/i.test(normalized) || /"query"\s*:/i.test(normalized)) return "log-preview-query";
+  if (/^url[:=]/i.test(normalized) || /^https?:\/\//i.test(normalized)) return "log-preview-url";
+  if (/^path[:=]/i.test(normalized) || /^[A-Za-z]:\\/.test(normalized) || /^\/[\w./-]+/.test(normalized)) return "log-preview-path";
+  if (/^id[:=]/i.test(normalized) || /"ID"\s*:/i.test(normalized)) return "log-preview-id";
 
   const durationMatch = normalized.match(/durationMs"?\s*[:=]\s*(\d+)/i);
   if (durationMatch) return getDurationColor(Number(durationMatch[1]));
@@ -121,8 +127,10 @@ function getPreviewMatchColor(segment: string) {
   const statusMatch = normalized.match(/status"?\s*[:=]\s*(\d{3})/i);
   if (statusMatch) return getHttpStatusColor(Number(statusMatch[1]));
 
-  if (/ok"?\s*[:=]\s*true/i.test(normalized)) return "log-success";
-  if (/ok"?\s*[:=]\s*false/i.test(normalized)) return "log-error";
+  if (/ok"?\s*[:=]\s*true/i.test(normalized)) return "log-preview-bool-true";
+  if (/ok"?\s*[:=]\s*false/i.test(normalized)) return "log-preview-bool-false";
+
+  if (/\bready\b/i.test(normalized)) return "log-preview-ready";
   if (/\bsuccess\b/i.test(normalized)) return "log-success";
   if (/\bwarning\b/i.test(normalized)) return "log-warning";
   if (/\berror\b/i.test(normalized) || /\bfailed\b/i.test(normalized)) return "log-error";
@@ -131,14 +139,18 @@ function getPreviewMatchColor(segment: string) {
 }
 
 function renderPreview(preview: string) {
-  const pattern = /(args=.*?(?=\s=>|$)|=>|"?ok"?\s*[:=]\s*(?:true|false)|"?status"?\s*[:=]\s*\d{3}|"?durationMs"?\s*[:=]\s*\d+|\b(?:success|warning|error|failed)\b)/gi;
+  const pattern = /(args=.*?(?=\s=>|$)|=>|"?ok"?\s*[:=]\s*(?:true|false)|"?status"?\s*[:=]\s*\d{3}|"?durationMs"?\s*[:=]\s*\d+|"?query"?\s*[:=]\s*"[^"]*"|"?url"?\s*[:=]\s*"[^"]*"|https?:\/\/[^\s",}]+|"?ID"?\s*[:=]\s*"?[a-z0-9-]{8,}"?|[A-Za-z]:\\[^\s",}]+|\/[\w./-]+|\b(?:ready|success|warning|error|failed)\b)/gi;
   const pieces: JSX.Element[] = [];
   let cursor = 0;
 
   for (const match of preview.matchAll(pattern)) {
     const index = match.index ?? 0;
     if (index > cursor) {
-      pieces.push(<span key={`plain-${index}`}>{preview.slice(cursor, index)}</span>);
+      pieces.push(
+  <span key={`plain-${index}`} className="log-preview-plain">
+    {preview.slice(cursor, index)}
+  </span>,
+);
     }
 
     const segment = match[0];
@@ -152,7 +164,11 @@ function renderPreview(preview: string) {
   }
 
   if (cursor < preview.length) {
-    pieces.push(<span key={`tail-${cursor}`}>{preview.slice(cursor)}</span>);
+    pieces.push(
+  <span key={`tail-${cursor}`} className="log-preview-plain">
+    {preview.slice(cursor)}
+  </span>,
+);
   }
 
   return pieces;
@@ -225,7 +241,11 @@ function compactLogLabel(value: string, limit = 20) {
     .replace(/^browser[_-]/i, "browser/")
     .replace(/^git[_-]/i, "git/")
     .replace(/^memory[_-]/i, "mem/")
-    .replace(/^terminal[_-]/i, "term/");
+    .replace(/^terminal[_-]/i, "term/")
+.replace(/^client\s+connected$/i, "client conn")
+.replace(/^client\s+disconnected$/i, "client disc")
+.replace(/^client[_-]connected$/i, "client conn")
+.replace(/^client[_-]disconnected$/i, "client disc");
 
   if (!label) label = "event";
   return label.length > limit ? `${label.slice(0, Math.max(0, limit - 1))}…` : label;
@@ -346,6 +366,8 @@ function TerminalLine({ event }: { event: AuditEvent }) {
 <BracketedCell className="log-cell log-tokens log-yellow">
   {tokenText}
 </BracketedCell>
+
+<span className="log-message">{renderPreview(preview)}</span>
     </div>
   );
 }
