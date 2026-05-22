@@ -53,7 +53,7 @@ export function TelegramMessageList({
             <span>{chat.title}</span>
           </button>
 
-          <small className="community-session-subtitle">{chat.subtitle}</small>
+          <span className="community-session-subtitle">{chat.subtitle}</span>
         </div>
 
         <div className="community-header-actions">
@@ -61,7 +61,7 @@ export function TelegramMessageList({
             type="button"
             className="chat-tool-button community-header-action size-8 rounded-sm text-muted-foreground transition-colors"
             onClick={onOpenLogin}
-            title="open telegram auth"
+            title="connect telegram"
           >
             <LogIn className="size-4" />
           </button>
