@@ -782,7 +782,7 @@ body {
   overscroll-behavior: contain;
   touch-action: pan-y;
   scrollbar-width: thin;
-  scrollbar-color: var(--ui-scrollbar-thumb, var(--ui-teal)) transparent;
+  scrollbar-color: transparent transparent;
 }
 
 [data-theme="light"] .terminal-instance .xterm-viewport {
@@ -812,6 +812,71 @@ body {
 .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--ui-scrollbar-thumb-hover, var(--ui-teal)); }
 
 .xterm-screen { background: var(--bg-base); }
+
+/* ─── Terminal fill/gutter cleanup ──────────────────────────────────────── */
+
+.terminal-instance,
+.terminal-instance .xterm,
+.terminal-instance .xterm-viewport,
+.terminal-instance .xterm-screen,
+.terminal-instance .xterm-helpers,
+.terminal-instance .xterm-scroll-area {
+  background: #040404 !important;
+}
+
+[data-theme="light"] .terminal-instance,
+[data-theme="light"] .terminal-instance .xterm,
+[data-theme="light"] .terminal-instance .xterm-viewport,
+[data-theme="light"] .terminal-instance .xterm-screen,
+[data-theme="light"] .terminal-instance .xterm-helpers,
+[data-theme="light"] .terminal-instance .xterm-scroll-area {
+  background: #ffffff !important;
+}
+
+.terminal-instance .xterm {
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.terminal-instance .xterm-viewport {
+  width: 100% !important;
+  height: 100% !important;
+  right: 0 !important;
+  scrollbar-gutter: stable both-edges;
+}
+
+.terminal-instance .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme="light"] .terminal-instance .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.terminal-instance .xterm-screen {
+  min-width: 100% !important;
+  min-height: 100% !important;
+}
+.terminal-instance .xterm-viewport::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 0;
+}
+
+/* Hide the visual gutter on touch/mobile. Scrolling still works by touch. */
+@media (hover: none), (max-width: 768px) {
+  .terminal-instance .xterm-viewport {
+    scrollbar-width: none !important;
+  }
+
+  .terminal-instance .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  }
+}
 
 /* ─── File Browser Scroll Fixes ─────────────────────────────────────────── */
 /* Ensure the file browser fills the area and scrolls internally */
@@ -1454,7 +1519,34 @@ body {
   .reterm-empty-btn { padding: 9px 18px; font-size: 13px; }
   .reterm-empty p { font-size: 14px; }
 }
+/* ─── Phone keybar compact mode ─────────────────────────────────────────── */
 
+@media (max-width: 640px) {
+  .keybar {
+    gap: 3px !important;
+    padding: 3px 4px !important;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .keybar-group {
+    gap: 1px !important;
+    padding: 2px !important;
+  }
+
+  .keybar-key {
+    height: 20px !important;
+    padding: 0 5px 1px !important;
+    font-size: 10px !important;
+  }
+
+  .keybar-group--signal,
+  .keybar-group--nano,
+  .keybar-group--vim,
+  .keybar-group--shell {
+    display: none !important;
+  }
+}
 @media (max-width: 400px) {
   /* Tabs: icon + short name only */
   .reterm-tab { min-width: 76px; }
@@ -12060,7 +12152,7 @@ display: flex !important;
   line-height: 1.4;
   color: var(--fg-base);
   scrollbar-width: thin;
-  scrollbar-color: var(--fg-subtle) transparent;
+  scrollbar-color: transparent transparent;
 }
 
 .terminal-feed::-webkit-scrollbar {
