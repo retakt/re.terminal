@@ -240,6 +240,24 @@ function compactActionLabel(value: string) {
     .replace(/^mcp\./i, "");
 }
 
+function BracketedCell({
+  className,
+  children,
+}: {
+  className: string;
+  children: string;
+}) {
+  if (!children) return <span className={className} />;
+
+  return (
+    <span className={`${className} log-bracket-cell`}>
+      <span className="log-bracket">[</span>
+      <span className="log-bracket-value">{children}</span>
+      <span className="log-bracket">]</span>
+    </span>
+  );
+}
+
 function TerminalLine({ event }: { event: AuditEvent }) {
   const statusColor = getStatusColor(event.status);
   const categoryColor = getCategoryColor(event.category);
@@ -297,15 +315,37 @@ function TerminalLine({ event }: { event: AuditEvent }) {
 
   return (
     <div className="log-line" title={rowTitle}>
-      <span className="log-cell log-time log-time-cell">[{formatClock(event.ts)}]</span>
-      <span className={`log-cell log-category ${categoryColor}`}>[{event.category}]</span>
-      <span className="log-cell log-action">[{actionText}]</span>
-      <span className={`log-cell log-status-cell ${statusColor}`}>[{event.status}]</span>
-      <span className="log-cell log-title log-magenta">[{titleText}]</span>
-      <span className="log-cell log-scope log-teal">{scopeText ? `[${scopeText}]` : ""}</span>
-      <span className={`log-cell log-metric ${metricColor}`}>{metricText ? `[${metricText}]` : ""}</span>
-      <span className="log-cell log-tokens log-yellow">{tokenText ? `[${tokenText}]` : ""}</span>
-      <span className="log-message">{renderPreview(preview)}</span>
+<BracketedCell className="log-cell log-time log-time-cell">
+  {formatClock(event.ts)}
+</BracketedCell>
+
+<BracketedCell className={`log-cell log-category ${categoryColor}`}>
+  {event.category}
+</BracketedCell>
+
+<BracketedCell className="log-cell log-action">
+  {actionText}
+</BracketedCell>
+
+<BracketedCell className={`log-cell log-status-cell ${statusColor}`}>
+  {event.status}
+</BracketedCell>
+
+<BracketedCell className="log-cell log-title log-magenta">
+  {titleText}
+</BracketedCell>
+
+<BracketedCell className="log-cell log-scope log-teal">
+  {scopeText}
+</BracketedCell>
+
+<BracketedCell className={`log-cell log-metric ${metricColor}`}>
+  {metricText}
+</BracketedCell>
+
+<BracketedCell className="log-cell log-tokens log-yellow">
+  {tokenText}
+</BracketedCell>
     </div>
   );
 }

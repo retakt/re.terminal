@@ -12879,7 +12879,15 @@ display: flex !important;
 
 .log-line {
   display: grid;
-  grid-template-columns: 64px 48px 7ch 8ch minmax(96px, 17ch) 9ch 7ch minmax(0, 1fr);
+  grid-template-columns:
+    64px    /* time */
+    46px    /* category */
+    42px    /* action */
+    58px    /* status */
+    118px   /* title */
+    72px    /* scope */
+    54px    /* metric */
+    minmax(0, 1fr);
   align-items: center;
   column-gap: 3px;
   width: 100%;
@@ -12975,6 +12983,23 @@ display: flex !important;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
+}
+
+.log-bracket-cell {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.log-bracket {
+  flex: 0 0 auto;
+}
+
+.log-bracket-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .log-message {
@@ -13159,20 +13184,32 @@ display: flex !important;
     font-size: 10px;
   }
 
-.log-line {
-  grid-template-columns: 55px 38px 42px 48px minmax(0, 1fr) 42px;
-  grid-template-areas:
-    "time cat action status title metric"
-    "scope scope msg msg msg msg";
-  column-gap: 2px;
-  row-gap: 0;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  padding: 1px;
-  line-height: 1.15;
-}
+  .log-line {
+    grid-template-columns: 55px 36px 38px 50px minmax(0, 1fr) 44px;
+    grid-template-areas:
+      "time cat action status title metric"
+      "scope scope msg msg msg msg";
+    column-gap: 2px;
+    row-gap: 0;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 1px 2px;
+    line-height: 1.15;
+  }
 
+  .log-time-cell { grid-area: time; }
+  .log-category { grid-area: cat; }
+  .log-action { grid-area: action; }
+  .log-status-cell { grid-area: status; }
+  .log-title { grid-area: title; }
+  .log-scope { grid-area: scope; }
+  .log-metric { grid-area: metric; }
+  .log-message { grid-area: msg; }
+
+  .log-tokens {
+    display: none !important;
+  }
 .log-line > .log-cell:nth-child(1) { grid-area: time; }
 .log-line > .log-cell:nth-child(2) { grid-area: cat; }
 .log-line > .log-cell:nth-child(3) { grid-area: action; }
@@ -13200,9 +13237,8 @@ display: flex !important;
   .log-segment {
     font-size: 9px;
   }
-
   .log-message {
-    font-size: 10px;
+    color: var(--fg-muted);
   }
 
   .log-toolbar-title {
