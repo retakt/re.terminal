@@ -106,10 +106,22 @@ copy_if_exists "$SCRIPT_DIR/scripts" "$PACKAGE_DIR/scripts"
 mkdir -p "$PACKAGE_DIR/client"
 copy_if_exists "$SCRIPT_DIR/client/dist" "$PACKAGE_DIR/client/dist"
 
-mkdir -p "$PACKAGE_DIR/server"
-copy_if_exists "$SCRIPT_DIR/server/package.json" "$PACKAGE_DIR/server/package.json"
-copy_if_exists "$SCRIPT_DIR/server/package-lock.json" "$PACKAGE_DIR/server/package-lock.json"
 copy_if_exists "$SCRIPT_DIR/server" "$PACKAGE_DIR/server"
+
+if [ ! -f "$PACKAGE_DIR/server/lib/memory-client.js" ]; then
+  echo "Error: server/lib/memory-client.js missing from deployment package"
+  exit 1
+fi
+
+if [ ! -f "$PACKAGE_DIR/server/lib/mcp-gateway.js" ]; then
+  echo "Error: server/lib/mcp-gateway.js missing from deployment package"
+  exit 1
+fi
+
+if [ ! -f "$PACKAGE_DIR/server/config/mcp-servers.json" ]; then
+  echo "Error: server/config/mcp-servers.json missing from deployment package"
+  exit 1
+fi
 
 find "$PACKAGE_DIR/server" -type d \( \
   -name node_modules -o \
