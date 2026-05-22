@@ -301,7 +301,7 @@ window.setTimeout(() => {
       onPointerDown={handlePointerDown}
       style={{
         position:   "absolute",
-        inset:      "var(--terminal-frame-inset, 4px)",
+        inset:      0,
         opacity:     isActive ? 1 : 0,
         // Keep pointer events only when active — prevents ghost touches on hidden tabs
         pointerEvents: isActive ? "auto" : "none",

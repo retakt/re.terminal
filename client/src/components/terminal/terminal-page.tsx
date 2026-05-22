@@ -913,7 +913,13 @@ function PageContent({ page, isActive }: { page: Page; isActive: boolean }) {
     return normalized.slice(0, idx);
   };
 
-  if (page.type === "terminal") return <TerminalInstance sessionId={page.sessionId} isActive={isActive} />;
+  if (page.type === "terminal") {
+  return (
+    <div className="terminal-frame">
+      <TerminalInstance sessionId={page.sessionId} isActive={isActive} />
+    </div>
+  );
+}
   if (page.type === "editor")   return <FilesPageViewer dir={parentDir(page.filePath)} selectedPath={page.filePath} />;
   if (page.type === "files")    return <FilesPageViewer dir={page.dir} />;
   if (page.type === "image")     return <ImageViewer filePath={page.filePath} />;
