@@ -68,6 +68,13 @@ import {
   setExtensionEnabled,
 } from "./lib/extensions.js";
 import {
+  getCommunityServices,
+  getCommunityStatus,
+  listCommunityChats,
+  listCommunityMessages,
+  sendCommunityMessage,
+} from "./lib/community/index.js";
+import {
   appendAuditEvent,
   appendAuditEvents,
   getAuditLogFile,
@@ -699,6 +706,52 @@ app.post("/api/ezhrm-skill/import-observation", (req, res) => {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     });
+  }
+});
+
+
+// Community API — generic service boundary. Telegram/TDLib is one adapter.
+app.get("/api/community/services", async (_req, res) => {
+  try {
+    res.json(await getCommunityServices());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/api/community/:service/status", async (req, res) => {
+  try {
+    res.json(await getCommunityStatus(req.params.service));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/api/community/:service/chats", async (req, res) => {
+  try {
+    res.json(await listCommunityChats(req.params.service));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/api/community/:service/chats/:chatId/messages", async (req, res) => {
+  try {
+    res.json(await listCommunityMessages(req.params.service, req.params.chatId));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/community/:service/chats/:chatId/messages", async (req, res) => {
+  try {
+    res.json(await sendCommunityMessage(
+      req.params.service,
+      req.params.chatId,
+      req.body?.text || "",
+    ));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
