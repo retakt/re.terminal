@@ -27,7 +27,7 @@ const MOCK_CHATS = [
   },
 ];
 
-const MOCK_MESSAGES = [
+const INITIAL_MESSAGES = [
   {
     id: "telegram:m1",
     nativeId: "m1",
@@ -53,6 +53,7 @@ const MOCK_MESSAGES = [
 export class TelegramAdapter {
   constructor() {
     this.service = "telegram";
+    this.messages = [...INITIAL_MESSAGES];
   }
 
   async getStatus() {
@@ -81,7 +82,7 @@ export class TelegramAdapter {
       ok: true,
       service: this.service,
       chatId: fullChatId,
-      messages: MOCK_MESSAGES.filter((message) => message.chatId === fullChatId),
+      messages: this.messages.filter((message) => message.chatId === fullChatId),
     };
   }
 
@@ -93,24 +94,29 @@ export class TelegramAdapter {
 
     const { nativeId } = splitCommunityChatId(chatId);
     const fullChatId = makeCommunityChatId(this.service, nativeId);
+    const now = Date.now();
+
+    const message = {
+      id: `telegram:local-${now}`,
+      nativeId: `local-${now}`,
+      service: this.service,
+      chatId: fullChatId,
+      text: clean,
+      outgoing: true,
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      status: "sent",
+    };
+
+    this.messages.push(message);
 
     return {
       ok: true,
       service: this.service,
       chatId: fullChatId,
-      message: {
-        id: `telegram:local-${Date.now()}`,
-        nativeId: `local-${Date.now()}`,
-        service: this.service,
-        chatId: fullChatId,
-        text: clean,
-        outgoing: true,
-        time: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        status: "sent",
-      },
+      message,
     };
   }
 }
