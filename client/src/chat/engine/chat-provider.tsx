@@ -642,12 +642,33 @@ function formatBrowserAgentDirectResponse(payload: any) {
     ...forms.flatMap((form: any) => Array.isArray(form?.fields) ? form.fields : []),
   ];
 
-  const lines: string[] = ["**Browser**"];
   const pageLabel = currentTitle && currentTitle !== "untitled" ? currentTitle : currentUrl;
   const pageText = /^https?:\/\//i.test(currentUrl) ? `[${pageLabel}](${currentUrl})` : pageLabel;
   const ok = payload?.ok !== false && !/failed|blocked|planner_error|config_error|reporter_error/i.test(status);
 
-  if (ok) {
+  const humanFirst = cleanOneLine(
+    reporter?.summary ||
+    reporter?.whatHappened ||
+    payload?.summary ||
+    payload?.browserSummary ||
+    "",
+    900,
+  );
+
+  const humanDetails = cleanOneLine(
+    reporter?.whatHappened && reporter.whatHappened !== reporter?.summary
+      ? reporter.whatHappened
+      : "",
+    900,
+  );
+
+  const lines: string[] = [];
+
+  if (humanFirst) {
+    lines.push(humanFirst);
+    if (humanDetails) lines.push("");
+    if (humanDetails) lines.push(humanDetails);
+  } else if (ok) {
     lines.push(`I'm on ${pageText}.`);
     if (whatHappened) lines.push(whatHappened);
   } else {
@@ -658,20 +679,23 @@ function formatBrowserAgentDirectResponse(payload: any) {
       payload?.blockedReason ||
       payload?.error ||
       "I could not verify that the browser action completed.",
-      300,
+      500,
     );
-    lines.push(currentUrl && currentUrl !== "unknown" ? `I'm still on ${pageText}.` : "I couldn't get a usable page loaded.");
+    lines.push(currentUrl && currentUrl !== "unknown"
+      ? `I’m still on ${pageText}, and I could not verify the action properly.`
+      : "I couldn't get a usable page loaded.");
     lines.push(reason);
-    lines.push("I kept the technical details in the run inspector.");
   }
+
+  const showTechnicalSections = String((payload?.runtime?.displayTechnicalSections ?? "") || "").toLowerCase() === "true";
 
   const filledFields = Array.isArray(payload?.filledFields) ? payload.filledFields : [];
   const missingFields = Array.isArray(payload?.missingFields) ? payload.missingFields : [];
   const submitStatus = cleanOneLine(payload?.submitStatus || "", 240);
 
-  if (filledFields.length) {
+  if (showTechnicalSections && filledFields.length) {
     lines.push("");
-    lines.push("**Done**");
+    lines.push("**Technical fill details**");
     lines.push("- Filled: " + filledFields
       .map((field: any) => {
         const label = cleanOneLine(field?.label || field?.key || field?.name || "field", 120);
@@ -682,15 +706,15 @@ function formatBrowserAgentDirectResponse(payload: any) {
       .join(", "));
   }
 
-  if (missingFields.length) {
+  if (showTechnicalSections && missingFields.length) {
     if (!filledFields.length) {
       lines.push("");
-      lines.push("**Done**");
+      lines.push("**Technical fill details**");
     }
     lines.push("- Missing: " + missingFields.map((field: any) => cleanOneLine(field, 120)).filter(Boolean).join(", "));
   }
 
-  if (submitStatus) {
+  if (showTechnicalSections && submitStatus) {
     lines.push("- Submit: " + submitStatus);
   }
 
@@ -708,9 +732,9 @@ function formatBrowserAgentDirectResponse(payload: any) {
   const hasObservedControls = Boolean(forms.length || inputLabels.length || buttonLabels.length || linkLabels.length);
   const previewText = cleanOneLine(observation?.textPreview || observation?.text || "", 280);
 
-  if (hasObservedControls || previewText) {
+  if (showTechnicalSections && (hasObservedControls || previewText)) {
     lines.push("");
-    lines.push("**I can see**");
+    lines.push("**Technical page snapshot**");
     if (forms.length) lines.push("- Forms: " + forms.length);
     if (inputLabels.length) lines.push("- Fields: " + inputLabels.join(", "));
     if (buttonLabels.length) lines.push("- Buttons: " + buttonLabels.join(", "));
@@ -718,9 +742,9 @@ function formatBrowserAgentDirectResponse(payload: any) {
     if (!hasObservedControls && previewText) lines.push(previewText);
   }
 
-  if (!hasObservedControls && !previewText && (status === "failed" || status === "needs_user")) {
+  if (showTechnicalSections && !hasObservedControls && !previewText && (status === "failed" || status === "needs_user")) {
     lines.push("");
-    lines.push("**I can see**");
+    lines.push("**Technical page snapshot**");
     lines.push("- No visible controls were detected.");
   }
 
@@ -733,23 +757,17 @@ function formatBrowserAgentDirectResponse(payload: any) {
 
   const nextSafeAction = cleanOneLine(payload?.nextSafeAction || "", 300);
 
-  lines.push("");
-  lines.push("**Next**");
   if (nextSafeAction) {
+    lines.push("");
     lines.push(nextSafeAction);
-  } else if (observationFailed) {
-    lines.push("1. try the page again");
-    lines.push("2. give me another URL");
-    lines.push("3. open the run inspector if you want the technical reason");
-  } else if (safeAgentActions.length) {
+  } else if (showTechnicalSections && observationFailed) {
+    lines.push("");
+    lines.push("Try the page again, give me another URL, or open the run inspector for the technical reason.");
+  } else if (showTechnicalSections && safeAgentActions.length) {
+    lines.push("");
     safeAgentActions.forEach((label: string, index: number) => {
       lines.push(String(index + 1) + ". " + label);
     });
-  } else {
-    lines.push("1. tell me what visible button/link to click");
-    lines.push("2. ask me to scrape the current page");
-    lines.push("3. give me another URL to navigate");
-    lines.push("4. tell me what to learn from this page");
   }
 
   return lines.join("\n");
