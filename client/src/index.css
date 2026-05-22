@@ -843,7 +843,7 @@ body {
   width: 100% !important;
   height: 100% !important;
   right: 0 !important;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable !important;
 }
 
 .terminal-instance .xterm-viewport::-webkit-scrollbar-track {
@@ -13629,13 +13629,23 @@ display: flex !important;
 /* ─── xterm right-gutter correction ─────────────────────────────────────── */
 /* Do not use both-edges here. We want to push the rendered grid right. */
 
+/* ─── Terminal frame: match Logs container feel ─────────────────────────── */
+
 .terminal-instance {
-  --xterm-left-gutter: 0px;
+  --terminal-frame-inset: 4px;
+
+  box-sizing: border-box;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
   background: #040404 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 [data-theme="light"] .terminal-instance {
   background: #ffffff !important;
+  border-color: var(--border);
+  box-shadow: 0 4px 12px rgba(31, 35, 40, 0.08);
 }
 
 .terminal-instance .xterm {
@@ -13643,7 +13653,6 @@ display: flex !important;
   margin: 0 !important;
   width: 100% !important;
   height: 100% !important;
-  overflow: hidden !important;
   background: #040404 !important;
 }
 
@@ -13651,31 +13660,28 @@ display: flex !important;
   background: #ffffff !important;
 }
 
-.terminal-instance .xterm-viewport {
-  left: 0 !important;
-  right: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-
-  /* Keep normal right scrollbar gutter only. */
-  scrollbar-gutter: stable !important;
-  scrollbar-width: thin !important;
-  scrollbar-color: transparent transparent !important;
-
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
+.terminal-instance .xterm-viewport,
+.terminal-instance .xterm-screen {
   background: #040404 !important;
 }
 
-[data-theme="light"] .terminal-instance .xterm-viewport {
+[data-theme="light"] .terminal-instance .xterm-viewport,
+[data-theme="light"] .terminal-instance .xterm-screen {
   background: #ffffff !important;
 }
 
-/* Keep scrollbar measured but invisible. */
+/* Keep scrollbar real but invisible. */
+.terminal-instance .xterm-viewport {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-gutter: stable !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+}
+
 .terminal-instance .xterm-viewport::-webkit-scrollbar {
   width: 6px !important;
   height: 6px !important;
-  display: block !important;
 }
 
 .terminal-instance .xterm-viewport::-webkit-scrollbar-track,
@@ -13687,14 +13693,9 @@ display: flex !important;
   box-shadow: none !important;
 }
 
-/* Important: do NOT force min-width: 100%; let xterm's real grid width measure. */
-.terminal-instance .xterm-screen {
-  min-width: 0 !important;
-  min-height: 100% !important;
-  margin-left: var(--xterm-left-gutter) !important;
-  background: #040404 !important;
-}
-
-[data-theme="light"] .terminal-instance .xterm-screen {
-  background: #ffffff !important;
+@media (max-width: 640px) {
+  .terminal-instance {
+    --terminal-frame-inset: 3px;
+    border-radius: 3px;
+  }
 }
