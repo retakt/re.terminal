@@ -42,6 +42,7 @@ const MOCK_MESSAGES: TelegramMessage[] = [
 ];
 
 const STORAGE_KEY = "reterm.community.messages";
+const DESKTOP_QUERY = "(min-width: 641px)";
 
 function readStoredMessages(): TelegramMessage[] {
   try {
@@ -99,7 +100,10 @@ export function CommunityNativeShell() {
 
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
-    setSidebarOpen(false);
+
+    if (!window.matchMedia(DESKTOP_QUERY).matches) {
+      setSidebarOpen(false);
+    }
   };
 
   const handleToggleSidebar = () => {
