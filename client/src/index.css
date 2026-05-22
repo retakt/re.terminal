@@ -746,135 +746,8 @@ body {
   animation: reterm-screen-on 240ms var(--motion-ease) both;
 }
 
-/* xterm.js: fill the terminal page edge-to-edge. */
-.terminal-instance {
-  background: #040404 !important;
-}
 
-[data-theme="light"] .terminal-instance {
-  background: #ffffff !important;
-}
-
-.terminal-instance .xterm {
-  box-sizing: border-box;
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0;
-  min-height: 0;
-  padding: 0 !important;
-  position: relative;
-  overflow: hidden;
-  background: #040404 !important;
-}
-
-[data-theme="light"] .terminal-instance .xterm {
-  background: #ffffff !important;
-}
-
-.terminal-instance .xterm-viewport {
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: #040404 !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-[data-theme="light"] .terminal-instance .xterm-viewport {
-  background: #ffffff !important;
-}
-
-.terminal-instance .xterm-screen {
-  min-width: 100% !important;
-  min-height: 100% !important;
-  background: #040404 !important;
-}
-
-[data-theme="light"] .terminal-instance .xterm-screen {
-  background: #ffffff !important;
-}
-
-.terminal-instance .xterm-rows,
-.terminal-instance .xterm-rows > div {
-  background: transparent !important;
-}
-
-.terminal-instance .xterm-scroll-area {
-  width: 100% !important;
-}
-.xterm-viewport::-webkit-scrollbar { width: 6px; }
-.xterm-viewport::-webkit-scrollbar-thumb { background: var(--ui-scrollbar-thumb, var(--ui-teal)); border-radius: 3px; }
-.xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--ui-scrollbar-thumb-hover, var(--ui-teal)); }
-
-.xterm-screen { background: var(--bg-base); }
-
-/* ─── Terminal fill/gutter cleanup ──────────────────────────────────────── */
-
-.terminal-instance,
-.terminal-instance .xterm,
-.terminal-instance .xterm-viewport,
-.terminal-instance .xterm-screen,
-.terminal-instance .xterm-helpers,
-.terminal-instance .xterm-scroll-area {
-  background: #040404 !important;
-}
-
-[data-theme="light"] .terminal-instance,
-[data-theme="light"] .terminal-instance .xterm,
-[data-theme="light"] .terminal-instance .xterm-viewport,
-[data-theme="light"] .terminal-instance .xterm-screen,
-[data-theme="light"] .terminal-instance .xterm-helpers,
-[data-theme="light"] .terminal-instance .xterm-scroll-area {
-  background: #ffffff !important;
-}
-
-.terminal-instance .xterm {
-  padding: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.terminal-instance .xterm-viewport {
-  width: 100% !important;
-  height: 100% !important;
-  right: 0 !important;
-}
-
-.terminal-instance .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-[data-theme="light"] .terminal-instance .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.terminal-instance .xterm-screen {
-  min-height: 100% !important;
-}
-.terminal-instance .xterm-viewport::-webkit-scrollbar-corner {
-  background: transparent;
-}
-.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb {
-  background: transparent;
-  border: 0;
-}
-
-/* Hide the visual gutter on touch/mobile. Scrolling still works by touch. */
-@media (hover: none), (max-width: 768px) {
-  .terminal-instance .xterm-viewport {
-    scrollbar-width: none !important;
-  }
-
-  .terminal-instance .xterm-viewport::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-  }
-}
+/* ─── Terminal fill/gutter cleanup ─── */
 
 /* ─── File Browser Scroll Fixes ─────────────────────────────────────────── */
 /* Ensure the file browser fills the area and scrolls internally */
@@ -13626,15 +13499,16 @@ display: flex !important;
 
 /* ─── Terminal frame: contained like Logs ───────────────────────────────── */
 
-.terminal-instance {
-  --terminal-frame-inset: 4px;
-
+.terminal-frame {
+  position: absolute;
+  inset: 4px;
   box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--accent-cyan) 22%, var(--border-subtle));
-  border-radius: 4px;
   overflow: hidden;
 
-  background: color-mix(in srgb, #040404 84%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 24%, var(--border-subtle));
+  border-radius: 4px;
+
+  background: color-mix(in srgb, #040404 82%, transparent);
   backdrop-filter: blur(10px) saturate(130%);
   -webkit-backdrop-filter: blur(10px) saturate(130%);
 
@@ -13643,15 +13517,30 @@ display: flex !important;
     0 4px 12px rgba(0,0,0,0.18);
 }
 
-[data-theme="light"] .terminal-instance {
-  background: color-mix(in srgb, #ffffff 82%, transparent) !important;
+[data-theme="light"] .terminal-frame {
+  background: color-mix(in srgb, #ffffff 82%, transparent);
   border-color: var(--border);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.8),
     0 4px 12px rgba(31,35,40,0.08);
 }
 
-/* Let xterm fill the frame without stealing border space. */
+/* xterm mount fills only the frame */
+.terminal-instance {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent !important;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+/* xterm internals */
 .terminal-instance .xterm {
   position: absolute !important;
   inset: 0 !important;
@@ -13669,8 +13558,6 @@ display: flex !important;
   background: transparent !important;
 }
 
-/* IMPORTANT:
-   no scrollbar-gutter here. It was the cause of the right-side clipping. */
 .terminal-instance .xterm-viewport {
   position: absolute !important;
   inset: 0 !important;
@@ -13688,7 +13575,20 @@ display: flex !important;
   background: transparent !important;
 }
 
-/* Keep the scrollbar real, but invisible. */
+.terminal-instance .xterm-screen {
+  min-width: 0 !important;
+  min-height: 100% !important;
+  background: transparent !important;
+}
+
+.terminal-instance .xterm-helpers,
+.terminal-instance .xterm-scroll-area,
+.terminal-instance .xterm-rows,
+.terminal-instance .xterm-rows > div {
+  background: transparent !important;
+}
+
+/* Invisible but real scrollbar */
 .terminal-instance .xterm-viewport::-webkit-scrollbar {
   width: 6px !important;
   height: 6px !important;
@@ -13704,24 +13604,137 @@ display: flex !important;
   box-shadow: none !important;
 }
 
-/* Do NOT force min-width: 100%.
-   xterm should own its grid width after FitAddon runs. */
-.terminal-instance .xterm-screen {
-  min-width: 0 !important;
-  min-height: 100% !important;
+@media (max-width: 640px) {
+  .terminal-frame {
+    inset: 3px;
+    border-radius: 3px;
+  }
+}
+
+/* ─── FINAL terminal frame + xterm containment override ─────────────────── */
+
+.terminal-frame {
+  position: absolute;
+  inset: 4px;
+  box-sizing: border-box;
+
+  /*
+    Inner padding is the fix.
+    Left gives breathing room.
+    Right reserves space for invisible scrollbar / xterm remainder.
+    Bottom prevents statusbar-edge clipping.
+  */
+  padding: 0 14px 8px 6px;
+
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 24%, var(--border-subtle));
+  border-radius: 4px;
+
+  background: color-mix(in srgb, #040404 82%, transparent);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    0 4px 12px rgba(0,0,0,0.18);
+}
+
+[data-theme="light"] .terminal-frame {
+  background: color-mix(in srgb, #ffffff 82%, transparent);
+  border-color: var(--border);
+}
+
+.terminal-frame .terminal-instance {
+  position: absolute !important;
+  inset: 0 !important;
+
+  /*
+    xterm mount fills the INSIDE of the frame padding.
+    This avoids the right/bottom clipping you’re seeing.
+  */
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+
+  overflow: hidden !important;
   background: transparent !important;
 }
 
-.terminal-instance .xterm-helpers,
-.terminal-instance .xterm-scroll-area,
-.terminal-instance .xterm-rows,
-.terminal-instance .xterm-rows > div {
+/* Make xterm use the padded frame content box. */
+.terminal-frame .xterm {
+  position: absolute !important;
+  top: 0 !important;
+  right: 8px !important;
+  bottom: 8px !important;
+  left: 10px !important;
+
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
   background: transparent !important;
+}
+
+.terminal-frame .xterm-viewport {
+  position: absolute !important;
+  inset: 0 !important;
+
+  width: auto !important;
+  height: auto !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  scrollbar-gutter: auto !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+
+  background: transparent !important;
+}
+
+.terminal-frame .xterm-screen {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  background: transparent !important;
+}
+
+.terminal-frame .xterm-scroll-area,
+.terminal-frame .xterm-helpers,
+.terminal-frame .xterm-rows,
+.terminal-frame .xterm-rows > div {
+  background: transparent !important;
+}
+
+.terminal-frame .xterm-viewport::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.terminal-frame .xterm-viewport::-webkit-scrollbar-track,
+.terminal-frame .xterm-viewport::-webkit-scrollbar-thumb,
+.terminal-frame .xterm-viewport::-webkit-scrollbar-thumb:hover,
+.terminal-frame .xterm-viewport::-webkit-scrollbar-corner {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 @media (max-width: 640px) {
-  .terminal-instance {
-    --terminal-frame-inset: 3px;
+  .terminal-frame {
+    inset: 3px;
+    padding: 0 12px 7px 5px;
     border-radius: 3px;
+  }
+
+  .terminal-frame .xterm {
+    top: 0 !important;
+    right: 8px !important;
+    bottom: 7px !important;
+    left: 10px !important;
   }
 }
