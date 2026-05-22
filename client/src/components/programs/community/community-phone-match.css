@@ -1,106 +1,55 @@
-/* Phone-only final match for community toolbar.
-   Imported after community.css to beat old !important overrides. */
-
-/* Match AI chat toolbar row: px-3 py-2.5 flex justify-between.
-   Do NOT force extra fixed height beyond the actual 32px button + 20px padding. */
-.community-native--compact .community-topbar.chat-toolbar-row {
-  height: 52px !important;
-  min-height: 52px !important;
-  max-height: 52px !important;
-  padding: 10px 12px !important;
-  gap: 0 !important;
+/* Keep toolbar matched/centered. Do not change bar height. */
+.community-native--compact > .chat-toolbar-row {
+  width: 100% !important;
   display: flex !important;
   align-items: center !important;
-  justify-content: space-between !important;
-  box-sizing: border-box !important;
 }
 
-/* Match AI chat left group: gap-2.5 */
-.community-native--compact .community-topbar-left {
+.community-native--compact > .chat-toolbar-row > div:first-child {
+  display: flex !important;
+  align-items: center !important;
   min-width: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  flex: 1 1 auto !important;
 }
 
-/* Match AI chat right group: gap-1.5 */
-.community-native--compact .community-topbar-actions {
-  display: flex !important;
-  align-items: center !important;
-  gap: 6px !important;
-  flex: 0 0 auto !important;
-}
-
-/* Match AI chat button size-8 exactly. */
-.community-native--compact .community-panel-button {
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
-  min-height: 32px !important;
-  max-height: 32px !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border-radius: 4px !important;
+.community-native--compact > .chat-toolbar-row .chat-tool-button {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  box-sizing: border-box !important;
+  flex: 0 0 auto !important;
+  line-height: 1 !important;
 }
 
-/* Match AI chat icon size-4 exactly. */
-.community-native--compact .community-panel-icon {
-  width: 16px !important;
-  height: 16px !important;
-  min-width: 16px !important;
-  min-height: 16px !important;
-  stroke-width: 2 !important;
+.community-native--compact > .chat-toolbar-row .chat-tool-button > svg {
+  display: block !important;
+  margin: auto !important;
 }
 
-/* Match AI chat title button positioning.
-   Important: remove community's old title button border/background/height weirdness. */
-.community-native--compact .community-session-title.chat-session-title {
-  height: auto !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: 180px !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
+.community-native--compact > .chat-toolbar-row .chat-session-title {
   display: inline-flex !important;
   align-items: center !important;
-  color: var(--fg-base) !important;
-  font-family: inherit !important;
-  font-size: 13px !important;
-  font-weight: 650 !important;
   line-height: 1 !important;
-  cursor: default !important;
+  margin: 0 !important;
 }
 
-.community-native--compact .community-session-title.chat-session-title span {
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
+.community-native--compact > .chat-toolbar-row .chat-session-title span {
+  display: inline-flex !important;
+  align-items: center !important;
+  line-height: 1 !important;
 }
 
-/* AI phone row does not show this secondary line. */
-.community-native--compact .community-session-subtitle {
-  display: none !important;
-}
-
-/* Match AI chat mobile context drawer motion exactly. */
+/* AI chat mobile context drawer behavior */
 .community-native--compact .community-sidebar {
-  transform: translateX(-100%) !important;
   transition: transform 180ms var(--motion-ease) !important;
+  will-change: transform !important;
 }
 
-.community-native--compact.community-native--sidebar-open .community-sidebar {
+.community-native--compact .community-sidebar.is-open {
   transform: translateX(0) !important;
+}
+
+.community-native--compact .community-sidebar.is-closing,
+.community-native--compact .community-sidebar.is-closed {
+  transform: translateX(-102%) !important;
 }
 
 .community-native--compact .community-sidebar-scrim {
@@ -112,12 +61,17 @@
   padding: 0 !important;
   margin: 0 !important;
   background: rgba(0, 0, 0, 0.26) !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
   transition: opacity 180ms var(--motion-ease) !important;
+  will-change: opacity !important;
 }
 
 .community-native--compact .community-sidebar-scrim.is-open {
   opacity: 1 !important;
   pointer-events: auto !important;
+}
+
+.community-native--compact .community-sidebar-scrim.is-closing,
+.community-native--compact .community-sidebar-scrim.is-closed {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
