@@ -4,6 +4,7 @@ type TelegramChatListProps = {
   chats: TelegramChat[];
   activeChatId: string;
   query: string;
+  className?: string;
   onQueryChange: (query: string) => void;
   onSelectChat: (chatId: string) => void;
 };
@@ -12,11 +13,12 @@ export function TelegramChatList({
   chats,
   activeChatId,
   query,
+  className,
   onQueryChange,
   onSelectChat,
 }: TelegramChatListProps) {
   return (
-    <aside className="community-sidebar">
+    <aside className={["community-sidebar", className].filter(Boolean).join(" ")}>
       <div className="community-titlebar">
         <span className="community-title">telegram</span>
       </div>

@@ -51,6 +51,7 @@ const MOCK_MESSAGES: TelegramMessage[] = [
 const STORAGE_KEY = "reterm.community.messages";
 const COMPACT_PANE_WIDTH = 767;
 const COMPACT_POINTER_QUERY = "(hover: none) and (pointer: coarse)";
+const MOBILE_PANEL_EXIT_MS = 380;
 
 function isTelegramMessage(value: unknown): value is TelegramMessage {
   if (!value || typeof value !== "object") return false;
@@ -94,6 +95,8 @@ export function CommunityNativeShell() {
   const [showLogin, setShowLogin] = useState(false);
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarClosing, setSidebarClosing] = useState(false);
+  const sidebarCloseTimerRef = useRef<number | null>(null);
   const [chatQuery, setChatQuery] = useState("");
   const [messagesState, setMessagesState] = useState<TelegramMessage[]>(() =>
     readStoredMessages()
@@ -142,11 +145,51 @@ export function CommunityNativeShell() {
     [activeChat.id, messagesState]
   );
 
+  const clearSidebarCloseTimer = () => {
+    if (sidebarCloseTimerRef.current === null) return;
+    window.clearTimeout(sidebarCloseTimerRef.current);
+    sidebarCloseTimerRef.current = null;
+  };
+
+  const openSidebar = () => {
+    clearSidebarCloseTimer();
+    setSidebarClosing(false);
+    setSidebarOpen(true);
+  };
+
+  const closeSidebar = () => {
+    if (!sidebarOpen) return;
+
+    clearSidebarCloseTimer();
+    setSidebarOpen(false);
+    setSidebarClosing(true);
+
+    sidebarCloseTimerRef.current = window.setTimeout(() => {
+      setSidebarClosing(false);
+      sidebarCloseTimerRef.current = null;
+    }, MOBILE_PANEL_EXIT_MS);
+  };
+
+  const toggleSidebar = () => {
+    if (sidebarOpen) closeSidebar();
+    else openSidebar();
+  };
+
+  useEffect(() => {
+    return () => clearSidebarCloseTimer();
+  }, []);
+
+  const sidebarMotionClass = sidebarOpen
+    ? "is-open"
+    : sidebarClosing
+      ? "is-closing"
+      : "is-closed";
+
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
 
     if (isCompactLayout) {
-      setSidebarOpen(false);
+      closeSidebar();
     }
   };
 
@@ -197,61 +240,93 @@ export function CommunityNativeShell() {
         "program-shell--community",
       ].filter(Boolean).join(" ")}
     >
-      <header className="community-topbar chat-toolbar-row">
-        <div className="community-topbar-left">
+      <header
+        className={
+          isCompactLayout
+            ? "chat-toolbar-row relative z-30 flex items-center justify-between px-3 py-2.5"
+            : "community-topbar chat-toolbar-row"
+        }
+      >
+        <div
+          className={
+            isCompactLayout
+              ? "flex min-w-0 flex-1 items-center gap-2.5"
+              : "community-topbar-left"
+          }
+        >
           {isCompactLayout ? (
             <button
               type="button"
               className={
                 sidebarOpen
-                  ? "chat-tool-button community-panel-button is-active text-primary"
-                  : "chat-tool-button community-panel-button text-muted-foreground"
+                  ? "chat-tool-button size-8 rounded-sm transition-all duration-150 is-active text-primary"
+                  : "chat-tool-button size-8 rounded-sm transition-all duration-150 text-muted-foreground"
               }
-              onClick={() => setSidebarOpen((current) => !current)}
+              onClick={toggleSidebar}
               title={sidebarOpen ? "close chats" : "open chats"}
               aria-label={sidebarOpen ? "close chats" : "open chats"}
             >
               {sidebarOpen ? (
-                <PanelLeftCloseIcon className="community-panel-icon" />
+                <PanelLeftCloseIcon className="size-4" />
               ) : (
-                <PanelLeftOpenIcon className="community-panel-icon" />
+                <PanelLeftOpenIcon className="size-4" />
               )}
             </button>
           ) : null}
 
           <button
             type="button"
-            className="community-session-title chat-session-title"
+            className={
+              isCompactLayout
+                ? "chat-session-title"
+                : "community-session-title chat-session-title"
+            }
             title="telegram community"
             aria-label={`active chat: ${activeChat.title}`}
           >
             <span>{activeChat.title}</span>
           </button>
 
-          <span className="community-session-subtitle">
-            {activeChat.subtitle}
-          </span>
+          {!isCompactLayout ? (
+            <span className="community-session-subtitle">
+              {activeChat.subtitle}
+            </span>
+          ) : null}
         </div>
 
-        <div className="community-topbar-actions">
+        <div
+          className={
+            isCompactLayout
+              ? "flex items-center gap-1.5"
+              : "community-topbar-actions"
+          }
+        >
           <button
             type="button"
-            className="chat-tool-button community-panel-button text-muted-foreground"
+            className={
+              isCompactLayout
+                ? "chat-tool-button size-8 rounded-sm text-muted-foreground"
+                : "chat-tool-button community-panel-button text-muted-foreground"
+            }
             onClick={() => setShowLogin(true)}
             title="mock telegram login"
             aria-label="open mock telegram login"
           >
-            <LogIn className="community-panel-icon" />
+            <LogIn className={isCompactLayout ? "size-4" : "community-panel-icon"} />
           </button>
 
           <button
             type="button"
-            className="chat-tool-button community-panel-button text-muted-foreground"
+            className={
+              isCompactLayout
+                ? "chat-tool-button size-8 rounded-sm text-muted-foreground"
+                : "chat-tool-button community-panel-button text-muted-foreground"
+            }
             onClick={handleClearMessages}
             title="reset mock messages"
             aria-label="reset mock messages"
           >
-            <RotateCcw className="community-panel-icon" />
+            <RotateCcw className={isCompactLayout ? "size-4" : "community-panel-icon"} />
           </button>
         </div>
       </header>
@@ -261,6 +336,7 @@ export function CommunityNativeShell() {
           chats={visibleChats}
           activeChatId={activeChat.id}
           query={chatQuery}
+          className={isCompactLayout ? sidebarMotionClass : undefined}
           onQueryChange={setChatQuery}
           onSelectChat={handleSelectChat}
         />
@@ -268,10 +344,10 @@ export function CommunityNativeShell() {
         {isCompactLayout ? (
           <button
             type="button"
-            className={`community-sidebar-scrim `}
+            className={`community-sidebar-scrim ${sidebarMotionClass}`}
             aria-label="close chats"
             disabled={!sidebarOpen}
-            onClick={() => setSidebarOpen(false)}
+            onClick={closeSidebar}
           />
         ) : null}
 
