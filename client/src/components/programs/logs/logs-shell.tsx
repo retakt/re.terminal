@@ -334,7 +334,7 @@ function TerminalLine({ event }: { event: AuditEvent }) {
   ].filter(Boolean).join(" ");
 
   return (
-    <div className="log-line" title={rowTitle}>
+    <div className="log-line" data-tooltip={rowTitle}>
 <BracketedCell className="log-cell log-time log-time-cell">
   {formatClock(event.ts)}
 </BracketedCell>
