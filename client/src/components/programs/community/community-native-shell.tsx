@@ -1,6 +1,6 @@
 import "./community.css";
 import "./community-phone-match.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LogIn,
   PanelLeftCloseIcon,
@@ -12,97 +12,62 @@ import { TelegramMessageList } from "./telegram-message-list";
 import { TelegramComposer } from "./telegram-composer";
 import { TelegramLogin } from "./telegram-login";
 import type { TelegramChat, TelegramMessage } from "./telegram-types";
+import {
+  getCommunityStatus,
+  listCommunityChats,
+  listCommunityMessages,
+  sendCommunityMessage,
+  type CommunityServiceStatus,
+} from "./lib/community-api";
 
-const MOCK_CHATS: TelegramChat[] = [
+const COMMUNITY_SERVICE = "telegram" as const;
+
+const FALLBACK_CHATS: TelegramChat[] = [
   {
-    id: "reterm",
+    id: "telegram:reterm",
+    nativeId: "reterm",
+    service: "telegram",
     title: "re.Term",
-    subtitle: "native telegram shell",
-    unread: 1,
-  },
-  {
-    id: "updates",
-    title: "Telegram Updates",
-    subtitle: "theme-safe preview",
-  },
-  {
-    id: "notes",
-    title: "Saved Messages",
-    subtitle: "local mock data",
+    subtitle: "community api unavailable",
+    unread: 0,
   },
 ];
 
-const MOCK_MESSAGES: TelegramMessage[] = [
+const FALLBACK_MESSAGES: TelegramMessage[] = [
   {
-    id: "m1",
-    chatId: "reterm",
-    text: "native telegram mode starts here.",
-    time: "12:04",
-  },
-  {
-    id: "m2",
-    chatId: "reterm",
-    text: "this shell uses your re.Term tokens directly.",
-    time: "12:05",
-    outgoing: true,
+    id: "telegram:fallback",
+    service: "telegram",
+    chatId: "telegram:reterm",
+    text: "community adapter is not reachable yet.",
+    time: "now",
+    status: "failed",
   },
 ];
 
-const STORAGE_KEY = "reterm.community.messages";
 const COMPACT_PANE_WIDTH = 767;
 const COMPACT_POINTER_QUERY = "(hover: none) and (pointer: coarse)";
 const MOBILE_PANEL_EXIT_MS = 380;
-const TELEGRAM_STATUS = "preview" as const;
-const TELEGRAM_ACCOUNT_LABEL = "tdlib not connected";
-
-function isTelegramMessage(value: unknown): value is TelegramMessage {
-  if (!value || typeof value !== "object") return false;
-
-  const message = value as Partial<TelegramMessage>;
-
-  return (
-    typeof message.id === "string" &&
-    typeof message.chatId === "string" &&
-    typeof message.text === "string" &&
-    typeof message.time === "string" &&
-    (message.outgoing === undefined || typeof message.outgoing === "boolean")
-  );
-}
-
-function readStoredMessages(): TelegramMessage[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return MOCK_MESSAGES;
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return MOCK_MESSAGES;
-
-    const messages = parsed.filter(isTelegramMessage);
-    return messages.length > 0 ? messages : MOCK_MESSAGES;
-  } catch {
-    return MOCK_MESSAGES;
-  }
-}
-
-function writeStoredMessages(messages: TelegramMessage[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-  } catch {}
-}
 
 export function CommunityNativeShell() {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const sidebarCloseTimerRef = useRef<number | null>(null);
 
-  const [activeChatId, setActiveChatId] = useState(MOCK_CHATS[0].id);
+  const [activeChatId, setActiveChatId] = useState(FALLBACK_CHATS[0].id);
   const [showLogin, setShowLogin] = useState(false);
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarClosing, setSidebarClosing] = useState(false);
-  const sidebarCloseTimerRef = useRef<number | null>(null);
   const [chatQuery, setChatQuery] = useState("");
-  const [messagesState, setMessagesState] = useState<TelegramMessage[]>(() =>
-    readStoredMessages()
-  );
+  const [chats, setChats] = useState<TelegramChat[]>(FALLBACK_CHATS);
+  const [messagesState, setMessagesState] = useState<TelegramMessage[]>(FALLBACK_MESSAGES);
+  const [telegramStatus, setTelegramStatus] = useState<CommunityServiceStatus>({
+    ok: true,
+    service: COMMUNITY_SERVICE,
+    state: "preview",
+    accountLabel: "tdlib not connected",
+    connected: false,
+  });
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -130,17 +95,81 @@ export function CommunityNativeShell() {
     };
   }, []);
 
+  const loadStatus = useCallback(async () => {
+    try {
+      setTelegramStatus(await getCommunityStatus(COMMUNITY_SERVICE));
+    } catch (err) {
+      setTelegramStatus({
+        ok: false,
+        service: COMMUNITY_SERVICE,
+        state: "error",
+        accountLabel: err instanceof Error ? err.message : "community api unavailable",
+        connected: false,
+      });
+    }
+  }, []);
+
+  const loadChats = useCallback(async () => {
+    try {
+      const result = await listCommunityChats(COMMUNITY_SERVICE);
+      const nextChats = result.chats.length ? result.chats : FALLBACK_CHATS;
+
+      setChats(nextChats);
+      setActiveChatId((current) =>
+        nextChats.some((chat) => chat.id === current) ? current : nextChats[0].id
+      );
+    } catch {
+      setChats(FALLBACK_CHATS);
+      setActiveChatId(FALLBACK_CHATS[0].id);
+      setTelegramStatus((current) => ({
+        ...current,
+        ok: false,
+        state: "error",
+        accountLabel: "community api unavailable",
+        connected: false,
+      }));
+    }
+  }, []);
+
+  const loadMessages = useCallback(async (chatId: string) => {
+    setLoadingMessages(true);
+
+    try {
+      const result = await listCommunityMessages(COMMUNITY_SERVICE, chatId);
+      setMessagesState(result.messages);
+    } catch {
+      setMessagesState(
+        FALLBACK_MESSAGES.map((message) => ({
+          ...message,
+          chatId,
+        }))
+      );
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStatus();
+    void loadChats();
+  }, [loadChats, loadStatus]);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    void loadMessages(activeChatId);
+  }, [activeChatId, loadMessages]);
+
   const visibleChats = useMemo(() => {
     const query = chatQuery.trim().toLowerCase();
-    if (!query) return MOCK_CHATS;
+    if (!query) return chats;
 
-    return MOCK_CHATS.filter((chat) =>
+    return chats.filter((chat) =>
       `${chat.title} ${chat.subtitle}`.toLowerCase().includes(query)
     );
-  }, [chatQuery]);
+  }, [chatQuery, chats]);
 
   const activeChat =
-    MOCK_CHATS.find((chat) => chat.id === activeChatId) ?? MOCK_CHATS[0];
+    chats.find((chat) => chat.id === activeChatId) ?? chats[0] ?? FALLBACK_CHATS[0];
 
   const messages = useMemo(
     () => messagesState.filter((message) => message.chatId === activeChat.id),
@@ -192,32 +221,43 @@ export function CommunityNativeShell() {
     }
   };
 
-  const handleClearMessages = () => {
-    setMessagesState(MOCK_MESSAGES);
-    writeStoredMessages(MOCK_MESSAGES);
+  const handleRefresh = () => {
+    void loadStatus();
+    void loadChats();
+    void loadMessages(activeChat.id);
   };
 
-  const handleSendMessage = (text: string) => {
-    const now = new Date();
+  const handleSendMessage = async (text: string) => {
+    const optimisticId = `telegram:optimistic-${Date.now()}`;
+    const optimisticMessage: TelegramMessage = {
+      id: optimisticId,
+      service: COMMUNITY_SERVICE,
+      chatId: activeChat.id,
+      text,
+      outgoing: true,
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      status: "sending",
+    };
 
-    setMessagesState((current) => {
-      const next = [
-        ...current,
-        {
-          id: `local-${Date.now()}`,
-          chatId: activeChat.id,
-          text,
-          outgoing: true,
-          time: now.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        },
-      ];
+    setMessagesState((current) => [...current, optimisticMessage]);
 
-      writeStoredMessages(next);
-      return next;
-    });
+    try {
+      const result = await sendCommunityMessage(COMMUNITY_SERVICE, activeChat.id, text);
+      setMessagesState((current) =>
+        current.map((message) =>
+          message.id === optimisticId ? result.message : message
+        )
+      );
+    } catch {
+      setMessagesState((current) =>
+        current.map((message) =>
+          message.id === optimisticId ? { ...message, status: "failed" } : message
+        )
+      );
+    }
   };
 
   if (showLogin) {
@@ -289,10 +329,10 @@ export function CommunityNativeShell() {
           {!isCompactLayout ? (
             <>
               <span className="community-session-subtitle">
-                {activeChat.subtitle}
+                {loadingMessages ? "loading messages" : activeChat.subtitle}
               </span>
-              <span className="community-status-pill community-status-pill--preview">
-                {TELEGRAM_STATUS}
+              <span className={`community-status-pill community-status-pill--${telegramStatus.state}`}>
+                {telegramStatus.state}
               </span>
             </>
           ) : null}
@@ -326,9 +366,9 @@ export function CommunityNativeShell() {
                 ? "chat-tool-button size-8 rounded-sm text-muted-foreground"
                 : "chat-tool-button community-panel-button text-muted-foreground"
             }
-            onClick={handleClearMessages}
-            title="reset preview messages"
-            aria-label="reset preview messages"
+            onClick={handleRefresh}
+            title="refresh community preview"
+            aria-label="refresh community preview"
           >
             <RotateCcw className={isCompactLayout ? "size-4" : "community-panel-icon"} />
           </button>
@@ -342,8 +382,8 @@ export function CommunityNativeShell() {
               chats={visibleChats}
               activeChatId={activeChat.id}
               query={chatQuery}
-              status={TELEGRAM_STATUS}
-              accountLabel={TELEGRAM_ACCOUNT_LABEL}
+              status={telegramStatus.state}
+              accountLabel={telegramStatus.accountLabel}
               className={`chat-mobile-context-drawer community-mobile-drawer ${sidebarMotionClass}`}
               onQueryChange={setChatQuery}
               onSelectChat={handleSelectChat}
@@ -354,6 +394,8 @@ export function CommunityNativeShell() {
             chats={visibleChats}
             activeChatId={activeChat.id}
             query={chatQuery}
+            status={telegramStatus.state}
+            accountLabel={telegramStatus.accountLabel}
             onQueryChange={setChatQuery}
             onSelectChat={handleSelectChat}
           />
