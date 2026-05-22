@@ -1397,3 +1397,74 @@
 .community-native--compact .community-session-subtitle {
   display: none !important;
 }
+
+/* ─── Telegram integration prep UI ─────────────────────────────────── */
+
+.community-status-pill {
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 999px;
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.community-status-pill--preview {
+  border-color: color-mix(in srgb, var(--accent-cyan) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+  color: color-mix(in srgb, var(--accent-cyan) 78%, var(--fg-base));
+}
+
+.community-titlebar--stacked {
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
+  display: grid !important;
+  align-content: center !important;
+  gap: 3px !important;
+}
+
+.community-sidebar-status {
+  display: block;
+  overflow: hidden;
+  color: var(--ui-muted, var(--fg-muted));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.community-sidebar-status--preview {
+  color: color-mix(in srgb, var(--accent-cyan) 72%, var(--fg-muted));
+}
+
+.community-message-empty {
+  align-self: center;
+  max-width: 260px;
+  margin: auto;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--ui-border-soft, var(--border-subtle));
+  border-radius: 6px;
+  background: var(--ui-card, var(--bg-surface));
+  color: var(--ui-muted, var(--fg-muted));
+  text-align: center;
+}
+
+.community-message-empty strong {
+  color: var(--ui-text, var(--fg-base));
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.community-message-empty span {
+  font-size: 11px;
+  line-height: 1.35;
+}
