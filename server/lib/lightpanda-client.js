@@ -1343,7 +1343,23 @@ async function fillPageFields(session, sid, fields) {
       return needles.some((needle) => haystack.includes(needle));
     };
 
-    const elements = Array.from(document.querySelectorAll("input, textarea, select"));
+    const isVisibleEditable = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      const type = String(el.getAttribute("type") || "").toLowerCase();
+      return rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        style.opacity !== "0" &&
+        !el.disabled &&
+        !el.readOnly &&
+        !["hidden", "submit", "button", "reset", "image"].includes(type);
+    };
+
+    const allElements = Array.from(document.querySelectorAll("input, textarea, select"));
+    const elements = allElements.filter(isVisibleEditable);
     const filled = [];
     const missing = [];
     const setElementValue = (el, value) => {
@@ -1371,6 +1387,11 @@ async function fillPageFields(session, sid, fields) {
         el = elements.find((candidate) => matches(candidate, field));
       }
 
+      if (el && !isVisibleEditable(el)) {
+        const visibleMatch = elements.find((candidate) => matches(candidate, field));
+        if (visibleMatch) el = visibleMatch;
+      }
+
       if (!el) {
         missing.push({
           key: field.selector || field.name || field.id || field.label || field.placeholder || "unknown",
@@ -1392,12 +1413,24 @@ async function fillPageFields(session, sid, fields) {
 
       const type = String(el.getAttribute("type") || el.tagName.toLowerCase()).toLowerCase();
       const secret = type === "password" || Boolean(field.secret) || /\\b(password|pass|pwd|otp|code|pin)\\b/i.test(String(field.label || field.name || field.id || ""));
+      const actualValue = String(el.value ?? "");
+      const verified = actualValue === value;
+
       filled.push({
         key: field.selector || field.name || field.id || field.label || field.placeholder || "field",
         type,
         redacted: secret,
         valuePreview: secret ? "[redacted]" : String(value).slice(0, 80),
+        actualPreview: secret ? "[redacted]" : actualValue.slice(0, 80),
+        verified,
       });
+
+      if (!verified) {
+        missing.push({
+          key: field.selector || field.name || field.id || field.label || field.placeholder || "field",
+          reason: "value did not stick after fill",
+        });
+      }
     }
 
     return { ok: missing.length === 0, filled, missing };

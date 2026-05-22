@@ -79,7 +79,7 @@ async function runTests() {
   console.log("\nTest 3: listMcpTools returns builtin tools only");
   try {
     const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    const tools = gateway.listMcpTools();
+    const tools = await gateway.listMcpTools();
     
     assert(Array.isArray(tools), "listMcpTools returns an array");
     assert(tools.length > 0, "At least one builtin tool exists");
@@ -100,7 +100,7 @@ async function runTests() {
   console.log("\nTest 4: Admin status helper is callable as MCP tool");
   try {
     const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    const tools = gateway.listMcpTools();
+    const tools = await gateway.listMcpTools();
     
     // Check that the admin tool appears in the tool list
     const hasAdminTool = tools.some(t => t.name === "mcp__ops__mcp_architecture_status");
@@ -176,7 +176,7 @@ async function runTests() {
     const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
     
     // listMcpTools should be sync and return array directly
-    const tools = gateway.listMcpTools();
+    const tools = await gateway.listMcpTools();
     assert(!(tools instanceof Promise), "listMcpTools() returns array directly, not Promise");
     
     // getMcpLogs should be sync
@@ -194,7 +194,7 @@ async function runTests() {
   console.log("\nTest 8: No fake external MCP tools before external client exists");
   try {
     const gateway = await import(`file://${path.join(serverLib, "mcp-gateway.js")}`);
-    const tools = gateway.listMcpTools();
+    const tools = await gateway.listMcpTools();
     
     // All tools should have builtin source
     const externalTools = tools.filter(t => t.source === "external" || t.mcpNative === true);
