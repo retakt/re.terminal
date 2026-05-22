@@ -1,5 +1,11 @@
 import "./community.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  LogIn,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  RotateCcw,
+} from "lucide-react";
 import { TelegramChatList } from "./telegram-chat-list";
 import { TelegramMessageList } from "./telegram-message-list";
 import { TelegramComposer } from "./telegram-composer";
@@ -42,7 +48,8 @@ const MOCK_MESSAGES: TelegramMessage[] = [
 ];
 
 const STORAGE_KEY = "reterm.community.messages";
-const DESKTOP_QUERY = "(min-width: 641px)";
+const COMPACT_PANE_WIDTH = 767;
+const COMPACT_POINTER_QUERY = "(hover: none) and (pointer: coarse)";
 
 function readStoredMessages(): TelegramMessage[] {
   try {
@@ -65,28 +72,41 @@ function writeStoredMessages(messages: TelegramMessage[]) {
 }
 
 export function CommunityNativeShell() {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
   const [activeChatId, setActiveChatId] = useState(MOCK_CHATS[0].id);
   const [showLogin, setShowLogin] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia("(min-width: 641px)").matches;
-  });
+  const [isCompactLayout, setIsCompactLayout] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messagesState, setMessagesState] = useState<TelegramMessage[]>(() =>
     readStoredMessages()
   );
 
   useEffect(() => {
-    const media = window.matchMedia(DESKTOP_QUERY);
+    const root = rootRef.current;
+    if (!root) return;
 
-    const syncSidebarForViewport = () => {
-      setSidebarOpen(media.matches);
+    const pointerQuery = window.matchMedia(COMPACT_POINTER_QUERY);
+
+    const syncLayout = () => {
+      const compact =
+        root.getBoundingClientRect().width <= COMPACT_PANE_WIDTH ||
+        pointerQuery.matches;
+
+      setIsCompactLayout(compact);
+
+      // Keep the user's drawer state across pane-size changes.
     };
 
-    syncSidebarForViewport();
-    media.addEventListener("change", syncSidebarForViewport);
+    syncLayout();
+
+    const observer = new ResizeObserver(syncLayout);
+    observer.observe(root);
+    pointerQuery.addEventListener("change", syncLayout);
 
     return () => {
-      media.removeEventListener("change", syncSidebarForViewport);
+      observer.disconnect();
+      pointerQuery.removeEventListener("change", syncLayout);
     };
   }, []);
 
@@ -101,13 +121,9 @@ export function CommunityNativeShell() {
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
 
-    if (!window.matchMedia(DESKTOP_QUERY).matches) {
+    if (isCompactLayout) {
       setSidebarOpen(false);
     }
-  };
-
-  const handleToggleSidebar = () => {
-    setSidebarOpen((current) => !current);
   };
 
   const handleClearMessages = () => {
@@ -148,40 +164,92 @@ export function CommunityNativeShell() {
 
   return (
     <div
+      ref={rootRef}
       className={[
         "community-native",
+        isCompactLayout ? "community-native--compact" : "community-native--desktop",
         sidebarOpen ? "community-native--sidebar-open" : "community-native--sidebar-closed",
         "program-shell",
         "program-shell--community",
       ].filter(Boolean).join(" ")}
     >
-      <TelegramChatList
-        chats={MOCK_CHATS}
-        activeChatId={activeChat.id}
-        onSelectChat={handleSelectChat}
-      />
+      <header className="community-topbar chat-toolbar-row">
+        <div className="community-topbar-left">
+          {isCompactLayout ? (
+            <button
+              type="button"
+              className={
+                sidebarOpen
+                  ? "chat-tool-button community-panel-button is-active text-primary"
+                  : "chat-tool-button community-panel-button text-muted-foreground"
+              }
+              onClick={() => setSidebarOpen((current) => !current)}
+              title={sidebarOpen ? "close chats" : "open chats"}
+              aria-label={sidebarOpen ? "close chats" : "open chats"}
+            >
+              {isCompactLayout && sidebarOpen ? (
+                <PanelLeftCloseIcon className="community-panel-icon" />
+              ) : (
+                <PanelLeftOpenIcon className="community-panel-icon" />
+              )}
+            </button>
+          ) : null}
 
-      {sidebarOpen ? (
-        <button
-          type="button"
-          className="community-sidebar-scrim"
-          aria-label="close chats"
-          onClick={() => setSidebarOpen(false)}
+          <button
+            type="button"
+            className="community-session-title chat-session-title"
+            title="telegram community"
+          >
+            <span>{activeChat.title}</span>
+          </button>
+
+          <span className="community-session-subtitle">
+            {activeChat.subtitle}
+          </span>
+        </div>
+
+        <div className="community-topbar-actions">
+          <button
+            type="button"
+            className="chat-tool-button community-panel-button text-muted-foreground"
+            onClick={() => setShowLogin(true)}
+            title="connect telegram"
+          >
+            <LogIn className="community-panel-icon" />
+          </button>
+
+          <button
+            type="button"
+            className="chat-tool-button community-panel-button text-muted-foreground"
+            onClick={handleClearMessages}
+            title="reset mock messages"
+          >
+            <RotateCcw className="community-panel-icon" />
+          </button>
+        </div>
+      </header>
+
+      <div className="community-workspace">
+        <TelegramChatList
+          chats={MOCK_CHATS}
+          activeChatId={activeChat.id}
+          onSelectChat={handleSelectChat}
         />
-      ) : null}
 
-      <main className="community-main">
-        <TelegramMessageList
-          chat={activeChat}
-          messages={messages}
-          onClearMessages={handleClearMessages}
-          onOpenLogin={() => setShowLogin(true)}
-          onToggleSidebar={handleToggleSidebar}
-          sidebarOpen={sidebarOpen}
-        />
+        {isCompactLayout && sidebarOpen ? (
+          <button
+            type="button"
+            className="community-sidebar-scrim"
+            aria-label="close chats"
+            onClick={() => setSidebarOpen(false)}
+          />
+        ) : null}
 
-        <TelegramComposer onSendMessage={handleSendMessage} />
-      </main>
+        <main className="community-main">
+          <TelegramMessageList messages={messages} />
+          <TelegramComposer onSendMessage={handleSendMessage} />
+        </main>
+      </div>
     </div>
   );
 }
