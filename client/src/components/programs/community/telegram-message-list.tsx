@@ -31,7 +31,10 @@ export function TelegramMessageList({ messages }: TelegramMessageListProps) {
           }
         >
           <span>{message.text}</span>
-          <time>{message.time}</time>
+          <time>
+            {message.time}
+            {message.status && message.status !== "sent" ? ` · ${message.status}` : ""}
+          </time>
         </div>
       ))}
       <div ref={bottomRef} aria-hidden="true" />

@@ -245,6 +245,7 @@ export function CommunityNativeShell() {
     setMessagesState((current) => [...current, optimisticMessage]);
 
     try {
+      await new Promise((resolve) => window.setTimeout(resolve, 240));
       const result = await sendCommunityMessage(COMMUNITY_SERVICE, activeChat.id, text);
       setMessagesState((current) =>
         current.map((message) =>
