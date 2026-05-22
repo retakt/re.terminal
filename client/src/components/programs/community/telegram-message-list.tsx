@@ -1,4 +1,9 @@
-import { LogIn, Menu, RotateCcw } from "lucide-react";
+import {
+  LogIn,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  RotateCcw,
+} from "lucide-react";
 import type { TelegramChat, TelegramMessage } from "./telegram-types";
 
 type TelegramMessageListProps = {
@@ -6,7 +11,8 @@ type TelegramMessageListProps = {
   messages: TelegramMessage[];
   onClearMessages: () => void;
   onOpenLogin: () => void;
-  onOpenSidebar: () => void;
+  onToggleSidebar: () => void;
+  sidebarOpen: boolean;
 };
 
 export function TelegramMessageList({
@@ -14,45 +20,59 @@ export function TelegramMessageList({
   messages,
   onClearMessages,
   onOpenLogin,
-  onOpenSidebar,
+  onToggleSidebar,
+  sidebarOpen,
 }: TelegramMessageListProps) {
   return (
     <>
-      <header className="community-header">
-        <button
-          type="button"
-          className="community-mobile-sidebar-btn"
-          onClick={onOpenSidebar}
-          title="open chats"
-          aria-label="open chats"
-        >
-          <Menu size={14} />
-        </button>
+      <header className="community-header chat-toolbar-row">
+        <div className="community-header-left">
+          <button
+            type="button"
+            className={
+              sidebarOpen
+                ? "chat-tool-button community-sidebar-handle size-8 rounded-sm transition-all duration-150 is-active text-primary"
+                : "chat-tool-button community-sidebar-handle size-8 rounded-sm transition-all duration-150 text-muted-foreground"
+            }
+            onClick={onToggleSidebar}
+            title={sidebarOpen ? "close chats" : "open chats"}
+            aria-label={sidebarOpen ? "close chats" : "open chats"}
+          >
+            {sidebarOpen ? (
+              <PanelLeftCloseIcon className="size-4" />
+            ) : (
+              <PanelLeftOpenIcon className="size-4" />
+            )}
+          </button>
 
-        <div className="community-header-copy">
-          <strong>{chat.title}</strong>
-          <small>{chat.subtitle}</small>
+          <button
+            type="button"
+            className="community-session-title chat-session-title"
+            title="telegram community"
+          >
+            <span>{chat.title}</span>
+          </button>
+
+          <small className="community-session-subtitle">{chat.subtitle}</small>
         </div>
 
         <div className="community-header-actions">
           <button
             type="button"
-            className="community-header-action"
+            className="chat-tool-button community-header-action size-8 rounded-sm text-muted-foreground transition-colors"
             onClick={onOpenLogin}
             title="open telegram auth"
           >
-            <LogIn size={13} />
-            connect
+            <LogIn className="size-4" />
           </button>
 
           <button
             type="button"
-            className="community-header-action"
+            className="chat-tool-button community-header-action size-8 rounded-sm text-muted-foreground transition-colors"
             onClick={onClearMessages}
             title="reset mock messages"
           >
-            <RotateCcw size={13} />
-            reset
+            <RotateCcw className="size-4" />
           </button>
         </div>
       </header>

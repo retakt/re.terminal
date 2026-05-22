@@ -1,33 +1,20 @@
-import { X } from "lucide-react";
 import type { TelegramChat } from "./telegram-types";
 
 type TelegramChatListProps = {
   chats: TelegramChat[];
   activeChatId: string;
   onSelectChat: (chatId: string) => void;
-  onCloseSidebar: () => void;
 };
 
 export function TelegramChatList({
   chats,
   activeChatId,
   onSelectChat,
-  onCloseSidebar,
 }: TelegramChatListProps) {
   return (
     <aside className="community-sidebar">
       <div className="community-titlebar">
         <span className="community-title">telegram</span>
-
-        <button
-          type="button"
-          className="community-sidebar-close"
-          onClick={onCloseSidebar}
-          title="close chats"
-          aria-label="close chats"
-        >
-          <X size={13} />
-        </button>
       </div>
 
       <div className="community-search">
