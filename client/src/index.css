@@ -6233,15 +6233,6 @@ body {
     box-shadow 180ms var(--motion-ease);
 }
 
-.settings-menu-item,
-.settings-submenu-item {
-  border-radius: 6px;
-  margin: 1px 5px;
-  width: calc(100% - 10px);
-  padding-left: 10px;
-  padding-right: 10px;
-}
-
 .settings-menu-item:hover,
 .settings-submenu-item:hover {
   padding-left: 10px;
@@ -13980,4 +13971,41 @@ display: flex !important;
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+/* square topbar/settings item curves */
+.reterm-tab-new,
+.reterm-tab-new:hover,
+.reterm-tab-new:focus,
+.reterm-tab-new:focus-visible,
+.settings-panel .settings-menu-item,
+.settings-panel .settings-submenu-item {
+  position: relative !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+/* settings menu: teal line flush-left, text stays padded */
+.settings-panel .settings-menu-item,
+.settings-panel .settings-submenu-item {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
+  border-radius: 0 !important;
+
+  /* keeps icon/text from touching the edge */
+  padding-left: 15px !important;
+  padding-right: 10px !important;
+}
+
+/* keep the original teal line, but now it starts at panel edge */
+.settings-panel .settings-menu-item:hover,
+.settings-panel .settings-menu-item:focus-visible,
+.settings-panel .settings-menu-item[aria-expanded="true"],
+.settings-panel .settings-submenu-item:hover,
+.settings-panel .settings-submenu-item:focus-visible {
+  border-radius: 0 !important;
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--accent-blue) 68%, transparent),
+    0 0 18px color-mix(in srgb, var(--accent-blue) 8%, transparent) !important;
 }
