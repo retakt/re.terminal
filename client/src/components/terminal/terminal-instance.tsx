@@ -209,6 +209,14 @@ export function TerminalInstance({ sessionId, isActive }: Props) {
       // Only auto-focus on desktop — on mobile this triggers keyboard popup
       if (!mobile.current && isActive) xterm.focus();
     });
+    void document.fonts?.ready.then(() => {
+  if (disposed) return;
+  requestAnimationFrame(() => {
+    if (disposed) return;
+    fitAndResize();
+    applyTheme();
+  });
+});
 
     xtermRef.current = xterm;
     fitRef.current   = fitAddon;
