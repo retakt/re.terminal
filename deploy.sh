@@ -109,11 +109,35 @@ copy_if_exists "$SCRIPT_DIR/client/dist" "$PACKAGE_DIR/client/dist"
 mkdir -p "$PACKAGE_DIR/server"
 copy_if_exists "$SCRIPT_DIR/server/package.json" "$PACKAGE_DIR/server/package.json"
 copy_if_exists "$SCRIPT_DIR/server/package-lock.json" "$PACKAGE_DIR/server/package-lock.json"
-copy_if_exists "$SCRIPT_DIR/server/server.js" "$PACKAGE_DIR/server/server.js"
-copy_if_exists "$SCRIPT_DIR/server/lib" "$PACKAGE_DIR/server/lib"
-copy_if_exists "$SCRIPT_DIR/server/config" "$PACKAGE_DIR/server/config"
-copy_if_exists "$SCRIPT_DIR/server/scripts" "$PACKAGE_DIR/server/scripts"
-copy_if_exists "$SCRIPT_DIR/server/.env.example" "$PACKAGE_DIR/server/.env.example"
+copy_if_exists "$SCRIPT_DIR/server" "$PACKAGE_DIR/server"
+
+find "$PACKAGE_DIR/server" -type d \( \
+  -name node_modules -o \
+  -name dist -o \
+  -name build -o \
+  -name coverage -o \
+  -name .cache -o \
+  -name .temp -o \
+  -name tmp -o \
+  -name temp -o \
+  -name __tests__ -o \
+  -name test -o \
+  -name tests -o \
+  -name .playwright-mcp \
+\) -prune -exec rm -rf {} + 2>/dev/null || true
+
+find "$PACKAGE_DIR/server" -type f \( \
+  -name "*.log" -o \
+  -name "*.tmp" -o \
+  -name "*.map" -o \
+  -name ".env" -o \
+  -name ".env.local" -o \
+  -name ".env.*" -o \
+  -name "*.test.*" -o \
+  -name "*.spec.*" -o \
+  -name "test-*" -o \
+  -name "smoke-*" \
+\) ! -name ".env.example" -delete || true
 
 mkdir -p "$PACKAGE_DIR/graphiti"
 copy_if_exists "$SCRIPT_DIR/graphiti/docker-compose.yml" "$PACKAGE_DIR/graphiti/docker-compose.yml"
@@ -132,6 +156,38 @@ for env_file in ".env" ".env.local" "server/.env" "server/.env.local" "client/.e
     echo "  included: $env_file"
   fi
 done
+echo "Verifying package does not contain smoke/test files..."
+if find "$PACKAGE_DIR" -type f \( \
+  -name "smoke-*" -o \
+  -name "test-*" -o \
+  -name "*.test.*" -o \
+  -name "*.spec.*" -o \
+  -path "*/__tests__/*" -o \
+  -path "*/tests/*" -o \
+  -path "*/test/*" \
+\) | grep -q .; then
+  echo "Error: production package contains smoke/test files:"
+  find "$PACKAGE_DIR" -type f \( \
+    -name "smoke-*" -o \
+    -name "test-*" -o \
+    -name "*.test.*" -o \
+    -name "*.spec.*" -o \
+    -path "*/__tests__/*" -o \
+    -path "*/tests/*" -o \
+    -path "*/test/*" \
+  \)
+  exit 1
+fi
+
+if [ ! -f "$PACKAGE_DIR/server/server.js" ]; then
+  echo "Error: server/server.js missing from deployment package"
+  exit 1
+fi
+
+if [ ! -f "$PACKAGE_DIR/server/package.json" ]; then
+  echo "Error: server/package.json missing from deployment package"
+  exit 1
+fi
 
 tar -C "$PACKAGE_DIR" -czf "$ARCHIVE_PATH" .
 
@@ -150,6 +206,10 @@ else
     "$ARCHIVE_PATH" \
     "${VPS_USER}@${VPS_HOST}:${REMOTE_ARCHIVE}"
 fi
+
+echo "Critical package files:"
+ls -la "$PACKAGE_DIR/server/server.js"
+ls -la "$PACKAGE_DIR/server/package.json"
 
 echo "Deploying on VPS..."
 ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${VPS_USER}@${VPS_HOST}" \
@@ -356,6 +416,23 @@ fi
 
 echo "Installing server dependencies..."
 npm ci --prefix server --omit=dev
+
+echo "Checking Playwright MCP/browser setup..."
+
+npx -y @playwright/mcp@latest --version >/dev/null 2>&1 || true
+
+if ! (cd "$VPS_PATH/server" && node -e "import('playwright').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1); then
+  echo "Installing Playwright package into server node_modules..."
+  npm install --prefix "$VPS_PATH/server" --omit=dev playwright
+fi
+
+if [ -x "$VPS_PATH/server/node_modules/.bin/playwright" ]; then
+  echo "Installing/checking Playwright chromium browser..."
+  npx --prefix "$VPS_PATH/server" playwright install --with-deps chromium \
+    || npx --prefix "$VPS_PATH/server" playwright install chromium
+else
+  echo "Warning: Playwright binary not found after install"
+fi
 
 if ! command -v pm2 >/dev/null 2>&1; then
   npm install -g pm2
