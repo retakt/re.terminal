@@ -1007,6 +1007,31 @@ function compactObservationForPlanner(observation = {}) {
       : null;
 }
 
+function recentConversationContext(args = {}, state = defaultState()) {
+  const raw =
+    args.chatHistory ||
+    args.conversationHistory ||
+    args.recentMessages ||
+    args.messages ||
+    args.context ||
+    "";
+
+  const history = Array.isArray(raw)
+    ? raw.slice(-12).map((entry) => ({
+        role: safeText(entry?.role || entry?.from || "", 40),
+        content: redactInstructionSecrets(safeText(entry?.content || entry?.text || entry?.message || "", 1200)),
+      }))
+    : safeText(raw, 4000);
+
+  return {
+    history,
+    userMoodHint: safeText(args.userMood || args.tone || "", 200),
+    previousFailure: state.lastFailedObservation || null,
+    previousCommand: redactCommand(state.lastCommand || null),
+    previousToolResult: state.lastToolResult || null,
+  };
+}
+
 function buildPlannerContext(args = {}, state = defaultState()) {
   const currentUrl = args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
   const currentTitle = args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "";
@@ -1014,6 +1039,7 @@ function buildPlannerContext(args = {}, state = defaultState()) {
   return {
     userInstruction: redactInstructionSecrets(args.instruction || ""),
     rawUserInstruction: args.instruction || "",
+    conversationContext: recentConversationContext(args, state),
     currentUrl,
     currentTitle,
     currentState: compactStateForPlanner(state),
@@ -3087,6 +3113,7 @@ export async function browserAgentRun(args = {}) {
       const reporterStartedAt = nowMs();
       reporterCall = await callBrowserAgentReporter({
         instruction: redactInstructionSecrets(instruction),
+        conversationContext: recentConversationContext(baseArgs, state),
         planner,
         result: compactToolResult(result, command),
         currentState: compactStateForPlanner(result.state || state),
@@ -3165,6 +3192,7 @@ export async function browserAgentRun(args = {}) {
       const reporterStartedAt = nowMs();
       reporterCall = await callBrowserAgentReporter({
         instruction: redactInstructionSecrets(instruction),
+        conversationContext: recentConversationContext(baseArgs, state),
         planner,
         command: redactCommand(command),
         result: compactToolResult(result, command),

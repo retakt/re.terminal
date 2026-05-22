@@ -117,12 +117,32 @@ function stageOptions(stage) {
       envNumber("BROWSER_AGENT_TEMPERATURE", defaultTemperature, { min: 0, max: 2 }),
       { min: 0, max: 2 },
     ),
-    top_p: envNumber("BROWSER_AGENT_TOP_P", 0.85, { min: 0, max: 1 }),
-    top_k: envNumber("BROWSER_AGENT_TOP_K", 40, { min: 0, max: 1000 }),
-    repeat_penalty: envNumber("BROWSER_AGENT_REPEAT_PENALTY", 1.05, { min: 0, max: 4 }),
+    top_p: envNumber(
+      stage === "reporter" ? "BROWSER_AGENT_REPORTER_TOP_P" : "BROWSER_AGENT_PLANNER_TOP_P",
+      envNumber("BROWSER_AGENT_TOP_P", 0.85, { min: 0, max: 1 }),
+      { min: 0, max: 1 },
+    ),
+    top_k: envNumber(
+      stage === "reporter" ? "BROWSER_AGENT_REPORTER_TOP_K" : "BROWSER_AGENT_PLANNER_TOP_K",
+      envNumber("BROWSER_AGENT_TOP_K", 40, { min: 0, max: 1000 }),
+      { min: 0, max: 1000 },
+    ),
+    repeat_penalty: envNumber(
+      stage === "reporter" ? "BROWSER_AGENT_REPORTER_REPEAT_PENALTY" : "BROWSER_AGENT_PLANNER_REPEAT_PENALTY",
+      envNumber("BROWSER_AGENT_REPEAT_PENALTY", 1.05, { min: 0, max: 4 }),
+      { min: 0, max: 4 },
+    ),
   };
   const numCtx = envNumber("BROWSER_AGENT_NUM_CTX", 8192, { min: 1024, max: 131072 });
   if (numCtx) options.num_ctx = numCtx;
+
+  const stageUpper = String(stage || "").toUpperCase();
+  const numPredict = envNumber(
+    `BROWSER_AGENT_${stageUpper}_NUM_PREDICT`,
+    envNumber("BROWSER_AGENT_NUM_PREDICT", 2048, { min: 128, max: 32768 }),
+    { min: 128, max: 32768 },
+  );
+  if (numPredict) options.num_predict = numPredict;
   const seed = envNumber("BROWSER_AGENT_SEED", NaN);
   if (Number.isFinite(seed)) options.seed = seed;
   return options;
@@ -285,13 +305,54 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
   };
 }
 
+function extractJsonObject(content = "") {
+  const raw = String(content || "").trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(raw);
+  } catch {}
+
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return JSON.parse(raw.slice(start, end + 1));
+  }
+
+  return JSON.parse(raw);
+}
+
+function normalizeConfidence(value) {
+  if (typeof value === "string") {
+    const cleaned = value.replace("%", "").trim();
+    const n = Number(cleaned);
+    if (Number.isFinite(n)) return n > 1 ? Math.min(n / 100, 1) : Math.max(0, n);
+  }
+
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0.5;
+  return n > 1 ? Math.min(n / 100, 1) : Math.max(0, Math.min(n, 1));
+}
+
+function normalizePlannerPlan(plan = {}) {
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return plan;
+  return {
+    ...plan,
+    confidence: normalizeConfidence(plan.confidence),
+    risk: String(plan.risk || "medium").toLowerCase(),
+    backend: String(plan.backend || "auto").toLowerCase(),
+  };
+}
+
 function parseStrictJson(content = "", stage = "planner") {
   try {
-    return JSON.parse(content);
+    return extractJsonObject(content);
   } catch (err) {
-    const error = new Error(`Browser agent LLM ${stage} returned invalid JSON. The runtime will not guess or use deterministic fallback.`);
+    const error = new Error(`Browser agent LLM ${stage} returned invalid JSON.`);
     error.code = "BROWSER_AGENT_LLM_INVALID_JSON";
-    error.contentPreview = safeText(content, 800);
+    error.contentPreview = safeText(content, 1200);
     error.cause = err;
     throw error;
   }
@@ -388,7 +449,7 @@ export async function callBrowserAgentPlanner(context = {}) {
   });
   let plan;
   try {
-    plan = parseStrictJson(call.content, "planner");
+    plan = normalizePlannerPlan(parseStrictJson(call.content, "planner"));
   } catch (err) {
     err.usage = call.usage;
     throw err;
@@ -432,7 +493,8 @@ export function validatePlannerShape(plan = {}) {
   if (!ALLOWED_TOOLS.has(String(tool || ""))) errors.push(`tool is not allowed: ${tool || "<missing>"}`);
   if (!command || typeof command !== "object" || Array.isArray(command)) errors.push("command must be an object");
   if (!command?.args || typeof command.args !== "object" || Array.isArray(command.args)) errors.push("command.args must be an object");
-  const confidence = Number(plan?.confidence);
+  plan.confidence = normalizeConfidence(plan?.confidence);
+  const confidence = plan.confidence;
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) errors.push("confidence must be a number from 0 to 1");
   return {
     ok: errors.length === 0,

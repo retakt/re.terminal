@@ -161,6 +161,18 @@ function verifyFill({ result = {}, command = {} }) {
     };
   }
 
+  const unverified = Array.isArray(fillResult.filled)
+    ? fillResult.filled.filter((field) => field && field.verified === false)
+    : [];
+
+  if (unverified.length > 0) {
+    return {
+      ok: false,
+      reason: `The browser attempted to fill ${unverified.length} field(s), but the value did not stay in the visible input.`,
+      expected: "filled field values verified from the DOM after input",
+    };
+  }
+
   return { ok: true };
 }
 
