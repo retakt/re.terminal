@@ -59,7 +59,9 @@ export function CommunityNativeShell() {
   const [sidebarClosing, setSidebarClosing] = useState(false);
   const [chatQuery, setChatQuery] = useState("");
   const [chats, setChats] = useState<TelegramChat[]>(FALLBACK_CHATS);
-  const [messagesState, setMessagesState] = useState<TelegramMessage[]>(FALLBACK_MESSAGES);
+  const [messagesByChat, setMessagesByChat] = useState<Record<string, TelegramMessage[]>>({
+    [FALLBACK_CHATS[0].id]: FALLBACK_MESSAGES,
+  });
   const [telegramStatus, setTelegramStatus] = useState<CommunityServiceStatus>({
     ok: true,
     service: COMMUNITY_SERVICE,
@@ -136,14 +138,18 @@ export function CommunityNativeShell() {
 
     try {
       const result = await listCommunityMessages(COMMUNITY_SERVICE, chatId);
-      setMessagesState(result.messages);
+      setMessagesByChat((current) => ({
+        ...current,
+        [chatId]: result.messages,
+      }));
     } catch {
-      setMessagesState(
-        FALLBACK_MESSAGES.map((message) => ({
+      setMessagesByChat((current) => ({
+        ...current,
+        [chatId]: FALLBACK_MESSAGES.map((message) => ({
           ...message,
           chatId,
-        }))
-      );
+        })),
+      }));
     } finally {
       setLoadingMessages(false);
     }
@@ -171,10 +177,7 @@ export function CommunityNativeShell() {
   const activeChat =
     chats.find((chat) => chat.id === activeChatId) ?? chats[0] ?? FALLBACK_CHATS[0];
 
-  const messages = useMemo(
-    () => messagesState.filter((message) => message.chatId === activeChat.id),
-    [activeChat.id, messagesState]
-  );
+  const messages = messagesByChat[activeChat.id] ?? [];
 
   const clearSidebarCloseTimer = () => {
     if (sidebarCloseTimerRef.current === null) return;
@@ -228,11 +231,12 @@ export function CommunityNativeShell() {
   };
 
   const handleSendMessage = async (text: string) => {
+    const chatId = activeChat.id;
     const optimisticId = `telegram:optimistic-${Date.now()}`;
     const optimisticMessage: TelegramMessage = {
       id: optimisticId,
       service: COMMUNITY_SERVICE,
-      chatId: activeChat.id,
+      chatId,
       text,
       outgoing: true,
       time: new Date().toLocaleTimeString([], {
@@ -242,22 +246,27 @@ export function CommunityNativeShell() {
       status: "sending",
     };
 
-    setMessagesState((current) => [...current, optimisticMessage]);
+    setMessagesByChat((current) => ({
+      ...current,
+      [chatId]: [...(current[chatId] ?? []), optimisticMessage],
+    }));
 
     try {
       await new Promise((resolve) => window.setTimeout(resolve, 240));
-      const result = await sendCommunityMessage(COMMUNITY_SERVICE, activeChat.id, text);
-      setMessagesState((current) =>
-        current.map((message) =>
+      const result = await sendCommunityMessage(COMMUNITY_SERVICE, chatId, text);
+      setMessagesByChat((current) => ({
+        ...current,
+        [chatId]: (current[chatId] ?? []).map((message) =>
           message.id === optimisticId ? result.message : message
-        )
-      );
+        ),
+      }));
     } catch {
-      setMessagesState((current) =>
-        current.map((message) =>
+      setMessagesByChat((current) => ({
+        ...current,
+        [chatId]: (current[chatId] ?? []).map((message) =>
           message.id === optimisticId ? { ...message, status: "failed" } : message
-        )
-      );
+        ),
+      }));
     }
   };
 
