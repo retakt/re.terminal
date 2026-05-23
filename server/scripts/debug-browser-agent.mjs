@@ -79,7 +79,11 @@ try {
 
   console.log("\n=== AGENT TRACE ===");
   for (const [index, entry] of (result.agentTrace || []).entries()) {
-    console.log(`${index + 1}. ${entry.role} | step=${entry.step ?? "-"} | status=${entry.status} | ok=${entry.ok} | tool=${entry.tool || "-"}`);
+    const label = entry.roleLabel || entry.agentName || entry.title || entry.role || "Agent";
+    const kind = entry.agentKind || entry.role || "agent";
+    const model = entry.modelLabel || entry.model || "";
+    const modelPart = model ? ` [${model}]` : "";
+    console.log(`${index + 1}. ${label}${modelPart} | kind=${kind} | step=${entry.step ?? "-"} | status=${entry.status} | ok=${entry.ok} | tool=${entry.tool || "-"}`);
     if (entry.summary) console.log(`   ${entry.summary}`);
     if (entry.tokens) console.log(`   tokens=${entry.tokens} duration=${entry.durationMs}ms`);
   }
