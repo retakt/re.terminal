@@ -18,6 +18,12 @@ import {
   runStepAgent,
   runWatcherAgent,
 } from "./browser-agents/index.js";
+import {
+  buildWatcherSpyReport,
+  cleanBrowserAgentTraceSummary,
+  finalBrowserAgentUserSummary,
+  pageSummaryFromObservation,
+} from "./browser-agent-watcher-spy.js";
 
 const SUPPORTED_TOOLS = new Set([
   "browserNavigate",
@@ -301,7 +307,7 @@ function traceEntry({
     tokens: usage?.totalTokens || null,
     input,
     output,
-    summary: safeText(summary || traceValueSummary(output), 1000),
+    summary: safeText(summary || cleanBrowserAgentTraceSummary(output), 1000),
     reasoning: safeText(reasoning, 1200),
   };
 }
@@ -653,10 +659,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       currentTitle = observation.title || currentTitle;
       finalObservation = observation;
 
-      const summary = [observation.title, observation.url, observation.textPreview]
-        .filter(Boolean)
-        .join(" — ")
-        .slice(0, 1200);
+      const summary = pageSummaryFromObservation(observation);
 
       trace.push(traceEntry({
         role: "report_step_observe",
@@ -821,7 +824,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         error: execution.error || "",
         summary: execution.actionResult?.text || "",
       },
-      summary: execution.error || execution.actionResult?.text || execution.observation?.title || execution.observation?.url || "",
+      summary: execution.error || cleanBrowserAgentTraceSummary({ summary: execution.actionResult?.text || "", url: execution.observation?.url || "", title: execution.observation?.title || "" }),
       tool: normalized.command.tool,
       ok: execution.ok === true,
     }));
@@ -1012,6 +1015,15 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   }
 
   const passedAllSteps = stepResults.length === steps.length && stepResults.every((step) => step.ok);
+  const watcherSideReport = buildWatcherSpyReport({
+    instruction,
+    stepResults,
+    trace,
+    finalObservation,
+    stoppedReason,
+    args,
+    passedAllSteps,
+  });
   let finalCall = null;
   let final = null;
 
@@ -1024,6 +1036,9 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         stepResults,
         stoppedReason,
         finalObservation,
+        watcherSideReport,
+        userBehavior: watcherSideReport.userBehavior,
+        responseGuidanceForMain: watcherSideReport.responseGuidanceForMain,
         trace: trace.map((entry) => ({
           role: entry.role,
           step: entry.step,
@@ -1038,7 +1053,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     final = finalCall.call?.data || {
       success: passedAllSteps,
-      summary: stoppedReason || stepResults.at(-1)?.summary || "Browser task finished.",
+      summary: finalBrowserAgentUserSummary({ passedAllSteps, stoppedReason, finalObservation, lastStep: stepResults.at(-1) }),
       needsUser: Boolean(stoppedReason),
       nextSafeAction: stoppedReason || "Continue with the next browser instruction.",
       missingSteps: [],
@@ -1046,10 +1061,9 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     };
   } else {
     const lastStep = stepResults.at(-1) || {};
-    const finalWhere = [finalObservation?.title, finalObservation?.url].filter(Boolean).join(" — ");
     final = {
       success: passedAllSteps,
-      summary: stoppedReason || lastStep.summary || finalWhere || "Browser task finished.",
+      summary: finalBrowserAgentUserSummary({ passedAllSteps, stoppedReason, finalObservation, lastStep }),
       needsUser: Boolean(stoppedReason) || !passedAllSteps,
       nextSafeAction: stoppedReason || "Continue with the next browser instruction.",
       missingSteps: passedAllSteps ? [] : steps.slice(stepResults.length).map((step) => step.instruction),
@@ -1109,7 +1123,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     requiresUser: final.needsUser === true || !ok,
     blockedReason: ok ? "" : (stoppedReason || final.reason || ""),
     nextSafeAction: final.nextSafeAction || "Continue with the next browser instruction.",
-    watcher: null,
+    watcher: watcherSideReport,
     planner: orchestratorPlan,
     reporter: final,
     filledFields: [],
