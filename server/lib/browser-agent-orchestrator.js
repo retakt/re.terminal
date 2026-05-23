@@ -80,6 +80,44 @@ function syntheticApprovedChecker(stepPlan = {}) {
   };
 }
 
+function checkerDecisionForExecution(checker = {}, checkerCall = null) {
+  if (checkerCall && checkerCall.ok === false) {
+    return {
+      ok: false,
+      reason: checkerCall.error || "Checker model call failed.",
+    };
+  }
+
+  const status = String(checker?.status || "").toLowerCase();
+  const hasCommand = Boolean(checker?.command && typeof checker.command === "object" && checker.command.tool);
+
+  if (status === "rejected" || status === "needs_user") {
+    return {
+      ok: false,
+      reason: checker.reason || checker.messageToUser || "Step was not approved.",
+    };
+  }
+
+  // Important:
+  // A repaired command is allowed even if the checker says approved=false.
+  // Many models use approved=false to mean "original command was not approved",
+  // while still returning a corrected command that should be executed.
+  if (status === "repaired") {
+    return hasCommand
+      ? { ok: true, repaired: true, reason: checker.reason || checker.repairInstruction || "" }
+      : { ok: false, reason: checker.reason || "Checker said repaired but returned no command." };
+  }
+
+  if (checker?.approved === false) {
+    return {
+      ok: false,
+      reason: checker.reason || checker.messageToUser || "Step was not approved.",
+    };
+  }
+
+  return { ok: true, repaired: false, reason: checker.reason || "" };
+}
+
 function syntheticPassedResult({ execution = {}, step = {}, command = {} } = {}) {
   const observation = observationFromExecution(execution);
   const where = [observation.title, observation.url].filter(Boolean).join(" — ");
@@ -715,14 +753,15 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         output: checker,
         summary: checker.reason || checker.repairInstruction || checker.messageToUser || "",
         tool: checker.command?.tool || stepPlan.command?.tool || "",
-        ok: checkerCall.ok && checker.approved !== false,
+        ok: checkerDecisionForExecution(checker, checkerCall).ok,
         usage: usageOf(checkerCall),
         reasoning: thinkingOf(checkerCall),
       }));
     }
 
-    if (checkerCall && (!checkerCall.ok || checker.approved === false || ["rejected", "needs_user"].includes(String(checker.status || "")))) {
-      stoppedReason = checker.reason || checker.messageToUser || checkerCall.error || "Step was not approved.";
+    const checkerDecision = checkerDecisionForExecution(checker, checkerCall);
+    if (!checkerDecision.ok) {
+      stoppedReason = checkerDecision.reason || "Step was not approved.";
       stepResults.push({ stepNumber, step, ok: false, status: "not_approved", summary: stoppedReason });
       break;
     }
