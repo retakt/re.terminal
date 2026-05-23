@@ -693,7 +693,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   trace.push(traceEntry({
     role: "main_orchestrator",
     title: "Main model intent orchestrator",
-    status: orchestratorPlan.status || (orchestratorCall.ok ? "ready" : "failed"),
+    status: steps.length && orchestratorPlan.status === "needs_user" ? "ready" : (orchestratorPlan.status || (orchestratorCall.ok ? "ready" : "failed")),
     input: instruction,
     output: { ...orchestratorPlan, steps },
     summary: orchestratorPlan.userIntent || "",
