@@ -1,0 +1,1540 @@
+{
+  "ok": true,
+  "status": "success",
+  "instruction": "Open https://example.com and click More information.",
+  "currentUrl": "https://example.com/",
+  "currentTitle": "Example Domain",
+  "extensionId": "",
+  "pageKey": "example_domain",
+  "engine": "playwright_mcp",
+  "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+  "browserSummary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+  "whatFound": {
+    "ok": true,
+    "url": "https://example.com/",
+    "title": "Example Domain",
+    "textPreview": "### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+    "engine": "playwright_mcp"
+  },
+  "observedControls": {
+    "forms": 0,
+    "inputs": [],
+    "buttons": [],
+    "links": []
+  },
+  "possibleNextActions": [],
+  "requiresUser": false,
+  "blockedReason": "Synthetic final verifier used because BROWSER_AGENT_FINAL_VERIFIER_ENABLED=false.",
+  "nextSafeAction": "Continue with the next browser instruction.",
+  "watcher": null,
+  "planner": {
+    "status": "ready",
+    "userIntent": "Navigate to example.com and click the 'More information' element.",
+    "steps": [
+      {
+        "instruction": "Navigate to https://example.com",
+        "expectedAction": "navigate",
+        "successCriteria": "The current URL is https://example.com"
+      },
+      {
+        "instruction": "Click the element labeled 'More information'",
+        "expectedAction": "click",
+        "successCriteria": "The click action is successfully executed on the 'More information' element."
+      },
+      {
+        "instruction": "Report the final state after clicking 'More information'",
+        "expectedAction": "report",
+        "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+      }
+    ],
+    "messageToUser": "I have broken down your request into three steps: navigating to the page, clicking the element, and reporting the final result.",
+    "confidence": 1
+  },
+  "reporter": {
+    "success": true,
+    "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+    "needsUser": false,
+    "nextSafeAction": "Continue with the next browser instruction.",
+    "missingSteps": [],
+    "reason": "Synthetic final verifier used because BROWSER_AGENT_FINAL_VERIFIER_ENABLED=false."
+  },
+  "filledFields": [],
+  "missingFields": [],
+  "submitStatus": "",
+  "runtime": {
+    "configured": true,
+    "llmRequired": true,
+    "redactedBaseUrl": "https://chat-api.retakt.cc",
+    "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+    "models": {
+      "default": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "main": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "planner": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "reviewer": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "executor": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "resultReviewer": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "reporter": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b"
+    },
+    "timeoutMs": 45000,
+    "think": true,
+    "options": {
+      "main": {
+        "temperature": 0.45,
+        "top_p": 0.95,
+        "top_k": 120,
+        "repeat_penalty": 1.1,
+        "num_ctx": 65536,
+        "num_predict": 4096
+      },
+      "planner": {
+        "temperature": 0.25,
+        "top_p": 0.92,
+        "top_k": 100,
+        "repeat_penalty": 1.1,
+        "num_ctx": 65536,
+        "num_predict": 4096
+      },
+      "reviewer": {
+        "temperature": 0.15,
+        "top_p": 0.9,
+        "top_k": 80,
+        "repeat_penalty": 1.1,
+        "num_ctx": 65536,
+        "num_predict": 4096
+      },
+      "executor": {
+        "temperature": 0.1,
+        "top_p": 0.85,
+        "top_k": 60,
+        "repeat_penalty": 1.08,
+        "num_ctx": 65536,
+        "num_predict": 2048
+      },
+      "resultReviewer": {
+        "temperature": 0.25,
+        "top_p": 0.95,
+        "top_k": 120,
+        "repeat_penalty": 1.08,
+        "num_ctx": 65536,
+        "num_predict": 4096
+      },
+      "reporter": {
+        "temperature": 0.35,
+        "top_p": 0.95,
+        "top_k": 120,
+        "repeat_penalty": 1.08,
+        "num_ctx": 65536,
+        "num_predict": 4096
+      }
+    },
+    "prompts": {
+      "strictPromptFiles": false,
+      "planner": {
+        "hasCustomPrompt": true,
+        "path": "C:\\Users\\admin\\Desktop\\re\\re.terminal\\server\\config\\prompts\\browser-planner-system.md",
+        "pathExists": true,
+        "inline": false
+      },
+      "reporter": {
+        "hasCustomPrompt": true,
+        "path": "C:\\Users\\admin\\Desktop\\re\\re.terminal\\server\\config\\prompts\\browser-reporter-human.md",
+        "pathExists": true,
+        "inline": false
+      }
+    },
+    "strategy": "llm-required",
+    "missing": []
+  },
+  "runtimeTiming": {
+    "totalMs": 96368,
+    "pipelineMs": 96368,
+    "mainModelMs": 0
+  },
+  "tokenUsage": {
+    "totalTokens": 3846,
+    "planner": {
+      "role": "main_orchestrator",
+      "title": "Main model intent orchestrator",
+      "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "status": "ready",
+      "step": null,
+      "tool": "",
+      "ok": true,
+      "durationMs": 20246,
+      "tokens": 610,
+      "input": "Open https://example.com and click More information.",
+      "output": {
+        "status": "ready",
+        "userIntent": "Navigate to example.com and click the 'More information' element.",
+        "steps": [
+          {
+            "instruction": "Navigate to https://example.com",
+            "expectedAction": "navigate",
+            "successCriteria": "The current URL is https://example.com"
+          },
+          {
+            "instruction": "Click the element labeled 'More information'",
+            "expectedAction": "click",
+            "successCriteria": "The click action is successfully executed on the 'More information' element."
+          },
+          {
+            "instruction": "Report the final state after clicking 'More information'",
+            "expectedAction": "report",
+            "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+          }
+        ],
+        "messageToUser": "I have broken down your request into three steps: navigating to the page, clicking the element, and reporting the final result.",
+        "confidence": 1
+      },
+      "summary": "Navigate to example.com and click the 'More information' element.",
+      "reasoning": ""
+    },
+    "reporter": {
+      "role": "final_verifier",
+      "title": "Final verifier",
+      "model": "",
+      "status": "synthetic_verified",
+      "step": null,
+      "tool": "",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "originalInstruction": "Open https://example.com and click More information.",
+        "stepResults": [
+          {
+            "stepNumber": 1,
+            "step": {
+              "instruction": "Navigate to https://example.com",
+              "expectedAction": "navigate",
+              "successCriteria": "The current URL is https://example.com"
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Low-risk step passed. Example Domain — https://example.com/",
+            "url": "https://example.com/",
+            "title": "Example Domain",
+            "command": {
+              "intent": "navigate",
+              "tool": "browserNavigate",
+              "args": {
+                "url": "https://example.com"
+              },
+              "notes": "Synthetic low-risk navigation command from orchestrator step."
+            }
+          },
+          {
+            "stepNumber": 2,
+            "step": {
+              "instruction": "Click the element labeled 'More information'",
+              "expectedAction": "click",
+              "successCriteria": "The click action is successfully executed on the 'More information' element."
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Low-risk step passed. Example Domain — https://example.com/",
+            "url": "https://example.com/",
+            "title": "Example Domain",
+            "command": {
+              "intent": "click_or_open",
+              "tool": "browserClickByText",
+              "args": {
+                "currentUrl": "https://example.com/",
+                "text": "Learn more",
+                "ref": "e6"
+              },
+              "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+            }
+          },
+          {
+            "stepNumber": 3,
+            "step": {
+              "instruction": "Report the final state after clicking 'More information'",
+              "expectedAction": "report",
+              "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+            "url": "https://example.com/",
+            "title": "Example Domain",
+            "command": {
+              "intent": "observe",
+              "tool": "browserObserve",
+              "args": {
+                "currentUrl": "https://example.com/"
+              }
+            }
+          }
+        ]
+      },
+      "output": {
+        "success": true,
+        "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+        "needsUser": false,
+        "nextSafeAction": "Continue with the next browser instruction.",
+        "missingSteps": [],
+        "reason": "Synthetic final verifier used because BROWSER_AGENT_FINAL_VERIFIER_ENABLED=false."
+      },
+      "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+      "reasoning": ""
+    }
+  },
+  "agentTrace": [
+    {
+      "role": "main_orchestrator",
+      "title": "Main model intent orchestrator",
+      "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "status": "ready",
+      "step": null,
+      "tool": "",
+      "ok": true,
+      "durationMs": 20246,
+      "tokens": 610,
+      "input": "Open https://example.com and click More information.",
+      "output": {
+        "status": "ready",
+        "userIntent": "Navigate to example.com and click the 'More information' element.",
+        "steps": [
+          {
+            "instruction": "Navigate to https://example.com",
+            "expectedAction": "navigate",
+            "successCriteria": "The current URL is https://example.com"
+          },
+          {
+            "instruction": "Click the element labeled 'More information'",
+            "expectedAction": "click",
+            "successCriteria": "The click action is successfully executed on the 'More information' element."
+          },
+          {
+            "instruction": "Report the final state after clicking 'More information'",
+            "expectedAction": "report",
+            "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+          }
+        ],
+        "messageToUser": "I have broken down your request into three steps: navigating to the page, clicking the element, and reporting the final result.",
+        "confidence": 1
+      },
+      "summary": "Navigate to example.com and click the 'More information' element.",
+      "reasoning": ""
+    },
+    {
+      "role": "sequence_step",
+      "title": "Step 1",
+      "model": "",
+      "status": "started",
+      "step": 1,
+      "tool": "",
+      "ok": null,
+      "durationMs": null,
+      "tokens": null,
+      "input": "Navigate to https://example.com",
+      "output": "",
+      "summary": "The current URL is https://example.com",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_step_agent",
+      "title": "Gemma step agent",
+      "model": "",
+      "status": "synthetic_ready",
+      "step": 1,
+      "tool": "browserNavigate",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "instruction": "Navigate to https://example.com",
+        "expectedAction": "navigate",
+        "successCriteria": "The current URL is https://example.com"
+      },
+      "output": {
+        "status": "ready",
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "reason": "Navigation step can be executed directly without another model call.",
+        "messageToChecker": "",
+        "messageToUser": "",
+        "confidence": 1
+      },
+      "summary": "Navigation step can be executed directly without another model call.",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_checker",
+      "title": "Gemma command checker",
+      "model": "",
+      "status": "auto_approved",
+      "step": 1,
+      "tool": "browserNavigate",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "status": "ready",
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "reason": "Navigation step can be executed directly without another model call.",
+        "messageToChecker": "",
+        "messageToUser": "",
+        "confidence": 1
+      },
+      "output": {
+        "status": "approved",
+        "approved": true,
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "reason": "Low-risk browser command auto-approved to avoid redundant checker call.",
+        "repairInstruction": "",
+        "messageToUser": "",
+        "confidence": 1
+      },
+      "summary": "Low-risk browser command auto-approved to avoid redundant checker call.",
+      "reasoning": ""
+    },
+    {
+      "role": "playwright_controller",
+      "title": "Playwright browser controller",
+      "model": "",
+      "status": "executed",
+      "step": 1,
+      "tool": "browserNavigate",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "intent": "navigate",
+        "tool": "browserNavigate",
+        "args": {
+          "url": "https://example.com"
+        },
+        "notes": "Synthetic low-risk navigation command from orchestrator step."
+      },
+      "output": {
+        "url": "https://example.com/",
+        "title": "Example Domain",
+        "error": "",
+        "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T07-03-35-089Z.yml)"
+      },
+      "summary": "### Ran Playwright code ```js await page.goto('https://example.com'); ``` ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T07-03-35-089Z.yml)",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_result_checker",
+      "title": "Gemma result checker",
+      "model": "",
+      "status": "auto_passed",
+      "step": 1,
+      "tool": "",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "step": {
+          "instruction": "Navigate to https://example.com",
+          "expectedAction": "navigate",
+          "successCriteria": "The current URL is https://example.com"
+        },
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "executionStatus": "executed"
+      },
+      "output": {
+        "status": "passed",
+        "success": true,
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "evidence": "Example Domain — https://example.com/",
+        "repairInstruction": "",
+        "messageToUser": "",
+        "confidence": 0.95,
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "step": {
+          "instruction": "Navigate to https://example.com",
+          "expectedAction": "navigate",
+          "successCriteria": "The current URL is https://example.com"
+        }
+      },
+      "summary": "Low-risk step passed. Example Domain — https://example.com/",
+      "reasoning": ""
+    },
+    {
+      "role": "sequence_step",
+      "title": "Step 2",
+      "model": "",
+      "status": "started",
+      "step": 2,
+      "tool": "",
+      "ok": null,
+      "durationMs": null,
+      "tokens": null,
+      "input": "Click the element labeled 'More information'",
+      "output": "",
+      "summary": "The click action is successfully executed on the 'More information' element.",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_step_agent",
+      "title": "Gemma step agent",
+      "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "status": "ready",
+      "step": 2,
+      "tool": "browserClickByText",
+      "ok": true,
+      "durationMs": 29744,
+      "tokens": 1638,
+      "input": {
+        "instruction": "Click the element labeled 'More information'",
+        "expectedAction": "click",
+        "successCriteria": "The click action is successfully executed on the 'More information' element."
+      },
+      "output": {
+        "status": "ready",
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "currentUrl": "https://example.com/",
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. I will use 'Learn more' as the target text, referencing snapshot ref e6.",
+          "confidence": 0.95
+        },
+        "reason": "The current step requires clicking the element labeled 'More information'. Inspecting the snapshot text preview, the visible link text is 'Learn more' (ref e6). I will use 'Learn more' as the text argument for browserClickByText, providing the snapshot reference for higher accuracy.",
+        "messageToChecker": "The instruction asked to click 'More information', but the visible link text is 'Learn more'. I used 'Learn more' and provided the snapshot reference 'e6'.",
+        "messageToUser": "I am clicking the 'Learn more' link to proceed with the task.",
+        "confidence": 0.95
+      },
+      "summary": "The current step requires clicking the element labeled 'More information'. Inspecting the snapshot text preview, the visible link text is 'Learn more' (ref e6). I will use 'Learn more' as the text argument for browserClickByText, providing the snapshot reference for higher accuracy.",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_checker",
+      "title": "Gemma command checker",
+      "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "status": "repaired",
+      "step": 2,
+      "tool": "browserClickByText",
+      "ok": true,
+      "durationMs": 44041,
+      "tokens": 1598,
+      "input": {
+        "status": "ready",
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "currentUrl": "https://example.com/",
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. I will use 'Learn more' as the target text, referencing snapshot ref e6.",
+          "confidence": 0.95
+        },
+        "reason": "The current step requires clicking the element labeled 'More information'. Inspecting the snapshot text preview, the visible link text is 'Learn more' (ref e6). I will use 'Learn more' as the text argument for browserClickByText, providing the snapshot reference for higher accuracy.",
+        "messageToChecker": "The instruction asked to click 'More information', but the visible link text is 'Learn more'. I used 'Learn more' and provided the snapshot reference 'e6'.",
+        "messageToUser": "I am clicking the 'Learn more' link to proceed with the task.",
+        "confidence": 0.95
+      },
+      "output": {
+        "status": "repaired",
+        "approved": true,
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "currentUrl": "https://example.com/",
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot.",
+          "confidence": 0.95
+        },
+        "reason": "The original instruction asks to click 'More information', but the current page snapshot shows a link with the text 'Learn more' (ref e6). The proposed command correctly adjusts the target text to 'Learn more' while keeping the intent and tool correct. Since the proposed command is accurate and addresses the discrepancy, it is approved after repair.",
+        "repairInstruction": "The proposed command is correct. It repairs the target text from 'More information' (in the instruction) to 'Learn more' (on the page) while maintaining the correct intent, tool, and reference.",
+        "messageToUser": "The system has recognized that the instruction asks to click 'More information', but the visible link text is 'Learn more'. It has adjusted the command to click 'Learn more' (ref e6) and is ready to execute.",
+        "confidence": 0.98
+      },
+      "summary": "The original instruction asks to click 'More information', but the current page snapshot shows a link with the text 'Learn more' (ref e6). The proposed command correctly adjusts the target text to 'Learn more' while keeping the intent and tool correct. Since the proposed command is accurate and addresses the discrepancy, it is approved after repair.",
+      "reasoning": ""
+    },
+    {
+      "role": "playwright_controller",
+      "title": "Playwright browser controller",
+      "model": "",
+      "status": "executed",
+      "step": 2,
+      "tool": "browserClickByText",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "intent": "click_or_open",
+        "tool": "browserClickByText",
+        "args": {
+          "currentUrl": "https://example.com/",
+          "text": "Learn more",
+          "ref": "e6"
+        },
+        "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+      },
+      "output": {
+        "url": "https://example.com/",
+        "title": "Example Domain",
+        "error": "",
+        "summary": "### Error\n[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"target\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"
+      },
+      "summary": "### Error [ { \"expected\": \"string\", \"code\": \"invalid_type\", \"path\": [ \"target\" ], \"message\": \"Invalid input: expected string, received undefined\" } ]",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_result_checker",
+      "title": "Gemma result checker",
+      "model": "",
+      "status": "auto_passed",
+      "step": 2,
+      "tool": "",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "step": {
+          "instruction": "Click the element labeled 'More information'",
+          "expectedAction": "click",
+          "successCriteria": "The click action is successfully executed on the 'More information' element."
+        },
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "currentUrl": "https://example.com/",
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+        },
+        "executionStatus": "executed"
+      },
+      "output": {
+        "status": "passed",
+        "success": true,
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "evidence": "Example Domain — https://example.com/",
+        "repairInstruction": "",
+        "messageToUser": "",
+        "confidence": 0.95,
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "currentUrl": "https://example.com/",
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+        },
+        "step": {
+          "instruction": "Click the element labeled 'More information'",
+          "expectedAction": "click",
+          "successCriteria": "The click action is successfully executed on the 'More information' element."
+        }
+      },
+      "summary": "Low-risk step passed. Example Domain — https://example.com/",
+      "reasoning": ""
+    },
+    {
+      "role": "sequence_step",
+      "title": "Step 3",
+      "model": "",
+      "status": "started",
+      "step": 3,
+      "tool": "",
+      "ok": null,
+      "durationMs": null,
+      "tokens": null,
+      "input": "Report the final state after clicking 'More information'",
+      "output": "",
+      "summary": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message).",
+      "reasoning": ""
+    },
+    {
+      "role": "report_step_observe",
+      "title": "Report step observer",
+      "model": "",
+      "status": "passed",
+      "step": 3,
+      "tool": "browserObserve",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "instruction": "Report the final state after clicking 'More information'",
+        "expectedAction": "report",
+        "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+      },
+      "output": {
+        "url": "https://example.com/",
+        "title": "Example Domain",
+        "textPreview": "### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```"
+      },
+      "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+      "reasoning": ""
+    },
+    {
+      "role": "final_verifier",
+      "title": "Final verifier",
+      "model": "",
+      "status": "synthetic_verified",
+      "step": null,
+      "tool": "",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "originalInstruction": "Open https://example.com and click More information.",
+        "stepResults": [
+          {
+            "stepNumber": 1,
+            "step": {
+              "instruction": "Navigate to https://example.com",
+              "expectedAction": "navigate",
+              "successCriteria": "The current URL is https://example.com"
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Low-risk step passed. Example Domain — https://example.com/",
+            "url": "https://example.com/",
+            "title": "Example Domain",
+            "command": {
+              "intent": "navigate",
+              "tool": "browserNavigate",
+              "args": {
+                "url": "https://example.com"
+              },
+              "notes": "Synthetic low-risk navigation command from orchestrator step."
+            }
+          },
+          {
+            "stepNumber": 2,
+            "step": {
+              "instruction": "Click the element labeled 'More information'",
+              "expectedAction": "click",
+              "successCriteria": "The click action is successfully executed on the 'More information' element."
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Low-risk step passed. Example Domain — https://example.com/",
+            "url": "https://example.com/",
+            "title": "Example Domain",
+            "command": {
+              "intent": "click_or_open",
+              "tool": "browserClickByText",
+              "args": {
+                "currentUrl": "https://example.com/",
+                "text": "Learn more",
+                "ref": "e6"
+              },
+              "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+            }
+          },
+          {
+            "stepNumber": 3,
+            "step": {
+              "instruction": "Report the final state after clicking 'More information'",
+              "expectedAction": "report",
+              "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+            "url": "https://example.com/",
+            "title": "Example Domain",
+            "command": {
+              "intent": "observe",
+              "tool": "browserObserve",
+              "args": {
+                "currentUrl": "https://example.com/"
+              }
+            }
+          }
+        ]
+      },
+      "output": {
+        "success": true,
+        "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+        "needsUser": false,
+        "nextSafeAction": "Continue with the next browser instruction.",
+        "missingSteps": [],
+        "reason": "Synthetic final verifier used because BROWSER_AGENT_FINAL_VERIFIER_ENABLED=false."
+      },
+      "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+      "reasoning": ""
+    }
+  ],
+  "sequence": {
+    "completed": 3,
+    "total": 3,
+    "stoppedAt": null,
+    "items": [
+      {
+        "index": 0,
+        "instruction": "Navigate to https://example.com",
+        "ok": true,
+        "status": "passed",
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "currentUrl": "https://example.com/",
+        "currentTitle": "Example Domain",
+        "blockedReason": ""
+      },
+      {
+        "index": 1,
+        "instruction": "Click the element labeled 'More information'",
+        "ok": true,
+        "status": "passed",
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "currentUrl": "https://example.com/",
+        "currentTitle": "Example Domain",
+        "blockedReason": ""
+      },
+      {
+        "index": 2,
+        "instruction": "Report the final state after clicking 'More information'",
+        "ok": true,
+        "status": "passed",
+        "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+        "currentUrl": "https://example.com/",
+        "currentTitle": "Example Domain",
+        "blockedReason": ""
+      }
+    ]
+  },
+  "pipeline": {
+    "architecture": "main_orchestrator_step_agent_checker_repair_final_verifier_v1",
+    "dryRun": false,
+    "runtime": {
+      "configured": true,
+      "llmRequired": true,
+      "redactedBaseUrl": "https://chat-api.retakt.cc",
+      "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+      "models": {
+        "default": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "main": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "planner": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "reviewer": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "executor": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "resultReviewer": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "reporter": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b"
+      },
+      "timeoutMs": 45000,
+      "think": true,
+      "options": {
+        "main": {
+          "temperature": 0.45,
+          "top_p": 0.95,
+          "top_k": 120,
+          "repeat_penalty": 1.1,
+          "num_ctx": 65536,
+          "num_predict": 4096
+        },
+        "planner": {
+          "temperature": 0.25,
+          "top_p": 0.92,
+          "top_k": 100,
+          "repeat_penalty": 1.1,
+          "num_ctx": 65536,
+          "num_predict": 4096
+        },
+        "reviewer": {
+          "temperature": 0.15,
+          "top_p": 0.9,
+          "top_k": 80,
+          "repeat_penalty": 1.1,
+          "num_ctx": 65536,
+          "num_predict": 4096
+        },
+        "executor": {
+          "temperature": 0.1,
+          "top_p": 0.85,
+          "top_k": 60,
+          "repeat_penalty": 1.08,
+          "num_ctx": 65536,
+          "num_predict": 2048
+        },
+        "resultReviewer": {
+          "temperature": 0.25,
+          "top_p": 0.95,
+          "top_k": 120,
+          "repeat_penalty": 1.08,
+          "num_ctx": 65536,
+          "num_predict": 4096
+        },
+        "reporter": {
+          "temperature": 0.35,
+          "top_p": 0.95,
+          "top_k": 120,
+          "repeat_penalty": 1.08,
+          "num_ctx": 65536,
+          "num_predict": 4096
+        }
+      },
+      "prompts": {
+        "strictPromptFiles": false,
+        "planner": {
+          "hasCustomPrompt": true,
+          "path": "C:\\Users\\admin\\Desktop\\re\\re.terminal\\server\\config\\prompts\\browser-planner-system.md",
+          "pathExists": true,
+          "inline": false
+        },
+        "reporter": {
+          "hasCustomPrompt": true,
+          "path": "C:\\Users\\admin\\Desktop\\re\\re.terminal\\server\\config\\prompts\\browser-reporter-human.md",
+          "pathExists": true,
+          "inline": false
+        }
+      },
+      "strategy": "llm-required",
+      "missing": []
+    },
+    "agentTrace": [
+      {
+        "role": "main_orchestrator",
+        "title": "Main model intent orchestrator",
+        "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "status": "ready",
+        "step": null,
+        "tool": "",
+        "ok": true,
+        "durationMs": 20246,
+        "tokens": 610,
+        "input": "Open https://example.com and click More information.",
+        "output": {
+          "status": "ready",
+          "userIntent": "Navigate to example.com and click the 'More information' element.",
+          "steps": [
+            {
+              "instruction": "Navigate to https://example.com",
+              "expectedAction": "navigate",
+              "successCriteria": "The current URL is https://example.com"
+            },
+            {
+              "instruction": "Click the element labeled 'More information'",
+              "expectedAction": "click",
+              "successCriteria": "The click action is successfully executed on the 'More information' element."
+            },
+            {
+              "instruction": "Report the final state after clicking 'More information'",
+              "expectedAction": "report",
+              "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+            }
+          ],
+          "messageToUser": "I have broken down your request into three steps: navigating to the page, clicking the element, and reporting the final result.",
+          "confidence": 1
+        },
+        "summary": "Navigate to example.com and click the 'More information' element.",
+        "reasoning": ""
+      },
+      {
+        "role": "sequence_step",
+        "title": "Step 1",
+        "model": "",
+        "status": "started",
+        "step": 1,
+        "tool": "",
+        "ok": null,
+        "durationMs": null,
+        "tokens": null,
+        "input": "Navigate to https://example.com",
+        "output": "",
+        "summary": "The current URL is https://example.com",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_step_agent",
+        "title": "Gemma step agent",
+        "model": "",
+        "status": "synthetic_ready",
+        "step": 1,
+        "tool": "browserNavigate",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "instruction": "Navigate to https://example.com",
+          "expectedAction": "navigate",
+          "successCriteria": "The current URL is https://example.com"
+        },
+        "output": {
+          "status": "ready",
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "reason": "Navigation step can be executed directly without another model call.",
+          "messageToChecker": "",
+          "messageToUser": "",
+          "confidence": 1
+        },
+        "summary": "Navigation step can be executed directly without another model call.",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_checker",
+        "title": "Gemma command checker",
+        "model": "",
+        "status": "auto_approved",
+        "step": 1,
+        "tool": "browserNavigate",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "status": "ready",
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "reason": "Navigation step can be executed directly without another model call.",
+          "messageToChecker": "",
+          "messageToUser": "",
+          "confidence": 1
+        },
+        "output": {
+          "status": "approved",
+          "approved": true,
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "reason": "Low-risk browser command auto-approved to avoid redundant checker call.",
+          "repairInstruction": "",
+          "messageToUser": "",
+          "confidence": 1
+        },
+        "summary": "Low-risk browser command auto-approved to avoid redundant checker call.",
+        "reasoning": ""
+      },
+      {
+        "role": "playwright_controller",
+        "title": "Playwright browser controller",
+        "model": "",
+        "status": "executed",
+        "step": 1,
+        "tool": "browserNavigate",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "output": {
+          "url": "https://example.com/",
+          "title": "Example Domain",
+          "error": "",
+          "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T07-03-35-089Z.yml)"
+        },
+        "summary": "### Ran Playwright code ```js await page.goto('https://example.com'); ``` ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T07-03-35-089Z.yml)",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_result_checker",
+        "title": "Gemma result checker",
+        "model": "",
+        "status": "auto_passed",
+        "step": 1,
+        "tool": "",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "step": {
+            "instruction": "Navigate to https://example.com",
+            "expectedAction": "navigate",
+            "successCriteria": "The current URL is https://example.com"
+          },
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "executionStatus": "executed"
+        },
+        "output": {
+          "status": "passed",
+          "success": true,
+          "summary": "Low-risk step passed. Example Domain — https://example.com/",
+          "evidence": "Example Domain — https://example.com/",
+          "repairInstruction": "",
+          "messageToUser": "",
+          "confidence": 0.95,
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "step": {
+            "instruction": "Navigate to https://example.com",
+            "expectedAction": "navigate",
+            "successCriteria": "The current URL is https://example.com"
+          }
+        },
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "reasoning": ""
+      },
+      {
+        "role": "sequence_step",
+        "title": "Step 2",
+        "model": "",
+        "status": "started",
+        "step": 2,
+        "tool": "",
+        "ok": null,
+        "durationMs": null,
+        "tokens": null,
+        "input": "Click the element labeled 'More information'",
+        "output": "",
+        "summary": "The click action is successfully executed on the 'More information' element.",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_step_agent",
+        "title": "Gemma step agent",
+        "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "status": "ready",
+        "step": 2,
+        "tool": "browserClickByText",
+        "ok": true,
+        "durationMs": 29744,
+        "tokens": 1638,
+        "input": {
+          "instruction": "Click the element labeled 'More information'",
+          "expectedAction": "click",
+          "successCriteria": "The click action is successfully executed on the 'More information' element."
+        },
+        "output": {
+          "status": "ready",
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "currentUrl": "https://example.com/",
+              "text": "Learn more",
+              "ref": "e6"
+            },
+            "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. I will use 'Learn more' as the target text, referencing snapshot ref e6.",
+            "confidence": 0.95
+          },
+          "reason": "The current step requires clicking the element labeled 'More information'. Inspecting the snapshot text preview, the visible link text is 'Learn more' (ref e6). I will use 'Learn more' as the text argument for browserClickByText, providing the snapshot reference for higher accuracy.",
+          "messageToChecker": "The instruction asked to click 'More information', but the visible link text is 'Learn more'. I used 'Learn more' and provided the snapshot reference 'e6'.",
+          "messageToUser": "I am clicking the 'Learn more' link to proceed with the task.",
+          "confidence": 0.95
+        },
+        "summary": "The current step requires clicking the element labeled 'More information'. Inspecting the snapshot text preview, the visible link text is 'Learn more' (ref e6). I will use 'Learn more' as the text argument for browserClickByText, providing the snapshot reference for higher accuracy.",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_checker",
+        "title": "Gemma command checker",
+        "model": "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b",
+        "status": "repaired",
+        "step": 2,
+        "tool": "browserClickByText",
+        "ok": true,
+        "durationMs": 44041,
+        "tokens": 1598,
+        "input": {
+          "status": "ready",
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "currentUrl": "https://example.com/",
+              "text": "Learn more",
+              "ref": "e6"
+            },
+            "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. I will use 'Learn more' as the target text, referencing snapshot ref e6.",
+            "confidence": 0.95
+          },
+          "reason": "The current step requires clicking the element labeled 'More information'. Inspecting the snapshot text preview, the visible link text is 'Learn more' (ref e6). I will use 'Learn more' as the text argument for browserClickByText, providing the snapshot reference for higher accuracy.",
+          "messageToChecker": "The instruction asked to click 'More information', but the visible link text is 'Learn more'. I used 'Learn more' and provided the snapshot reference 'e6'.",
+          "messageToUser": "I am clicking the 'Learn more' link to proceed with the task.",
+          "confidence": 0.95
+        },
+        "output": {
+          "status": "repaired",
+          "approved": true,
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "currentUrl": "https://example.com/",
+              "text": "Learn more",
+              "ref": "e6"
+            },
+            "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot.",
+            "confidence": 0.95
+          },
+          "reason": "The original instruction asks to click 'More information', but the current page snapshot shows a link with the text 'Learn more' (ref e6). The proposed command correctly adjusts the target text to 'Learn more' while keeping the intent and tool correct. Since the proposed command is accurate and addresses the discrepancy, it is approved after repair.",
+          "repairInstruction": "The proposed command is correct. It repairs the target text from 'More information' (in the instruction) to 'Learn more' (on the page) while maintaining the correct intent, tool, and reference.",
+          "messageToUser": "The system has recognized that the instruction asks to click 'More information', but the visible link text is 'Learn more'. It has adjusted the command to click 'Learn more' (ref e6) and is ready to execute.",
+          "confidence": 0.98
+        },
+        "summary": "The original instruction asks to click 'More information', but the current page snapshot shows a link with the text 'Learn more' (ref e6). The proposed command correctly adjusts the target text to 'Learn more' while keeping the intent and tool correct. Since the proposed command is accurate and addresses the discrepancy, it is approved after repair.",
+        "reasoning": ""
+      },
+      {
+        "role": "playwright_controller",
+        "title": "Playwright browser controller",
+        "model": "",
+        "status": "executed",
+        "step": 2,
+        "tool": "browserClickByText",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "currentUrl": "https://example.com/",
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+        },
+        "output": {
+          "url": "https://example.com/",
+          "title": "Example Domain",
+          "error": "",
+          "summary": "### Error\n[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"target\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"
+        },
+        "summary": "### Error [ { \"expected\": \"string\", \"code\": \"invalid_type\", \"path\": [ \"target\" ], \"message\": \"Invalid input: expected string, received undefined\" } ]",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_result_checker",
+        "title": "Gemma result checker",
+        "model": "",
+        "status": "auto_passed",
+        "step": 2,
+        "tool": "",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "step": {
+            "instruction": "Click the element labeled 'More information'",
+            "expectedAction": "click",
+            "successCriteria": "The click action is successfully executed on the 'More information' element."
+          },
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "currentUrl": "https://example.com/",
+              "text": "Learn more",
+              "ref": "e6"
+            },
+            "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+          },
+          "executionStatus": "executed"
+        },
+        "output": {
+          "status": "passed",
+          "success": true,
+          "summary": "Low-risk step passed. Example Domain — https://example.com/",
+          "evidence": "Example Domain — https://example.com/",
+          "repairInstruction": "",
+          "messageToUser": "",
+          "confidence": 0.95,
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "currentUrl": "https://example.com/",
+              "text": "Learn more",
+              "ref": "e6"
+            },
+            "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+          },
+          "step": {
+            "instruction": "Click the element labeled 'More information'",
+            "expectedAction": "click",
+            "successCriteria": "The click action is successfully executed on the 'More information' element."
+          }
+        },
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "reasoning": ""
+      },
+      {
+        "role": "sequence_step",
+        "title": "Step 3",
+        "model": "",
+        "status": "started",
+        "step": 3,
+        "tool": "",
+        "ok": null,
+        "durationMs": null,
+        "tokens": null,
+        "input": "Report the final state after clicking 'More information'",
+        "output": "",
+        "summary": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message).",
+        "reasoning": ""
+      },
+      {
+        "role": "report_step_observe",
+        "title": "Report step observer",
+        "model": "",
+        "status": "passed",
+        "step": 3,
+        "tool": "browserObserve",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "instruction": "Report the final state after clicking 'More information'",
+          "expectedAction": "report",
+          "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+        },
+        "output": {
+          "url": "https://example.com/",
+          "title": "Example Domain",
+          "textPreview": "### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```"
+        },
+        "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+        "reasoning": ""
+      },
+      {
+        "role": "final_verifier",
+        "title": "Final verifier",
+        "model": "",
+        "status": "synthetic_verified",
+        "step": null,
+        "tool": "",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "originalInstruction": "Open https://example.com and click More information.",
+          "stepResults": [
+            {
+              "stepNumber": 1,
+              "step": {
+                "instruction": "Navigate to https://example.com",
+                "expectedAction": "navigate",
+                "successCriteria": "The current URL is https://example.com"
+              },
+              "ok": true,
+              "repaired": false,
+              "status": "passed",
+              "summary": "Low-risk step passed. Example Domain — https://example.com/",
+              "url": "https://example.com/",
+              "title": "Example Domain",
+              "command": {
+                "intent": "navigate",
+                "tool": "browserNavigate",
+                "args": {
+                  "url": "https://example.com"
+                },
+                "notes": "Synthetic low-risk navigation command from orchestrator step."
+              }
+            },
+            {
+              "stepNumber": 2,
+              "step": {
+                "instruction": "Click the element labeled 'More information'",
+                "expectedAction": "click",
+                "successCriteria": "The click action is successfully executed on the 'More information' element."
+              },
+              "ok": true,
+              "repaired": false,
+              "status": "passed",
+              "summary": "Low-risk step passed. Example Domain — https://example.com/",
+              "url": "https://example.com/",
+              "title": "Example Domain",
+              "command": {
+                "intent": "click_or_open",
+                "tool": "browserClickByText",
+                "args": {
+                  "currentUrl": "https://example.com/",
+                  "text": "Learn more",
+                  "ref": "e6"
+                },
+                "notes": "The instruction specifies clicking 'More information', but the visible text on the page is 'Learn more'. The proposed command correctly identifies 'Learn more' as the target text and uses the reference 'e6' from the snapshot."
+              }
+            },
+            {
+              "stepNumber": 3,
+              "step": {
+                "instruction": "Report the final state after clicking 'More information'",
+                "expectedAction": "report",
+                "successCriteria": "The final observation confirms the page state after the click (e.g., a new URL, a visible change, or a confirmation message)."
+              },
+              "ok": true,
+              "repaired": false,
+              "status": "passed",
+              "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+              "url": "https://example.com/",
+              "title": "Example Domain",
+              "command": {
+                "intent": "observe",
+                "tool": "browserObserve",
+                "args": {
+                  "currentUrl": "https://example.com/"
+                }
+              }
+            }
+          ]
+        },
+        "output": {
+          "success": true,
+          "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+          "needsUser": false,
+          "nextSafeAction": "Continue with the next browser instruction.",
+          "missingSteps": [],
+          "reason": "Synthetic final verifier used because BROWSER_AGENT_FINAL_VERIFIER_ENABLED=false."
+        },
+        "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+        "reasoning": ""
+      }
+    ],
+    "browserExecution": {
+      "ok": true,
+      "status": "executed",
+      "executed": true,
+      "tool": "browserObserve",
+      "engine": "playwright_mcp",
+      "observation": {
+        "ok": true,
+        "url": "https://example.com/",
+        "title": "Example Domain",
+        "textPreview": "### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+        "engine": "playwright_mcp",
+        "links": [],
+        "buttons": [],
+        "inputs": [],
+        "forms": [],
+        "interactiveElements": [],
+        "stats": {}
+      },
+      "summary": "Example Domain — https://example.com/ — ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```"
+    }
+  },
+  "state": {
+    "sessionId": "debug-browser-1779519793002",
+    "mode": "browser",
+    "currentUrl": "https://example.com/",
+    "currentTitle": "Example Domain",
+    "currentExtensionId": "",
+    "currentPageKey": "example_domain",
+    "lastObservation": {
+      "url": "https://example.com/",
+      "title": "Example Domain",
+      "textPreview": "### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+      "engine": "playwright_mcp",
+      "extractionPath": "",
+      "extractionSources": [],
+      "extractionCapabilities": {},
+      "requestedUrl": "",
+      "error": "",
+      "isLoginPage": false,
+      "forms": [],
+      "buttons": [],
+      "links": [],
+      "inputs": [],
+      "interactiveElements": []
+    },
+    "lastValidObservation": {
+      "url": "https://example.com/",
+      "title": "Example Domain",
+      "textPreview": "### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot ```yaml - generic [ref=e2]: - heading \"Example Domain\" [level=1] [ref=e3] - paragraph [ref=e4]: This domain is for use in documentation examples without needing permission. Avoid use in operations. - paragraph [ref=e5]: - link \"Learn more\" [ref=e6] [cursor=pointer]: - /url: https://iana.org/domains/example ```",
+      "engine": "playwright_mcp",
+      "extractionPath": "",
+      "extractionSources": [],
+      "extractionCapabilities": {},
+      "requestedUrl": "",
+      "error": "",
+      "isLoginPage": false,
+      "forms": [],
+      "buttons": [],
+      "links": [],
+      "inputs": [],
+      "interactiveElements": []
+    },
+    "lastFailedObservation": null,
+    "pendingForm": null,
+    "activeEngine": "playwright_mcp",
+    "engineFailures": {},
+    "pendingInstruction": "",
+    "pendingAction": null,
+    "lastIntent": "",
+    "lastCommand": null,
+    "lastToolResult": null,
+    "visited": [
+      "https://example.com/"
+    ],
+    "learnedAliases": [],
+    "lastToolResults": [],
+    "failureCount": 0,
+    "updatedAt": "2026-05-23T07:04:49.377Z"
+  }
+}
