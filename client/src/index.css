@@ -14393,3 +14393,25 @@ display: flex !important;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+
+/* ─── Wider default AI activity panel ─────────────────────────────────────── */
+/* Desktop: let the right activity inspector breathe by default.
+   Mobile/drawer: use almost the full screen width while leaving a sliver of
+   backdrop visible so it still feels dismissible. */
+
+.chat-activity-pane {
+  min-width: 320px;
+}
+
+.chat-mobile-panel-drawer {
+  width: min(96vw, 560px);
+  min-width: min(96vw, 560px);
+}
+
+@media (max-width: 520px) {
+  .chat-mobile-panel-drawer {
+    width: min(94vw, 430px);
+    min-width: min(94vw, 430px);
+  }
+}
