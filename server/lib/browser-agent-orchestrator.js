@@ -72,6 +72,90 @@ function isReportOnlyStep(step = {}) {
   return action === "report" || /\b(report|tell me|summarize|final state|final url|final title)\b/.test(text);
 }
 
+function normalizeHttpUrl(value = "") {
+  const raw = String(value || "").trim().replace(/[.,;:!?]+$/g, "");
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(raw)) return "";
+  if (/^(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[/:?#][^\s]*)?$/i.test(raw)) return `https://${raw}`;
+  return "";
+}
+
+function extractUrlFromText(value = "") {
+  const raw = String(value || "");
+  const explicit = raw.match(/https?:\/\/[^\s)"'<>]+/i)?.[0];
+  if (explicit) return normalizeHttpUrl(explicit);
+  const domain = raw.match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s)"'<>]*)?/i)?.[0];
+  return normalizeHttpUrl(domain || "");
+}
+
+function targetUrlForStep(step = {}, originalInstruction = "") {
+  return extractUrlFromText([
+    step.instruction,
+    step.successCriteria,
+    step.target,
+    step.url,
+    originalInstruction,
+  ].filter(Boolean).join(" "));
+}
+
+function isNavigationStep(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = String(step.instruction || "").toLowerCase();
+  return action === "navigate" || /\b(open|visit|navigate|go to|load|browse)\b/.test(text);
+}
+
+function hasMutatingBrowserIntent(text = "") {
+  return /\b(click|press|tap|fill|type|submit|login|log in|sign in|checkout|pay|delete|remove|approve|reject|upload|download|save|change|update)\b/i
+    .test(String(text || ""));
+}
+
+function isReadOnlyBrowserPlan(steps = [], originalInstruction = "") {
+  if (hasMutatingBrowserIntent(originalInstruction) && !/\bdo not click|don't click|dont click|no click|without clicking\b/i.test(originalInstruction)) {
+    return false;
+  }
+
+  return steps.every((step) => {
+    const action = String(step.expectedAction || "").toLowerCase();
+    const text = String(step.instruction || "").toLowerCase();
+    if (isReportOnlyStep(step) || isNavigationStep(step)) return true;
+    if (/\b(observe|inspect|check|read|scrape|extract|summarize|report)\b/.test(text)) return true;
+    return ["observe", "report", "read", "scrape", "extract", "unknown"].includes(action) && !hasMutatingBrowserIntent(text);
+  });
+}
+
+function firstLinkTexts(observation = {}, limit = 5) {
+  return (Array.isArray(observation.links) ? observation.links : [])
+    .map((link) => safeText(link.text || link.label || link.name || link.href || "", 140))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function detailedReportSummaryFromObservation(observation = {}, step = {}, originalInstruction = "") {
+  const title = observation.title || "";
+  const url = observation.url || "";
+  const stats = observation.stats || {};
+  const links = Array.isArray(observation.links) ? observation.links.length : Number(stats.links || 0);
+  const forms = Array.isArray(observation.forms) ? observation.forms.length : Number(stats.forms || 0);
+  const firstLinks = firstLinkTexts(observation, 5);
+
+  const wantsLinks = /\b(first\s+\d+\s+link|first\s+five\s+link|links?|link texts?)\b/i
+    .test(`${step.instruction || ""} ${originalInstruction || ""}`);
+
+  const parts = [
+    title ? `Title: ${title}` : "",
+    url ? `URL: ${url}` : "",
+    Number.isFinite(links) ? `Links: ${links}` : "",
+    Number.isFinite(forms) ? `Forms: ${forms}` : "",
+  ].filter(Boolean);
+
+  if (wantsLinks && firstLinks.length) {
+    parts.push(`First ${firstLinks.length} links: ${firstLinks.join(" | ")}`);
+  }
+
+  return parts.length ? parts.join(" — ") : pageSummaryFromObservation(observation);
+}
+
 function isLowRiskAutoCheckCommand(command = {}, step = {}) {
   const tool = String(command?.tool || "");
   const text = String(step?.instruction || "");
@@ -849,6 +933,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   let finalObservation = null;
   let stoppedReason = "";
   let lastSuccessfulFillCommand = null;
+  const readOnlyBrowserPlan = isReadOnlyBrowserPlan(steps, instruction);
 
   for (let index = 0; index < steps.length; index += 1) {
     const stepNumber = index + 1;
@@ -864,13 +949,16 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ok: null,
     }));
 
+    const stepTargetUrl = targetUrlForStep(step, instruction);
+    const lightpandaReadUrl = currentUrl || (readOnlyBrowserPlan && stepTargetUrl ? stepTargetUrl : "");
+
     let beforeState = null;
     try {
       beforeState = await getBrowserState({
         ...args,
         state: currentState,
-        currentUrl,
-        navigate: false,
+        ...(currentUrl ? { currentUrl } : lightpandaReadUrl ? { url: lightpandaReadUrl } : { currentUrl }),
+        navigate: Boolean(!currentUrl && lightpandaReadUrl),
         waitMs: args.waitMs || "700",
       });
     } catch (err) {
@@ -899,6 +987,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       status: beforeState?.ok === true ? "observed" : "unavailable",
       input: {
         currentUrl,
+        readUrl: lightpandaReadUrl,
         readOnly: true,
       },
       output: compactBrowserStateForModel(beforeState, {
@@ -914,6 +1003,53 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       tool: "browserObserve",
       ok: beforeState?.ok === true,
     }));
+
+    if (
+      readOnlyBrowserPlan &&
+      isNavigationStep(step) &&
+      beforeState?.ok === true &&
+      !currentUrl &&
+      lightpandaReadUrl
+    ) {
+      const observation = observationFromPageState(beforeState);
+      currentUrl = observation?.url || lightpandaReadUrl || currentUrl;
+      currentTitle = observation?.title || currentTitle;
+      finalObservation = observation || finalObservation;
+
+      const summary = detailedReportSummaryFromObservation(observation || {}, step, instruction);
+
+      trace.push(traceEntry({
+        role: "report_step_observe",
+        title: "Lightpanda read-only navigation",
+        step: stepNumber,
+        status: "passed",
+        input: step,
+        output: {
+          url: currentUrl,
+          title: currentTitle,
+          textPreview: safeText(observation?.textPreview || observation?.text || "", 900),
+          links: Array.isArray(observation?.links) ? observation.links.slice(0, 5).map((link) => link.text || link.href || "") : [],
+          stats: observation?.stats || {},
+        },
+        summary,
+        tool: "browserObserve",
+        ok: true,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: true,
+        repaired: false,
+        status: "passed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: { intent: "read_navigation", tool: "browserObserve", args: { currentUrl } },
+      });
+
+      continue;
+    }
 
     const captureBeforeSnapshot = shouldCapturePlaywrightBeforeSnapshot({ step, beforeState });
     let before = null;
@@ -955,7 +1091,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       currentTitle = observation.title || currentTitle;
       finalObservation = observation;
 
-      const summary = pageSummaryFromObservation(observation);
+      const summary = detailedReportSummaryFromObservation(observation, step, instruction);
 
       trace.push(traceEntry({
         role: "report_step_observe",
@@ -967,6 +1103,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           url: observation.url || "",
           title: observation.title || "",
           textPreview: safeText(observation.textPreview || observation.text || "", 900),
+          links: Array.isArray(observation.links) ? observation.links.slice(0, 5).map((link) => link.text || link.href || "") : [],
+          stats: observation.stats || {},
         },
         summary,
         tool: "browserObserve",
