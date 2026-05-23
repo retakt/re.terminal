@@ -34,6 +34,12 @@ function roundMs(value = 0) {
   return Math.round(Number(value || 0) * 10) / 10;
 }
 
+function envFlag(name, fallback = false) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  return ["1", "true", "yes", "on"].includes(String(raw).trim().toLowerCase());
+}
+
 function redactValue(value, path = []) {
   if (Array.isArray(value)) return value.map((entry, index) => redactValue(entry, [...path, String(index)]));
   if (!value || typeof value !== "object") {
@@ -210,6 +216,87 @@ function usageFromRoleCall(roleCall) {
   return roleCall?.call?.usage || roleCall?.usage || null;
 }
 
+function combinePipelineTokenUsage(calls = {}) {
+  const stages = {
+    planner: usageFromRoleCall(calls.plannerResult),
+    reviewer: usageFromRoleCall(calls.reviewerResult),
+    executor: usageFromRoleCall(calls.executorResult),
+    resultReviewer: usageFromRoleCall(calls.resultReviewerResult),
+    mainHandoff: usageFromRoleCall(calls.mainResult),
+  };
+
+  const totalTokens = Object.values(stages)
+    .reduce((sum, usage) => sum + Number(usage?.totalTokens || 0), 0);
+
+  return {
+    totalTokens,
+    planner: stages.planner,
+    reporter: stages.mainHandoff || stages.resultReviewer,
+    reviewer: stages.reviewer,
+    executor: stages.executor,
+    resultReviewer: stages.resultReviewer,
+    mainHandoff: stages.mainHandoff,
+  };
+}
+
+function syntheticExecutorFromReviewer(reviewer = {}) {
+  const command = reviewer.approvedCommand || {};
+  return {
+    status: "controller_prepared",
+    executed: false,
+    wouldExecute: command.tool ? `Controller will execute ${command.tool} through Playwright MCP.` : "Controller will execute the reviewer-approved command.",
+    toolPlan: [
+      {
+        tool: command.tool || "unknown",
+        args: command.args || {},
+        purpose: reviewer.messageToExecutor || "Execute reviewer-approved browser command.",
+      },
+    ],
+    result: "waiting for Playwright MCP controller execution",
+    messageToResultReviewer: "Verify the actual Playwright MCP result against the approved command and screenshots.",
+  };
+}
+
+function syntheticMainHandoff({ resultReviewer = null, reviewer = null, browserExecution = null, approved = false } = {}) {
+  const fallback = resultReviewer?.messageToMain ||
+    reviewer?.messageToMain ||
+    browserExecution?.error ||
+    browserExecution?.actionResult?.text ||
+    "Browser pipeline completed.";
+
+  return normalizeMainHandoff({
+    summary: fallback,
+    nextSafeAction: approved
+      ? "Continue with the next browser instruction."
+      : reviewer?.messageToPlanner || "Clarify the browser instruction.",
+    needsUser: !approved,
+  }, fallback);
+}
+
+function browserObservationControls(observation = null) {
+  if (!observation || typeof observation !== "object") {
+    return { forms: 0, inputs: [], buttons: [], links: [] };
+  }
+
+  return {
+    forms: Array.isArray(observation.forms) ? observation.forms.length : Number(observation.stats?.forms || 0),
+    inputs: Array.isArray(observation.inputs) ? observation.inputs.slice(0, 20) : [],
+    buttons: Array.isArray(observation.buttons) ? observation.buttons.slice(0, 30) : [],
+    links: Array.isArray(observation.links) ? observation.links.slice(0, 30) : [],
+  };
+}
+
+function browserWhatFound(observation = null) {
+  if (!observation || typeof observation !== "object") return null;
+  return {
+    ok: Boolean(observation.ok),
+    url: observation.url || "",
+    title: observation.title || "",
+    textPreview: safeText(observation.textPreview || observation.text || "", 1800),
+    engine: observation.engine || "playwright_mcp",
+  };
+}
+
 async function safeCaptureBeforeSnapshot(args, state) {
   try {
     return await capturePlaywrightMcpSnapshot({ ...args, label: "review_before" }, state);
@@ -303,21 +390,26 @@ export async function runBrowserAgentPipeline(args = {}) {
   let resultReviewerResult = null;
 
   if (approved) {
-    executorResult = await safeRoleCall("executor", () => callBrowserAgentExecutor({
-      instruction,
-      currentState: redactValue(compactState(state)),
-      visualSnapshot: compactSnapshotForModel(beforeReviewSnapshot?.snapshot),
-      reviewer,
-      approvedCommand: reviewer.approvedCommand,
-      schemas: browserPipelineSchemaSummary(),
-    }, executorSystemPrompt(), { images: beforeImages }));
+    if (envFlag("BROWSER_AGENT_EXECUTOR_LLM_ENABLED", false)) {
+      executorResult = await safeRoleCall("executor", () => callBrowserAgentExecutor({
+        instruction,
+        currentState: redactValue(compactState(state)),
+        visualSnapshot: compactSnapshotForModel(beforeReviewSnapshot?.snapshot),
+        reviewer,
+        approvedCommand: reviewer.approvedCommand,
+        schemas: browserPipelineSchemaSummary(),
+      }, executorSystemPrompt(), { images: beforeImages }));
 
-    executor = normalizeExecutorDryRun(executorResult.call?.data, executorResult.error || "Executor failed.");
+      executor = normalizeExecutorDryRun(executorResult.call?.data, executorResult.error || "Executor failed.");
+    } else {
+      executor = syntheticExecutorFromReviewer(reviewer);
+    }
 
     browserExecution = await executePlaywrightMcpBrowserCommand({
       command: reviewer.approvedCommand,
       args,
       state,
+      beforeSnapshot: beforeReviewSnapshot?.snapshot || null,
     });
 
     const resultImages = snapshotImagesForModel(
@@ -383,16 +475,27 @@ export async function runBrowserAgentPipeline(args = {}) {
     },
   };
 
-  const mainResult = await safeRoleCall("main_handoff", () => callBrowserAgentMainHandoff({
-    instruction,
-    pipeline: redactValue(pipeline),
-    schemas: browserPipelineSchemaSummary(),
-  }, mainHandoffSystemPrompt()));
+  let mainResult = null;
+  let main = null;
 
-  const main = normalizeMainHandoff(
-    mainResult.call?.data,
-    resultReviewer?.messageToMain || reviewer.messageToMain || browserExecution?.error || "Browser pipeline completed.",
-  );
+  if (envFlag("BROWSER_AGENT_MAIN_HANDOFF_ENABLED", false)) {
+    mainResult = await safeRoleCall("main_handoff", () => callBrowserAgentMainHandoff({
+      instruction,
+      pipeline: redactValue(pipeline),
+      schemas: browserPipelineSchemaSummary(),
+    }, mainHandoffSystemPrompt()));
+
+    main = normalizeMainHandoff(
+      mainResult.call?.data,
+      resultReviewer?.messageToMain || reviewer.messageToMain || browserExecution?.error || "Browser pipeline completed.",
+    );
+  } else {
+    main = syntheticMainHandoff({ resultReviewer, reviewer, browserExecution, approved });
+  }
+
+  pipeline.calls.mainHandoff = mainResult
+    ? { ok: mainResult.ok, error: mainResult.error || "", usage: usageFromRoleCall(mainResult) }
+    : null;
 
   const timing = {
     totalMs: roundMs(nowMs() - startedAt),
@@ -400,8 +503,17 @@ export async function runBrowserAgentPipeline(args = {}) {
     mainModelMs: 0,
   };
 
+  const executionOk = approved && browserExecution?.ok === true;
+  const tokenUsage = combinePipelineTokenUsage({
+    plannerResult,
+    reviewerResult,
+    executorResult,
+    resultReviewerResult,
+    mainResult,
+  });
+
   return {
-    ok: approved && browserExecution?.ok === true && resultReviewer?.status !== "failed",
+    ok: executionOk,
     status: approved
       ? browserExecution?.ok
         ? "success"
@@ -432,9 +544,22 @@ export async function runBrowserAgentPipeline(args = {}) {
         }),
       },
     ],
+    whatFound: browserWhatFound(browserExecution?.observation),
+    observedControls: browserObservationControls(browserExecution?.observation),
+    possibleNextActions: [],
+    planner,
+    reporter: {
+      summary: main.summary,
+      whatHappened: resultReviewer?.normalizedResult || browserExecution?.summary || "",
+      success: executionOk,
+      currentPage: browserExecution?.observation?.title || browserExecution?.observation?.url || "",
+      nextSafeAction: main.nextSafeAction,
+      failureDiagnosis: executionOk ? "" : browserExecution?.error || reviewer.reason || "",
+      role: envFlag("BROWSER_AGENT_MAIN_HANDOFF_ENABLED", false) ? "main_handoff" : "synthetic_handoff",
+    },
     pipeline,
     runtime,
     runtimeTiming: timing,
-    tokenUsage: emptyBrowserAgentTokenUsage(),
+    tokenUsage,
   };
 }

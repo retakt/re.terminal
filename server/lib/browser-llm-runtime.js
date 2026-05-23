@@ -53,7 +53,21 @@ function rawBaseUrl() {
 function resolvePromptPath(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+  if (path.isAbsolute(raw)) return raw;
+
+  const withoutLeadingDot = raw.replace(/^\\.?[\\/]/, "");
+  const withoutServerPrefix = withoutLeadingDot.replace(/^server[\\/]/i, "");
+
+  const candidates = [
+    path.resolve(process.cwd(), raw),
+    path.resolve(process.cwd(), withoutLeadingDot),
+    path.resolve(process.cwd(), withoutServerPrefix),
+    path.resolve(process.cwd(), "..", raw),
+    path.resolve(process.cwd(), "..", withoutLeadingDot),
+    path.resolve(process.cwd(), "..", withoutServerPrefix),
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
 }
 
 function stageKey(stage = "") {
@@ -304,23 +318,32 @@ function responseContent(data = {}) {
   ).trim();
 }
 
-async function callOllamaChat({ stage, messages, format = "json" }) {
-  const config = requireBrowserAgentRuntimeConfig();
-  const startedAt = performance.now();
-  const options = stageOptions(stage);
-  const model = config.models?.[stage] || config.model;
+function thinkUnsupportedError(data = {}, model = "") {
+  const text = String(data?.error || data?.message || data?.response || "").toLowerCase();
+  return Boolean(
+    text.includes("does not support thinking") ||
+    text.includes("thinking is not supported") ||
+    text.includes("think is not supported") ||
+    (model && text.includes(String(model).toLowerCase()) && text.includes("thinking"))
+  );
+}
+
+async function postOllamaChat({ config, model, messages, format, options, think }) {
+  const body = {
+    model,
+    messages,
+    stream: false,
+    format,
+    options,
+  };
+
+  if (think === true) body.think = true;
+
   const response = await fetch(`${config.baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(config.timeoutMs),
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: false,
-      format,
-      think: config.think,
-      options,
-    }),
+    body: JSON.stringify(body),
   });
 
   let data = null;
@@ -330,17 +353,56 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
     data = { response: await response.text().catch(() => "") };
   }
 
+  return { response, data };
+}
+
+async function callOllamaChat({ stage, messages, format = "json" }) {
+  const config = requireBrowserAgentRuntimeConfig();
+  const startedAt = performance.now();
+  const options = stageOptions(stage);
+  const model = config.models?.[stage] || config.model;
+
+  let retriedWithoutThink = false;
+  let attempt = await postOllamaChat({
+    config,
+    model,
+    messages,
+    format,
+    options,
+    think: config.think,
+  });
+
+  if (!attempt.response.ok && config.think && thinkUnsupportedError(attempt.data, model)) {
+    retriedWithoutThink = true;
+    attempt = await postOllamaChat({
+      config,
+      model,
+      messages,
+      format,
+      options,
+      think: false,
+    });
+  }
+
+  const { response, data } = attempt;
+
   if (!response.ok) {
     const error = new Error(data?.error || `Browser agent LLM ${stage} call failed: HTTP ${response.status}`);
     error.code = "BROWSER_AGENT_LLM_HTTP_ERROR";
     error.status = response.status;
     error.usage = tokenUsageFromResponse(data || {}, { ...config, model }, stage, Math.round(performance.now() - startedAt));
+    error.retriedWithoutThink = retriedWithoutThink;
     throw error;
   }
 
+  const usage = tokenUsageFromResponse(data || {}, { ...config, model }, stage, Math.round(performance.now() - startedAt));
+  usage.thinkRequested = Boolean(config.think);
+  usage.retriedWithoutThink = retriedWithoutThink;
+  usage.thinkUsed = Boolean(config.think && !retriedWithoutThink);
+
   return {
     content: responseContent(data),
-    usage: tokenUsageFromResponse(data || {}, { ...config, model }, stage, Math.round(performance.now() - startedAt)),
+    usage,
     raw: data,
   };
 }

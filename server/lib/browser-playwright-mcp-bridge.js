@@ -348,8 +348,29 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
   };
 }
 
-export async function executePlaywrightMcpBrowserCommand({ command = {}, args = {}, state = {} } = {}) {
-  const before = await capturePlaywrightMcpSnapshot({ ...args, label: "before" }, state);
+export async function executePlaywrightMcpBrowserCommand({ command = {}, args = {}, state = {}, beforeSnapshot = null } = {}) {
+  const before = beforeSnapshot
+    ? {
+        ok: true,
+        status: "reused",
+        engine: "playwright_mcp",
+        snapshot: beforeSnapshot,
+        observation: {
+          ok: Boolean(beforeSnapshot.text || beforeSnapshot.dom?.textPreview),
+          url: beforeSnapshot.url || "",
+          title: beforeSnapshot.title || "",
+          textPreview: safeText(beforeSnapshot.text || beforeSnapshot.dom?.textPreview || "", 5000),
+          engine: "playwright_mcp",
+          links: [],
+          buttons: [],
+          inputs: [],
+          forms: [],
+          interactiveElements: [],
+          stats: {},
+        },
+        error: "",
+      }
+    : await capturePlaywrightMcpSnapshot({ ...args, label: "before" }, state);
 
   const action = await executeApprovedAction(command, args, state);
 
