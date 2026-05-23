@@ -191,6 +191,40 @@ function hasTraceProfileDetails(entry: BrowserAgentTraceEntry) {
   );
 }
 
+function traceToneClass(entry: BrowserAgentTraceEntry) {
+  const status = String(entry.status || "").toLowerCase();
+  const ok = entry.ok;
+
+  if (ok === false || /error|failed|blocked|rejected/.test(status)) {
+    return "border-[color:rgba(255,123,114,0.28)] bg-[color:rgba(255,123,114,0.045)]";
+  }
+
+  if (/needs|repair|repaired|warning|running|started/.test(status)) {
+    return "border-[color:rgba(210,153,34,0.26)] bg-[color:rgba(210,153,34,0.045)]";
+  }
+
+  if (ok === true || /success|complete|passed|verified|approved|ready|executed|auto_passed/.test(status)) {
+    return "border-[color:rgba(63,185,80,0.22)] bg-[color:rgba(63,185,80,0.04)]";
+  }
+
+  return "border-border/40 bg-background/45";
+}
+
+function traceStatusPillClass(entry: BrowserAgentTraceEntry) {
+  const status = String(entry.status || "").toLowerCase();
+  if (entry.ok === false || /error|failed|blocked|rejected/.test(status)) {
+    return "border-[color:rgba(255,123,114,0.32)] text-[color:var(--accent-red)]";
+  }
+  if (/needs|repair|repaired|warning|running|started/.test(status)) {
+    return "border-[color:rgba(210,153,34,0.34)] text-[color:var(--accent-yellow)]";
+  }
+  if (entry.ok === true || /success|complete|passed|verified|approved|ready|executed/.test(status)) {
+    return "border-[color:rgba(63,185,80,0.3)] text-[color:var(--accent-green)]";
+  }
+  return "border-border/50 text-muted-foreground";
+}
+
+
 function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
   if (!trace.length) return null;
 
@@ -203,28 +237,34 @@ function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
       </div>
       <div className="space-y-1.5 p-2">
         {trace.map((entry, index) => (
-          <div key={`${entry.role || "agent"}-${entry.step ?? "x"}-${index}`} className="rounded-sm border border-border/60 bg-background/60 p-2">
-            <div className="flex items-center gap-1.5">
-              {statusIcon(entry.ok === false ? "error" : entry.status === "running" ? "running" : "complete")}
-              <span className="font-mono text-[10px] font-semibold uppercase text-foreground">
-                {entry.step ? `step ${entry.step} · ` : ""}{traceRoleLabel(entry)}
+          <div key={`${entry.role || "agent"}-${entry.step ?? "x"}-${index}`} className={`rounded-sm border p-2 ${traceToneClass(entry)}`}>
+            <div className="flex items-start gap-1.5">
+              <span className="mt-[1px] flex size-3.5 shrink-0 items-center justify-center">
+                {statusIcon(entry.ok === false ? "error" : entry.status === "running" ? "running" : "complete")}
               </span>
-              {traceModelLabel(entry) && (
-                <span className="ml-auto max-w-32 truncate rounded-sm border border-primary/20 px-1 font-mono text-[9px] text-muted-foreground">
-                  {traceModelLabel(entry)}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-1 font-mono text-[9px] text-muted-foreground">
-              {entry.agentKind && <span>{traceKindLabel(entry.agentKind)}</span>}
-              {entry.status && <span>status={entry.status}</span>}
-              {entry.tool && <span>tool={entry.tool}</span>}
-              {typeof entry.tokens === "number" && <span>{entry.tokens.toLocaleString()} tok</span>}
-              {typeof entry.durationMs === "number" && <span>{durationText(entry.durationMs)}</span>}
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate font-mono text-[10px] font-semibold uppercase text-foreground">
+                    {entry.step ? `step ${entry.step} · ` : ""}{traceRoleLabel(entry)}
+                  </span>
+                  {traceModelLabel(entry) && (
+                    <span className="ml-auto max-w-32 shrink-0 truncate rounded-sm border border-primary/20 px-1 font-mono text-[9px] text-muted-foreground">
+                      {traceModelLabel(entry)}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1 font-mono text-[9px] text-muted-foreground">
+                  {entry.agentKind && <span>{traceKindLabel(entry.agentKind)}</span>}
+                  {entry.status && <span className={`rounded-sm border px-1 ${traceStatusPillClass(entry)}`}>{entry.status}</span>}
+                  {entry.tool && <span>tool={entry.tool}</span>}
+                  {typeof entry.tokens === "number" && <span>{entry.tokens.toLocaleString()} tok</span>}
+                  {typeof entry.durationMs === "number" && <span>{durationText(entry.durationMs)}</span>}
+                </div>
+              </div>
             </div>
             {entry.summary != null && String(entry.summary).trim() && (
-              <div className="mt-1 text-[11px] leading-4 text-foreground/90">
-                {compactPreview(entry.summary, 280)}
+              <div className="mt-1.5 text-[11px] leading-4 text-foreground/90">
+                {compactPreview(entry.summary, 240)}
               </div>
             )}
 

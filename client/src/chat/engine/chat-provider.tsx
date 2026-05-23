@@ -504,8 +504,60 @@ function extractToolUsageStages(result: string, defaults: Partial<AuditUsage> = 
   return aggregate ? [aggregate] : [];
 }
 
+function traceLabelForReasoning(entry: any) {
+  return cleanOneLine(entry?.roleLabel || entry?.agentName || entry?.title || entry?.role || "agent", 80);
+}
+
+function formatBrowserAgentTraceReasoning(payload: any) {
+  const trace = Array.isArray(payload?.agentTrace) ? payload.agentTrace : [];
+  if (!trace.length) return "";
+
+  const important = trace
+    .filter((entry: any) => {
+      const kind = String(entry?.agentKind || entry?.role || "");
+      return /orchestrator|step_agent|checker|browser|watcher|reporter|main_response/.test(kind);
+    })
+    .slice(-18);
+
+  const lines = [
+    "browser task reasoning",
+    payload?.summary ? `result=${cleanOneLine(payload.summary, 240)}` : "",
+    payload?.currentTitle || payload?.currentUrl
+      ? `final=${cleanOneLine([payload.currentTitle, payload.currentUrl].filter(Boolean).join(" — "), 260)}`
+      : "",
+    "",
+    "agent checkpoints",
+    ...important.map((entry: any) => {
+      const label = traceLabelForReasoning(entry);
+      const status = cleanOneLine(entry?.status || "", 60);
+      const tool = entry?.tool ? ` tool=${cleanOneLine(entry.tool, 80)}` : "";
+      const summary = cleanOneLine(entry?.summary || "", 220);
+      return `- ${label}: ${status}${tool}${summary ? ` — ${summary}` : ""}`;
+    }),
+  ].filter(Boolean);
+
+  const watcher = payload?.watcher;
+  if (watcher && typeof watcher === "object") {
+    const notes = Array.isArray(watcher.privateNotesForMain) ? watcher.privateNotesForMain : [];
+    if (notes.length) {
+      lines.push("", "watcher notes");
+      notes.slice(0, 4).forEach((note: string) => lines.push(`- ${cleanOneLine(note, 220)}`));
+    }
+  }
+
+  return lines.join("\n").trim();
+}
+
+function isGenericBrowserNextAction(value = "") {
+  return /continue with the next browser instruction|next browser instruction|continue with another browser instruction/i.test(String(value || ""));
+}
+
 function formatBrowserAgentReasoning(payload: any) {
   if (!payload || typeof payload !== "object") return "";
+
+  const traceReasoning = formatBrowserAgentTraceReasoning(payload);
+  if (traceReasoning) return traceReasoning;
+
   const planner = payload.planner && typeof payload.planner === "object" ? payload.planner : null;
   const reporter = payload.reporter && typeof payload.reporter === "object" ? payload.reporter : null;
   const tokenUsage = payload.tokenUsage && typeof payload.tokenUsage === "object" ? payload.tokenUsage : null;
@@ -664,12 +716,28 @@ function formatBrowserAgentDirectResponse(payload: any) {
 
   const lines: string[] = [];
 
-  if (humanFirst) {
+  if (ok && currentUrl !== "unknown" && /^https?:\/\//i.test(currentUrl)) {
+    const finalLabel = currentTitle && currentTitle !== "untitled" ? currentTitle : currentUrl;
+    lines.push(`Done — final page: [${finalLabel}](${currentUrl}).`);
+
+    const cleanedHuman = humanFirst
+      .replace(/^done[.!\s-]*/i, "")
+      .replace(/^final page:\s*/i, "")
+      .trim();
+
+    if (
+      cleanedHuman &&
+      !cleanedHuman.toLowerCase().includes(String(finalLabel).toLowerCase()) &&
+      !cleanedHuman.toLowerCase().includes(String(currentUrl).toLowerCase())
+    ) {
+      lines.push(cleanedHuman);
+    }
+  } else if (humanFirst) {
     lines.push(humanFirst);
     if (humanDetails) lines.push("");
     if (humanDetails) lines.push(humanDetails);
   } else if (ok) {
-    lines.push(`I'm on ${pageText}.`);
+    lines.push(`Done — I'm on ${pageText}.`);
     if (whatHappened) lines.push(whatHappened);
   } else {
     const reason = cleanOneLine(
@@ -755,7 +823,8 @@ function formatBrowserAgentDirectResponse(payload: any) {
         .slice(0, 8)
     : [];
 
-  const nextSafeAction = cleanOneLine(payload?.nextSafeAction || "", 300);
+  let nextSafeAction = cleanOneLine(payload?.nextSafeAction || "", 300);
+  if (isGenericBrowserNextAction(nextSafeAction)) nextSafeAction = "";
 
   if (nextSafeAction) {
     lines.push("");
@@ -1807,7 +1876,7 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
           if (browserReasoning) {
             appendReasoningLog({
               id: generateUUID(),
-              title: "browser watcher LLM",
+              title: "browser reasoning summary",
               text: browserReasoning,
               status: "complete",
               startedAt: Date.now(),
