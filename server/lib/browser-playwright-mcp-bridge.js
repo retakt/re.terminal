@@ -202,18 +202,29 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
   const snapshotCall = await callPlaywrightTool(["browser_snapshot", "snapshot"], {});
   let screenshotCall = null;
 
-  try {
-    screenshotCall = await callPlaywrightTool(["browser_take_screenshot", "take_screenshot", "screenshot"], {
-      raw: true,
-    });
-  } catch (err) {
+  if (envFlag("PLAYWRIGHT_MCP_SCREENSHOT_ENABLED", true)) {
+    try {
+      screenshotCall = await callPlaywrightTool(["browser_take_screenshot", "take_screenshot", "screenshot"], {
+        raw: true,
+      });
+    } catch (err) {
+      screenshotCall = {
+        ok: false,
+        tool: "",
+        result: null,
+        text: "",
+        images: [],
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  } else {
     screenshotCall = {
-      ok: false,
-      tool: "",
+      ok: true,
+      tool: "disabled",
       result: null,
       text: "",
       images: [],
-      error: err instanceof Error ? err.message : String(err),
+      error: "",
     };
   }
 
@@ -281,6 +292,20 @@ function targetTextFromCommand(command = {}) {
     "",
     240,
   );
+}
+
+function envFlag(name, fallback = false) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  return ["1", "true", "yes", "on"].includes(String(raw).trim().toLowerCase());
+}
+
+function isNonFatalScreenshotError(error = "") {
+  return /taking page screenshot|waiting for fonts to load|screenshot|TimeoutError/i.test(String(error || ""));
+}
+
+function snapshotHasEvidence(snapshot = null) {
+  return Boolean(snapshot?.text || snapshot?.url || snapshot?.title || snapshot?.dom?.textPreview);
 }
 
 function snapshotUrlFromLine(line = "") {
@@ -518,6 +543,11 @@ export async function executePlaywrightMcpBrowserCommand({ command = {}, args = 
     navigate: false,
   }, state);
 
+  const afterHasEvidence = after.ok === true || snapshotHasEvidence(after.snapshot) || Boolean(after.observation?.url || after.observation?.title);
+  const afterError = after.error && !(afterHasEvidence && isNonFatalScreenshotError(after.error))
+    ? after.error
+    : "";
+
   return {
     ok: action.ok !== false,
     status: action.ok === false ? "failed" : "executed",
@@ -527,7 +557,8 @@ export async function executePlaywrightMcpBrowserCommand({ command = {}, args = 
     beforeSnapshot: before.snapshot,
     afterSnapshot: after.snapshot,
     observation: after.observation,
-    error: action.error || after.error || "",
+    error: action.error || afterError || "",
+    screenshotWarning: after.error && !afterError ? after.error : "",
   };
 }
 
