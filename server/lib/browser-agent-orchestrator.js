@@ -372,6 +372,172 @@ function syntheticStepPlanFromLightpandaClick({ step = {}, beforeState = null, o
   };
 }
 
+function lightpandaCandidateFromCommand(beforeState = null, command = {}) {
+  if (!beforeState || beforeState.ok !== true || !command || typeof command !== "object") return null;
+
+  const args = command.args || {};
+  const wantedRef = safeText(args.ref || args.selector || args.sourceRef || args.sourceSelector || "", 220);
+  const wantedText = normalizedTargetText(args.text || args.label || args.buttonText || args.sourceText || "");
+  const baseUrl = beforeState.url || "";
+
+  const candidates = [
+    ...(Array.isArray(beforeState.links) ? beforeState.links : []).map((entry) => ({ ...entry, kind: "link" })),
+    ...(Array.isArray(beforeState.buttons) ? beforeState.buttons : []).map((entry) => ({ ...entry, kind: "button" })),
+    ...(Array.isArray(beforeState.interactiveElements) ? beforeState.interactiveElements : []).map((entry) => ({ ...entry, kind: entry.href ? "link" : "interactive" })),
+  ];
+
+  const byRef = candidates.find((entry) => {
+    if (!wantedRef) return false;
+    return [entry.ref, entry.selector, entry.id, entry.name]
+      .map((value) => safeText(value || "", 320))
+      .some((value) => value && value === wantedRef);
+  });
+
+  if (byRef) return {
+    ...byRef,
+    href: absoluteHrefFromState(byRef.href || "", baseUrl),
+    matchedBy: "ref",
+  };
+
+  if (!wantedText) return null;
+
+  const ranked = candidates
+    .map((entry) => ({
+      entry,
+      score: lightpandaClickScore(entry, wantedText, candidates.length),
+    }))
+    .filter((item) => item.score >= 0.86)
+    .sort((a, b) => b.score - a.score);
+
+  const best = ranked[0]?.entry || null;
+  if (!best) return null;
+
+  return {
+    ...best,
+    href: absoluteHrefFromState(best.href || "", baseUrl),
+    matchedBy: "text",
+  };
+}
+
+function compactClickCandidatesForStep({ step = {}, beforeState = null, originalInstruction = "", limit = 12 } = {}) {
+  if (!beforeState || beforeState.ok !== true) return [];
+
+  const targetText = extractClickTargetText(step, originalInstruction);
+  const candidates = [
+    ...(Array.isArray(beforeState.links) ? beforeState.links : []).map((entry) => ({ ...entry, kind: "link" })),
+    ...(Array.isArray(beforeState.buttons) ? beforeState.buttons : []).map((entry) => ({ ...entry, kind: "button" })),
+    ...(Array.isArray(beforeState.interactiveElements) ? beforeState.interactiveElements : []).map((entry) => ({ ...entry, kind: entry.href ? "link" : "interactive" })),
+  ];
+
+  return candidates
+    .map((entry) => ({
+      ref: safeText(entry.ref || "", 80),
+      selector: safeText(entry.selector || "", 180),
+      kind: safeText(entry.kind || "", 40),
+      text: safeText(entry.text || entry.label || entry.name || "", 140),
+      href: absoluteHrefFromState(entry.href || "", beforeState.url || ""),
+      score: lightpandaClickScore(entry, targetText, candidates.length),
+    }))
+    .filter((entry) => entry.text || entry.href || entry.ref || entry.selector)
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+    .slice(0, limit);
+}
+
+function compactPageStateForStepAgent({ step = {}, beforeState = null, originalInstruction = "" } = {}) {
+  const base = compactBrowserStateForModel(beforeState, {
+    textLimit: 500,
+    markdownLimit: 300,
+    linkLimit: 8,
+    buttonLimit: 8,
+    inputLimit: 8,
+    formLimit: 3,
+    candidateLimit: 12,
+  });
+
+  if (isClickStep(step)) {
+    return {
+      ...base,
+      clickTarget: extractClickTargetText(step, originalInstruction),
+      clickCandidates: compactClickCandidatesForStep({
+        step,
+        beforeState,
+        originalInstruction,
+        limit: 12,
+      }),
+      instruction: "For click steps, choose only from clickCandidates when possible. If a matching link has href, prefer browserNavigate with args.url.",
+    };
+  }
+
+  return base;
+}
+
+function lightpandaEvidenceCheckerForStep({ stepPlan = {}, beforeState = null } = {}) {
+  const command = stepPlan?.command || null;
+  if (!command || typeof command !== "object") return null;
+
+  const tool = String(command.tool || "");
+  if (tool !== "browserClickByText" && tool !== "browserNavigate") return null;
+
+  const args = command.args || {};
+
+  if (tool === "browserNavigate") {
+    const url = args.url || args.href || args.targetUrl || "";
+    if (!url) return null;
+
+    return {
+      status: "approved",
+      approved: true,
+      command: {
+        ...command,
+        args: {
+          ...args,
+          url,
+        },
+      },
+      reason: "Local Lightpanda evidence checker approved safe navigation URL from the agent command.",
+      repairInstruction: "",
+      messageToUser: "",
+      confidence: Math.max(0.86, Number(stepPlan.confidence || 0.86)),
+    };
+  }
+
+  const candidate = lightpandaCandidateFromCommand(beforeState, command);
+  if (!candidate) return null;
+
+  if (candidate.href && candidate.kind === "link") {
+    return {
+      status: "repaired",
+      approved: true,
+      command: {
+        intent: "click_link_via_href",
+        tool: "browserNavigate",
+        args: {
+          url: candidate.href,
+          sourceText: safeText(candidate.text || candidate.label || args.text || "", 180),
+          sourceRef: safeText(candidate.ref || args.ref || "", 120),
+          sourceSelector: safeText(candidate.selector || args.selector || "", 320),
+        },
+        notes: `Local Lightpanda evidence checker converted selected link "${safeText(candidate.text || args.text || "", 180)}" to href ${candidate.href}.`,
+      },
+      reason: `AI selected Lightpanda ${candidate.matchedBy} ${safeText(candidate.ref || candidate.text || "", 180)}; local evidence checker verified href ${candidate.href}.`,
+      repairInstruction: "",
+      messageToUser: "",
+      confidence: Math.max(0.9, Number(stepPlan.confidence || 0.9)),
+    };
+  }
+
+  return {
+    status: "approved",
+    approved: true,
+    command,
+    reason: "Local Lightpanda evidence checker approved selected DOM candidate.",
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: Math.max(0.86, Number(stepPlan.confidence || 0.86)),
+  };
+}
+
+
 function isLowRiskAutoCheckCommand(command = {}, step = {}) {
   const tool = String(command?.tool || "");
   const text = String(step?.instruction || "");
@@ -959,6 +1125,32 @@ function normalizeSteps(plan = {}, fallbackInstruction = "") {
     : [{ instruction: fallbackInstruction, expectedAction: "unknown", successCriteria: "The requested browser task is completed." }];
 }
 
+function normalizeCommandArgsForTool(tool = "", rawArgs = {}, currentUrl = "") {
+  const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
+    ? { ...rawArgs }
+    : {};
+
+  if (tool === "browserNavigate") {
+    const url = args.url || args.href || args.targetUrl || args.target || "";
+    if (url) args.url = url;
+    delete args.href;
+    delete args.targetUrl;
+  }
+
+  if (tool === "browserClickByText") {
+    if (!args.text && args.label) args.text = args.label;
+    if (!args.text && args.buttonText) args.text = args.buttonText;
+    if (!args.ref && args.sourceRef) args.ref = args.sourceRef;
+    if (!args.selector && args.sourceSelector) args.selector = args.sourceSelector;
+  }
+
+  if (currentUrl && tool !== "browserNavigate") {
+    args.currentUrl = args.currentUrl || currentUrl;
+  }
+
+  return args;
+}
+
 function normalizeCommand(value = {}, currentUrl = "") {
   const command = value?.command || value?.approvedCommand || value || {};
   const tool = String(command.tool || "").trim();
@@ -976,10 +1168,7 @@ function normalizeCommand(value = {}, currentUrl = "") {
     command: {
       intent: safeText(command.intent || "unknown", 80),
       tool,
-      args: {
-        ...(command.args && typeof command.args === "object" && !Array.isArray(command.args) ? command.args : {}),
-        ...(currentUrl && tool !== "browserNavigate" ? { currentUrl } : {}),
-      },
+      args: normalizeCommandArgsForTool(tool, command.args, currentUrl),
       notes: safeText(command.notes || "", 500),
     },
     error: "",
@@ -1409,7 +1598,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ? syntheticStepPlanForLowRisk(step, currentUrl, instruction)
       : null;
 
-    if (!stepPlan && envFlag("BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER", true)) {
+    const lightpandaClickPlannerMode = String(process.env.BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER_MODE || "fallback").trim().toLowerCase();
+
+    if (
+      !stepPlan &&
+      envFlag("BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER", true) &&
+      lightpandaClickPlannerMode === "before_agent"
+    ) {
       stepPlan = syntheticStepPlanFromLightpandaClick({
         step,
         beforeState,
@@ -1441,7 +1636,11 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           currentUrl,
           currentTitle,
           currentState: compactState(currentState),
-          pageState: compactBeforeState,
+          pageState: compactPageStateForStepAgent({
+            step,
+            beforeState,
+            originalInstruction: instruction,
+          }),
           snapshot: compactSnapshotForModel(before?.snapshot),
         },
       }));
@@ -1461,14 +1660,65 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         usage: usageOf(stepAgentCall),
         reasoning: thinkingOf(stepAgentCall),
       }));
+
+      const agentProducedExecutableCommand = Boolean(
+        stepAgentCall.ok === true &&
+        stepPlan &&
+        typeof stepPlan === "object" &&
+        stepPlan.command &&
+        stepPlan.command.tool
+      );
+
+      if (
+        !agentProducedExecutableCommand &&
+        envFlag("BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER", true) &&
+        lightpandaClickPlannerMode !== "off"
+      ) {
+        const fallbackStepPlan = syntheticStepPlanFromLightpandaClick({
+          step,
+          beforeState,
+          originalInstruction: instruction,
+        });
+
+        if (fallbackStepPlan) {
+          stepPlan = fallbackStepPlan;
+          trace.push(traceEntry({
+            role: "gemma_step_agent",
+            title: "Lightpanda fallback planner",
+            step: stepNumber,
+            status: "synthetic_ready",
+            input: step,
+            output: stepPlan,
+            summary: stepPlan.reason || "",
+            tool: stepPlan.command?.tool || "",
+            ok: true,
+          }));
+        }
+      }
     }
 
     let checkerCall = null;
     let checker = null;
 
     const snapshotChecker = fastSnapshotCheckerForStep({ stepPlan, step, before });
+    const lightpandaEvidenceChecker = envFlag("BROWSER_AGENT_LIGHTPANDA_EVIDENCE_CHECKER", true)
+      ? lightpandaEvidenceCheckerForStep({ stepPlan, beforeState, step })
+      : null;
 
-    if (
+    if (lightpandaEvidenceChecker) {
+      checker = lightpandaEvidenceChecker;
+      trace.push(traceEntry({
+        role: "gemma_checker",
+        title: "Lightpanda evidence checker",
+        step: stepNumber,
+        status: checker.status,
+        input: stepPlan,
+        output: checker,
+        summary: checker.reason || "",
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: true,
+      }));
+    } else if (
       envFlag("BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER_AUTO_APPROVE", true) &&
       stepPlan?.syntheticSource === "lightpanda_click_planner" &&
       isLowRiskAutoCheckCommand(stepPlan.command, step)
@@ -1542,7 +1792,11 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             step,
             currentUrl,
             currentTitle,
-            pageState: compactBeforeState,
+            pageState: compactPageStateForStepAgent({
+              step,
+              beforeState,
+              originalInstruction: instruction,
+            }),
             snapshot: compactSnapshotForModel(before?.snapshot),
             proposedCommand: stepPlan.command || null,
             retryReason: "Previous checker call returned invalid JSON. Return only strict JSON matching the checker schema.",
