@@ -124,6 +124,15 @@ type BrowserAgentTraceEntry = {
   reasoning?: string;
 };
 
+type BrowserTraceActionDetails = {
+  kind?: string;
+  strategy?: string;
+  fields?: Array<{ label?: string; target?: string; type?: string; valuePreview?: string }>;
+  target?: string;
+  ref?: string;
+  url?: string;
+};
+
 function parseJsonMaybe(value = ""): any | null {
   if (!value) return null;
   try {
@@ -224,6 +233,47 @@ function traceStatusPillClass(entry: BrowserAgentTraceEntry) {
   return "border-border/50 text-muted-foreground";
 }
 
+function traceOutputObject(entry: BrowserAgentTraceEntry): Record<string, any> | null {
+  if (!entry.output) return null;
+  if (typeof entry.output === "object") return entry.output as Record<string, any>;
+  if (typeof entry.output === "string") return parseJsonMaybe(entry.output);
+  return null;
+}
+
+function traceActionDetails(entry: BrowserAgentTraceEntry): BrowserTraceActionDetails | null {
+  const output = traceOutputObject(entry);
+  const details = output?.actionDetails;
+  return details && typeof details === "object" ? details : null;
+}
+
+function BrowserTraceActionDetailsView({ details }: { details: BrowserTraceActionDetails }) {
+  if (!details?.kind) return null;
+  if (details.kind === "fill") {
+    const fields = Array.isArray(details.fields) ? details.fields : [];
+    return (
+      <div className="mt-1.5 rounded-sm border border-border/40 bg-background/30 px-2 py-1 text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap gap-1 font-mono">
+          <span>action=fill</span>
+          {details.strategy && <span>via={details.strategy.replace(/_/g, " ")}</span>}
+        </div>
+        {fields.length > 0 && (
+          <div className="mt-1 space-y-0.5">
+            {fields.slice(0, 4).map((field, index) => (
+              <div key={`${field.label || "field"}-${index}`} className="flex min-w-0 items-center gap-1">
+                <span className="truncate text-foreground/80">{field.label || "field"}</span>
+                {field.target && <span className="font-mono text-muted-foreground/70">[{field.target}]</span>}
+                {field.valuePreview && <span className="ml-auto truncate font-mono">{field.valuePreview}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (details.kind === "click") return <div className="mt-1.5 rounded-sm border border-border/40 bg-background/30 px-2 py-1 font-mono text-[10px] text-muted-foreground">action=click {details.target || ""} {details.ref ? `[${details.ref}]` : ""}</div>;
+  if (details.kind === "navigate") return <div className="mt-1.5 rounded-sm border border-border/40 bg-background/30 px-2 py-1 font-mono text-[10px] text-muted-foreground">action=navigate {details.url || ""}</div>;
+  return null;
+}
 
 function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
   if (!trace.length) return null;
@@ -266,6 +316,10 @@ function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
               <div className="mt-1.5 text-[11px] leading-4 text-foreground/90">
                 {compactPreview(entry.summary, 240)}
               </div>
+            )}
+
+            {traceActionDetails(entry) && (
+              <BrowserTraceActionDetailsView details={traceActionDetails(entry)!} />
             )}
 
             {hasTraceProfileDetails(entry) && (

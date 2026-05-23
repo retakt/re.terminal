@@ -716,6 +716,81 @@ async function tryDomFillFields(fields = []) {
   };
 }
 
+function parseMcpJsonResult(text = "") {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch {}
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(raw.slice(start, end + 1)); } catch {}
+  }
+  return null;
+}
+
+async function verifyFilledFields(fields = []) {
+  const payload = fields.map((field) => ({
+    label: fieldDisplayName(field),
+    name: safeText(field.name || field.id || "", 180),
+    placeholder: safeText(field.placeholder || "", 180),
+    type: safeText(field.type || "", 80),
+    value: String(field.value ?? ""),
+    secret: fieldIsSecret(field),
+  }));
+
+  const script = `() => {
+    const fields = ${JSON.stringify(payload)};
+    const norm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const textFor = (el) => {
+      const parts = [];
+      const id = el.getAttribute("id");
+      if (id) document.querySelectorAll('label[for="' + CSS.escape(id) + '"]').forEach((label) => parts.push(label.textContent || ""));
+      const parentLabel = el.closest("label");
+      if (parentLabel) parts.push(parentLabel.textContent || "");
+      parts.push(el.getAttribute("aria-label") || "", el.getAttribute("placeholder") || "", el.getAttribute("name") || "", el.getAttribute("id") || "", el.getAttribute("type") || "");
+      return parts.join(" ");
+    };
+    const candidates = Array.from(document.querySelectorAll("input, textarea, [contenteditable=true]")).filter(visible);
+    const filled = [];
+    const missing = [];
+    for (const field of fields) {
+      const wanted = [field.label, field.name, field.placeholder].map(norm).filter(Boolean);
+      const isSecret = field.secret || /password|pass|pin|otp|secret/.test(norm(field.label + " " + field.name + " " + field.type));
+      let target = candidates.find((el) => {
+        const hay = norm(textFor(el));
+        return wanted.some((needle) => needle && hay.includes(needle));
+      });
+      if (!target && isSecret) target = candidates.find((el) => String(el.getAttribute("type") || "").toLowerCase() === "password");
+      const actual = target ? (target.isContentEditable ? target.textContent || "" : target.value || "") : "";
+      if (target && actual === field.value) filled.push({ label: field.label, secret: field.secret });
+      else missing.push({ label: field.label, actualLength: actual.length });
+    }
+    return { ok: missing.length === 0, filled, missing };
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  if (clickResultFailed(result)) {
+    return { ok: false, error: result.error || result.text || "Field verification failed.", text: result.text || "" };
+  }
+
+  const parsed = parseMcpJsonResult(result.text);
+  return {
+    ...result,
+    ok: parsed?.ok === true,
+    verification: parsed || null,
+    text: parsed ? "Field verification " + (parsed.ok ? "passed" : "failed") + "." : result.text,
+  };
+}
 
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";
@@ -740,37 +815,42 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     if (!fields.length) return { ok: false, error: "Fill needs at least one field." };
 
     const formFill = await tryPlaywrightFillForm(fields);
-    if (formFill.ok === true) {
-      return {
-        ok: true,
-        formFill,
-        text: formFill.text || "browser_fill_form succeeded.",
-      };
-    }
 
     const results = [];
     for (const field of fields) {
       results.push(await tryPlaywrightTypeField(field));
     }
 
-    if (results.every((result) => result.ok === true)) {
+    const verifyAfterType = await verifyFilledFields(fields);
+    if (verifyAfterType.ok === true) {
       return {
         ok: true,
+        formFill,
         results,
-        text: results.map((result) => result.text).filter(Boolean).join("\n"),
+        verify: verifyAfterType,
+        text: [
+          formFill.text || formFill.error || "",
+          results.map((result) => result.text || result.error || "").filter(Boolean).join("\n"),
+          verifyAfterType.text || "",
+        ].filter(Boolean).join("\n"),
       };
     }
 
     const domFallback = await tryDomFillFields(fields);
+    const verifyAfterDom = await verifyFilledFields(fields);
 
     return {
-      ok: domFallback.ok === true,
+      ok: verifyAfterDom.ok === true,
+      formFill,
       results,
       domFallback,
-      error: domFallback.ok === true ? "" : domFallback.error || "Fill failed.",
+      verify: verifyAfterDom,
+      error: verifyAfterDom.ok === true ? "" : verifyAfterDom.error || domFallback.error || "Fill failed verification.",
       text: [
+        formFill.text || formFill.error || "",
         results.map((result) => result.text || result.error || "").filter(Boolean).join("\n"),
         domFallback.text || domFallback.error || "",
+        verifyAfterDom.text || verifyAfterDom.error || "",
       ].filter(Boolean).join("\n"),
     };
   }
