@@ -623,7 +623,16 @@ function semanticSnapshotExpression() {
       const tag = el.tagName.toLowerCase();
       const id = el.getAttribute("id");
       if (id) return "#" + cssEscape(id);
-      for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name", "title"]) {
+
+      const compoundAttrs = ["data-bs-toggle", "data-bs-target", "data-toggle", "data-target", "aria-controls"];
+      const compound = compoundAttrs
+        .map((attr) => [attr, el.getAttribute(attr)])
+        .filter((pair) => pair[1]);
+      if (compound.length) {
+        return tag + compound.map((pair) => "[" + pair[0] + "='" + quote(pair[1]) + "']").join("");
+      }
+
+      for (const attr of ["data-testid", "data-test", "data-cy", "aria-label", "name", "title", "value"]) {
         const value = el.getAttribute(attr);
         if (value) return tag + "[" + attr + "='" + quote(value) + "']";
       }
@@ -632,6 +641,15 @@ function semanticSnapshotExpression() {
         if (href && !/^javascript:/i.test(href)) return "a[href='" + quote(href) + "']";
       }
       return "";
+    };
+
+    const attrsFor = (el) => {
+      const attrs = {};
+      for (const attr of ["id", "name", "type", "role", "aria-label", "aria-controls", "data-bs-toggle", "data-bs-target", "data-toggle", "data-target", "href", "title", "value"]) {
+        const value = el.getAttribute(attr);
+        if (value) attrs[attr] = value;
+      }
+      return attrs;
     };
     const roleFor = (el) => {
       const explicit = el.getAttribute("role");
@@ -655,15 +673,15 @@ function semanticSnapshotExpression() {
       const wrapped = el.closest("label");
       if (wrapped) labels.push(wrapped.innerText || wrapped.textContent || "");
       labels.push(
-        el.innerText,
-        el.textContent,
+        el.innerText || el.textContent || "",
         el.getAttribute("aria-label"),
         el.getAttribute("placeholder"),
         el.getAttribute("title"),
         el.getAttribute("name"),
         el.value && /^(button|submit)$/i.test(el.getAttribute("type") || "") ? el.value : ""
       );
-      return pick(labels.filter(Boolean).join(" "), 180);
+      const unique = Array.from(new Set(labels.map((value) => pick(value, 180)).filter(Boolean)));
+      return pick(unique.join(" "), 180);
     };
     const nodeText = (node, limit = 16000) => {
       const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
@@ -701,6 +719,10 @@ function semanticSnapshotExpression() {
           placeholder: el.getAttribute("placeholder") || "",
           required: el.hasAttribute("required"),
           secret: /password/i.test(type),
+          attrs: attrsFor(el),
+          raw: {
+            outerHTML: pick(el.outerHTML || "", 800),
+          },
         };
       })
       .slice(0, 220);
@@ -712,7 +734,18 @@ function semanticSnapshotExpression() {
 
     const buttons = interactiveElements
       .filter((entry) => entry.role === "button" || /^(button|submit)$/i.test(entry.type))
-      .map((entry) => ({ index: entry.index, text: entry.text, selector: entry.selector, tag: entry.tag, type: entry.type, id: entry.id, name: entry.name }))
+      .map((entry) => ({
+        index: entry.index,
+        text: entry.text,
+        selector: entry.selector,
+        tag: entry.tag,
+        type: entry.type,
+        id: entry.id,
+        name: entry.name,
+        ariaLabel: entry.ariaLabel,
+        attrs: entry.attrs || {},
+        raw: entry.raw || null,
+      }))
       .slice(0, 100);
 
     const inputs = interactiveElements
@@ -839,9 +872,22 @@ async function evaluateBasicSnapshot(session, sid) {
       return Array.from(document.querySelectorAll("button, input[type='button'], input[type='submit'], [role='button']")).slice(0, 100).map((button, index) => ({
         index,
         text: pick(button.innerText || button.textContent || button.getAttribute('aria-label') || button.getAttribute('title') || button.value || button.name, 180),
-        selector: button.id ? '#' + button.id : '',
+        selector: button.id ? '#' + button.id :
+          button.getAttribute('data-bs-target') ? button.tagName.toLowerCase() + "[data-bs-target='" + button.getAttribute('data-bs-target').replace(/'/g, "\\'") + "']" :
+          button.getAttribute('aria-controls') ? button.tagName.toLowerCase() + "[aria-controls='" + button.getAttribute('aria-controls').replace(/'/g, "\\'") + "']" : '',
         tag: button.tagName ? button.tagName.toLowerCase() : '',
-        type: button.getAttribute ? (button.getAttribute('type') || '') : ''
+        type: button.getAttribute ? (button.getAttribute('type') || '') : '',
+        attrs: button.getAttribute ? {
+          id: button.getAttribute('id') || '',
+          type: button.getAttribute('type') || '',
+          role: button.getAttribute('role') || '',
+          ariaLabel: button.getAttribute('aria-label') || '',
+          ariaControls: button.getAttribute('aria-controls') || '',
+          dataBsToggle: button.getAttribute('data-bs-toggle') || '',
+          dataBsTarget: button.getAttribute('data-bs-target') || '',
+          dataToggle: button.getAttribute('data-toggle') || '',
+          dataTarget: button.getAttribute('data-target') || ''
+        } : {}
       })).filter((button) => button.text || button.selector);
     })()`,
     [],
