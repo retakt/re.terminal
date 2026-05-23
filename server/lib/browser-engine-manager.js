@@ -24,6 +24,21 @@ function envFlag(name, fallback = false) {
   return ["1", "true", "yes", "on"].includes(String(raw).trim().toLowerCase());
 }
 
+function lightpandaReadOnlyActionsEnabled(args = {}) {
+  if (args.allowLightpandaActions === true) return false;
+  return envFlag("BROWSER_AGENT_LIGHTPANDA_READ_ONLY", true);
+}
+
+function lightpandaReadOnlyBlockedResponse(action, attempts = [], extra = {}) {
+  return failedResponse(action, attempts, {
+    status: "blocked",
+    error: "Lightpanda is configured as read-only. Browser actions must be executed by Playwright MCP.",
+    blockedReason: "lightpanda_read_only",
+    engine: "lightpanda_cdp",
+    ...extra,
+  });
+}
+
 function safeText(value, limit = 4000) {
   const text = typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
   return text.replace(/\s+/g, " ").trim().slice(0, limit);
@@ -850,14 +865,22 @@ async function clickWithCdpEngines(action, args = {}) {
   const currentUrl = validCurrentUrl(args);
   const requestedUrl = currentUrl;
   const attempts = [];
-  const priority = (args.enginePriority || configuredEnginePriority(args.mode || "browser"))
+  let priority = (args.enginePriority || configuredEnginePriority(args.mode || "browser"))
     .filter((engine) => engine === "chrome_cdp" || engine === "lightpanda_cdp");
+
+  if (lightpandaReadOnlyActionsEnabled(args)) {
+    priority = priority.filter((engine) => engine !== "lightpanda_cdp");
+  }
 
   if (!currentUrl) {
     return failedResponse(action, attempts, {
       status: "needs_user",
       error: "No valid current page is loaded.",
     });
+  }
+
+  if (!priority.length && lightpandaReadOnlyActionsEnabled(args)) {
+    return lightpandaReadOnlyBlockedResponse(action, attempts, { requestedUrl });
   }
 
   for (const engine of priority) {
@@ -1051,14 +1074,22 @@ async function formActionWithCdpEngines(action, args = {}) {
   const currentUrl = validCurrentUrl(args);
   const requestedUrl = currentUrl;
   const attempts = [];
-  const priority = (args.enginePriority || configuredEnginePriority(args.mode || "browser"))
+  let priority = (args.enginePriority || configuredEnginePriority(args.mode || "browser"))
     .filter((engine) => engine === "lightpanda_cdp" || engine === "chrome_cdp");
+
+  if (lightpandaReadOnlyActionsEnabled(args)) {
+    priority = priority.filter((engine) => engine !== "lightpanda_cdp");
+  }
 
   if (!currentUrl) {
     return failedResponse(action, attempts, {
       status: "needs_user",
       error: "No valid current page is loaded.",
     });
+  }
+
+  if (!priority.length && lightpandaReadOnlyActionsEnabled(args)) {
+    return lightpandaReadOnlyBlockedResponse(action, attempts, { requestedUrl });
   }
 
   for (const engine of priority) {
