@@ -1,0 +1,1457 @@
+{
+  "ok": true,
+  "status": "success",
+  "instruction": "Open https://example.com and click More information.",
+  "currentUrl": "https://www.iana.org/help/example-domains",
+  "currentTitle": "Example Domains",
+  "extensionId": "",
+  "pageKey": "help_example-domains",
+  "engine": "playwright_mcp",
+  "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+  "browserSummary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+  "whatFound": {
+    "ok": true,
+    "url": "https://www.iana.org/help/example-domains",
+    "title": "Example Domains",
+    "textPreview": "### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot ```yaml - generic [active] [ref=e1]: - banner [ref=e2]: - generic [ref=e3]: - link \"Homepage\" [ref=e5] [cursor=pointer]: - /url: / - img \"Homepage\" [ref=e6] - generic [ref=e7]: - list: - listitem [ref=e8]: - link \"Domains\" [ref=e9] [cursor=pointer]: - /url: /domains - listitem [ref=e10]: - link \"Protocols\" [ref=e11] [cursor=pointer]: - /url: /protocols - listitem [ref=e12]: - link \"Numbers\" [ref=e13] [cursor=pointer]: - /url: /numbers - listitem [ref=e14]: - link \"About\" [ref=e15] [cursor=pointer]: - /url: /about - article [ref=e17]: - main [ref=e18]: - generic [ref=e19]: - heading \"Example Domains\" [level=1] [ref=e20] - paragraph [ref=e21]: - text: As described in - link \"RFC 2606\" [ref=e22] [cursor=pointer]: - /url: /go/rfc2606 - text: and - link \"RFC 6761\" [ref=e23] [cursor=pointer]: - /url: /go/rfc6761 - text: \", a number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer.\" - paragraph [ref=e24]: We provide a web service on the example domain hosts to provide basic information on the purpose of the domain. These web services are provided as best effort, but are not designed to support production applications. While incidental traffic for incorrectly configured applications is expected, please do not design applications that require the example domains to have operating HTTP service. - heading \"Further Reading\" [level=2] [ref=e25] - list [ref=e26]: - listitem [ref=e27]: - link \"IANA-managed Reserved Domains\" [ref=e28] [cursor=pointer]: - /url: /domains/reserved - generic [ref",
+    "engine": "playwright_mcp"
+  },
+  "observedControls": {
+    "forms": 0,
+    "inputs": [],
+    "buttons": [],
+    "links": []
+  },
+  "possibleNextActions": [],
+  "requiresUser": false,
+  "blockedReason": "",
+  "nextSafeAction": "Continue with the next browser instruction.",
+  "watcher": null,
+  "planner": {
+    "status": "ready",
+    "userIntent": "Open https://example.com and click More information.",
+    "steps": [
+      {
+        "instruction": "open/navigate to https://example.com",
+        "expectedAction": "navigate",
+        "successCriteria": "currentUrl === \"https://example.com\""
+      },
+      {
+        "instruction": "click on More information",
+        "expectedAction": "click",
+        "successCriteria": "document.querySelector(\"#more-information\") !== null"
+      }
+    ],
+    "messageToUser": "",
+    "confidence": 0
+  },
+  "reporter": {
+    "success": true,
+    "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+    "needsUser": false,
+    "nextSafeAction": "Continue with the next browser instruction.",
+    "missingSteps": [],
+    "reason": ""
+  },
+  "filledFields": [],
+  "missingFields": [],
+  "submitStatus": "",
+  "runtime": {
+    "configured": true,
+    "llmRequired": true,
+    "redactedBaseUrl": "https://chat-api.retakt.cc",
+    "model": "qwen3.5:2b",
+    "models": {
+      "default": "qwen3.5:2b",
+      "main": "llama3.2:latest",
+      "planner": "qwen3.5:2b",
+      "reviewer": "qwen3.5:2b",
+      "executor": "qwen3.5:2b",
+      "resultReviewer": "qwen3.5:2b",
+      "finalVerifier": "llama3.2:latest",
+      "reporter": "qwen3.5:2b"
+    },
+    "endpoints": {
+      "default": {
+        "provider": "ollama",
+        "redactedBaseUrl": "https://chat-api.retakt.cc",
+        "hasApiKey": false
+      },
+      "main": {
+        "provider": "ollama",
+        "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+        "hasApiKey": false
+      },
+      "planner": {
+        "provider": "ollama",
+        "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+        "hasApiKey": false
+      },
+      "reviewer": {
+        "provider": "ollama",
+        "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+        "hasApiKey": false
+      },
+      "executor": {
+        "provider": "ollama",
+        "redactedBaseUrl": "https://chat-api.retakt.cc",
+        "hasApiKey": false
+      },
+      "resultReviewer": {
+        "provider": "ollama",
+        "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+        "hasApiKey": false
+      },
+      "finalVerifier": {
+        "provider": "ollama",
+        "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+        "hasApiKey": false
+      },
+      "reporter": {
+        "provider": "ollama",
+        "redactedBaseUrl": "https://chat-api.retakt.cc",
+        "hasApiKey": false
+      }
+    },
+    "timeoutMs": 120000,
+    "think": false,
+    "options": {
+      "main": {
+        "temperature": 0.25,
+        "top_p": 0.9,
+        "top_k": 80,
+        "repeat_penalty": 1.08,
+        "num_ctx": 16384,
+        "num_predict": 1024
+      },
+      "planner": {
+        "temperature": 0.15,
+        "top_p": 0.9,
+        "top_k": 80,
+        "repeat_penalty": 1.08,
+        "num_ctx": 16384,
+        "num_predict": 1024
+      },
+      "reviewer": {
+        "temperature": 0.1,
+        "top_p": 0.9,
+        "top_k": 80,
+        "repeat_penalty": 1.08,
+        "num_ctx": 16384,
+        "num_predict": 1024
+      },
+      "executor": {
+        "temperature": 0.1,
+        "top_p": 0.9,
+        "top_k": 80,
+        "repeat_penalty": 1.08,
+        "num_ctx": 16384,
+        "num_predict": 1024
+      },
+      "resultReviewer": {
+        "temperature": 0.1,
+        "top_p": 0.9,
+        "top_k": 80,
+        "repeat_penalty": 1.08,
+        "num_ctx": 16384,
+        "num_predict": 1024
+      },
+      "finalVerifier": {
+        "temperature": 0.15,
+        "top_p": 0.9,
+        "top_k": 80,
+        "repeat_penalty": 1.08,
+        "num_ctx": 16384,
+        "num_predict": 1024
+      },
+      "reporter": {
+        "temperature": 0.25,
+        "top_p": 0.9,
+        "top_k": 80,
+        "repeat_penalty": 1.08,
+        "num_ctx": 16384,
+        "num_predict": 1024
+      }
+    },
+    "prompts": {
+      "strictPromptFiles": false,
+      "planner": {
+        "hasCustomPrompt": false,
+        "path": "",
+        "inline": false
+      },
+      "reporter": {
+        "hasCustomPrompt": false,
+        "path": "",
+        "inline": false
+      }
+    },
+    "strategy": "llm-required",
+    "missing": []
+  },
+  "runtimeTiming": {
+    "totalMs": 46220.3,
+    "pipelineMs": 46220.3,
+    "mainModelMs": 0
+  },
+  "tokenUsage": {
+    "totalTokens": 5274,
+    "planner": {
+      "role": "main_orchestrator",
+      "title": "Main model intent orchestrator",
+      "model": "llama3.2:latest",
+      "status": "ready",
+      "step": null,
+      "tool": "",
+      "ok": true,
+      "durationMs": 5769,
+      "tokens": 636,
+      "input": "Open https://example.com and click More information.",
+      "output": {
+        "status": "ready",
+        "userIntent": "Open https://example.com and click More information.",
+        "steps": [
+          {
+            "instruction": "open/navigate to https://example.com",
+            "expectedAction": "navigate",
+            "successCriteria": "currentUrl === \"https://example.com\""
+          },
+          {
+            "instruction": "click on More information",
+            "expectedAction": "click",
+            "successCriteria": "document.querySelector(\"#more-information\") !== null"
+          }
+        ],
+        "messageToUser": "",
+        "confidence": 0
+      },
+      "summary": "Open https://example.com and click More information.",
+      "reasoning": ""
+    },
+    "reporter": {
+      "role": "final_verifier",
+      "title": "Final verifier",
+      "model": "",
+      "status": "synthetic_verified",
+      "step": null,
+      "tool": "",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "originalInstruction": "Open https://example.com and click More information.",
+        "stepResults": [
+          {
+            "stepNumber": 1,
+            "step": {
+              "instruction": "open/navigate to https://example.com",
+              "expectedAction": "navigate",
+              "successCriteria": "currentUrl === \"https://example.com\""
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Low-risk step passed. Example Domain — https://example.com/",
+            "url": "https://example.com/",
+            "title": "Example Domain",
+            "command": {
+              "intent": "navigate",
+              "tool": "browserNavigate",
+              "args": {
+                "url": "https://example.com"
+              },
+              "notes": "Synthetic low-risk navigation command from orchestrator step."
+            }
+          },
+          {
+            "stepNumber": 2,
+            "step": {
+              "instruction": "click on More information",
+              "expectedAction": "click",
+              "successCriteria": "document.querySelector(\"#more-information\") !== null"
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+            "url": "https://www.iana.org/help/example-domains",
+            "title": "Example Domains",
+            "command": {
+              "intent": "click_or_open",
+              "tool": "browserClickByText",
+              "args": {
+                "text": "Learn more",
+                "ref": "e6",
+                "currentUrl": "https://example.com/"
+              },
+              "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+            }
+          }
+        ]
+      },
+      "output": {
+        "success": true,
+        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "needsUser": false,
+        "nextSafeAction": "Continue with the next browser instruction.",
+        "missingSteps": [],
+        "reason": ""
+      },
+      "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+      "reasoning": ""
+    }
+  },
+  "agentTrace": [
+    {
+      "role": "main_orchestrator",
+      "title": "Main model intent orchestrator",
+      "model": "llama3.2:latest",
+      "status": "ready",
+      "step": null,
+      "tool": "",
+      "ok": true,
+      "durationMs": 5769,
+      "tokens": 636,
+      "input": "Open https://example.com and click More information.",
+      "output": {
+        "status": "ready",
+        "userIntent": "Open https://example.com and click More information.",
+        "steps": [
+          {
+            "instruction": "open/navigate to https://example.com",
+            "expectedAction": "navigate",
+            "successCriteria": "currentUrl === \"https://example.com\""
+          },
+          {
+            "instruction": "click on More information",
+            "expectedAction": "click",
+            "successCriteria": "document.querySelector(\"#more-information\") !== null"
+          }
+        ],
+        "messageToUser": "",
+        "confidence": 0
+      },
+      "summary": "Open https://example.com and click More information.",
+      "reasoning": ""
+    },
+    {
+      "role": "sequence_step",
+      "title": "Step 1",
+      "model": "",
+      "status": "started",
+      "step": 1,
+      "tool": "",
+      "ok": null,
+      "durationMs": null,
+      "tokens": null,
+      "input": "open/navigate to https://example.com",
+      "output": "",
+      "summary": "currentUrl === \"https://example.com\"",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_step_agent",
+      "title": "Gemma step agent",
+      "model": "",
+      "status": "synthetic_ready",
+      "step": 1,
+      "tool": "browserNavigate",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "instruction": "open/navigate to https://example.com",
+        "expectedAction": "navigate",
+        "successCriteria": "currentUrl === \"https://example.com\""
+      },
+      "output": {
+        "status": "ready",
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "reason": "Navigation step can be executed directly without another model call.",
+        "messageToChecker": "",
+        "messageToUser": "",
+        "confidence": 1
+      },
+      "summary": "Navigation step can be executed directly without another model call.",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_checker",
+      "title": "Gemma command checker",
+      "model": "",
+      "status": "auto_approved",
+      "step": 1,
+      "tool": "browserNavigate",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "status": "ready",
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "reason": "Navigation step can be executed directly without another model call.",
+        "messageToChecker": "",
+        "messageToUser": "",
+        "confidence": 1
+      },
+      "output": {
+        "status": "approved",
+        "approved": true,
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "reason": "Low-risk browser command auto-approved to avoid redundant checker call.",
+        "repairInstruction": "",
+        "messageToUser": "",
+        "confidence": 1
+      },
+      "summary": "Low-risk browser command auto-approved to avoid redundant checker call.",
+      "reasoning": ""
+    },
+    {
+      "role": "playwright_controller",
+      "title": "Playwright browser controller",
+      "model": "",
+      "status": "executed",
+      "step": 1,
+      "tool": "browserNavigate",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "intent": "navigate",
+        "tool": "browserNavigate",
+        "args": {
+          "url": "https://example.com"
+        },
+        "notes": "Synthetic low-risk navigation command from orchestrator step."
+      },
+      "output": {
+        "url": "https://example.com/",
+        "title": "Example Domain",
+        "error": "",
+        "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-19-940Z.yml)"
+      },
+      "summary": "### Ran Playwright code ```js await page.goto('https://example.com'); ``` ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-19-940Z.yml)",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_result_checker",
+      "title": "Gemma result checker",
+      "model": "",
+      "status": "auto_passed",
+      "step": 1,
+      "tool": "",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "step": {
+          "instruction": "open/navigate to https://example.com",
+          "expectedAction": "navigate",
+          "successCriteria": "currentUrl === \"https://example.com\""
+        },
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "executionStatus": "executed"
+      },
+      "output": {
+        "status": "passed",
+        "success": true,
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "evidence": "Example Domain — https://example.com/",
+        "repairInstruction": "",
+        "messageToUser": "",
+        "confidence": 0.95,
+        "command": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "step": {
+          "instruction": "open/navigate to https://example.com",
+          "expectedAction": "navigate",
+          "successCriteria": "currentUrl === \"https://example.com\""
+        }
+      },
+      "summary": "Low-risk step passed. Example Domain — https://example.com/",
+      "reasoning": ""
+    },
+    {
+      "role": "sequence_step",
+      "title": "Step 2",
+      "model": "",
+      "status": "started",
+      "step": 2,
+      "tool": "",
+      "ok": null,
+      "durationMs": null,
+      "tokens": null,
+      "input": "click on More information",
+      "output": "",
+      "summary": "document.querySelector(\"#more-information\") !== null",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_step_agent",
+      "title": "Gemma step agent",
+      "model": "qwen3.5:2b",
+      "status": "ready",
+      "step": 2,
+      "tool": "browserClickByText",
+      "ok": true,
+      "durationMs": 28035,
+      "tokens": 2413,
+      "input": {
+        "instruction": "click on More information",
+        "expectedAction": "click",
+        "successCriteria": "document.querySelector(\"#more-information\") !== null"
+      },
+      "output": {
+        "status": "ready",
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The instruction 'click on More information' maps to the visible link 'Learn more' in the snapshot.",
+          "reason": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'.",
+          "messageToChecker": "Clicking 'Learn more' fulfills the instruction to click on the More information link.",
+          "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+          "confidence": 0.95
+        }
+      },
+      "summary": "[object Object]",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_checker",
+      "title": "Gemma command checker",
+      "model": "qwen3.5:2b",
+      "status": "approved",
+      "step": 2,
+      "tool": "browserClickByText",
+      "ok": true,
+      "durationMs": 5349,
+      "tokens": 2225,
+      "input": {
+        "status": "ready",
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The instruction 'click on More information' maps to the visible link 'Learn more' in the snapshot.",
+          "reason": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'.",
+          "messageToChecker": "Clicking 'Learn more' fulfills the instruction to click on the More information link.",
+          "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+          "confidence": 0.95
+        }
+      },
+      "output": {
+        "status": "approved",
+        "approved": true,
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "text": "Learn more",
+            "ref": "e6"
+          },
+          "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+        },
+        "reason": "The visible link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain.",
+        "repairInstruction": "",
+        "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+        "confidence": 0.95
+      },
+      "summary": "The visible link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain.",
+      "reasoning": ""
+    },
+    {
+      "role": "playwright_controller",
+      "title": "Playwright browser controller",
+      "model": "",
+      "status": "executed",
+      "step": 2,
+      "tool": "browserClickByText",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "intent": "click_or_open",
+        "tool": "browserClickByText",
+        "args": {
+          "text": "Learn more",
+          "ref": "e6",
+          "currentUrl": "https://example.com/"
+        },
+        "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+      },
+      "output": {
+        "url": "https://www.iana.org/help/example-domains",
+        "title": "Example Domains",
+        "error": "",
+        "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-58-344Z.yml)"
+      },
+      "summary": "Click succeeded using ref_as_target. ### Ran Playwright code ```js await page.getByRole('link', { name: 'Learn more' }).click(); ``` ### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-58-344Z.yml)",
+      "reasoning": ""
+    },
+    {
+      "role": "gemma_result_checker",
+      "title": "Gemma result checker",
+      "model": "",
+      "status": "auto_passed",
+      "step": 2,
+      "tool": "",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "step": {
+          "instruction": "click on More information",
+          "expectedAction": "click",
+          "successCriteria": "document.querySelector(\"#more-information\") !== null"
+        },
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "text": "Learn more",
+            "ref": "e6",
+            "currentUrl": "https://example.com/"
+          },
+          "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+        },
+        "executionStatus": "executed"
+      },
+      "output": {
+        "status": "passed",
+        "success": true,
+        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "evidence": "Example Domains — https://www.iana.org/help/example-domains",
+        "repairInstruction": "",
+        "messageToUser": "",
+        "confidence": 0.95,
+        "command": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "text": "Learn more",
+            "ref": "e6",
+            "currentUrl": "https://example.com/"
+          },
+          "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+        },
+        "step": {
+          "instruction": "click on More information",
+          "expectedAction": "click",
+          "successCriteria": "document.querySelector(\"#more-information\") !== null"
+        }
+      },
+      "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+      "reasoning": ""
+    },
+    {
+      "role": "final_verifier",
+      "title": "Final verifier",
+      "model": "",
+      "status": "synthetic_verified",
+      "step": null,
+      "tool": "",
+      "ok": true,
+      "durationMs": null,
+      "tokens": null,
+      "input": {
+        "originalInstruction": "Open https://example.com and click More information.",
+        "stepResults": [
+          {
+            "stepNumber": 1,
+            "step": {
+              "instruction": "open/navigate to https://example.com",
+              "expectedAction": "navigate",
+              "successCriteria": "currentUrl === \"https://example.com\""
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Low-risk step passed. Example Domain — https://example.com/",
+            "url": "https://example.com/",
+            "title": "Example Domain",
+            "command": {
+              "intent": "navigate",
+              "tool": "browserNavigate",
+              "args": {
+                "url": "https://example.com"
+              },
+              "notes": "Synthetic low-risk navigation command from orchestrator step."
+            }
+          },
+          {
+            "stepNumber": 2,
+            "step": {
+              "instruction": "click on More information",
+              "expectedAction": "click",
+              "successCriteria": "document.querySelector(\"#more-information\") !== null"
+            },
+            "ok": true,
+            "repaired": false,
+            "status": "passed",
+            "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+            "url": "https://www.iana.org/help/example-domains",
+            "title": "Example Domains",
+            "command": {
+              "intent": "click_or_open",
+              "tool": "browserClickByText",
+              "args": {
+                "text": "Learn more",
+                "ref": "e6",
+                "currentUrl": "https://example.com/"
+              },
+              "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+            }
+          }
+        ]
+      },
+      "output": {
+        "success": true,
+        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "needsUser": false,
+        "nextSafeAction": "Continue with the next browser instruction.",
+        "missingSteps": [],
+        "reason": ""
+      },
+      "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+      "reasoning": ""
+    }
+  ],
+  "sequence": {
+    "completed": 2,
+    "total": 2,
+    "stoppedAt": null,
+    "items": [
+      {
+        "index": 0,
+        "instruction": "open/navigate to https://example.com",
+        "ok": true,
+        "status": "passed",
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "currentUrl": "https://example.com/",
+        "currentTitle": "Example Domain",
+        "blockedReason": ""
+      },
+      {
+        "index": 1,
+        "instruction": "click on More information",
+        "ok": true,
+        "status": "passed",
+        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "currentUrl": "https://www.iana.org/help/example-domains",
+        "currentTitle": "Example Domains",
+        "blockedReason": ""
+      }
+    ]
+  },
+  "pipeline": {
+    "architecture": "main_orchestrator_step_agent_checker_watcher_final_verifier_v2",
+    "dryRun": false,
+    "runtime": {
+      "configured": true,
+      "llmRequired": true,
+      "redactedBaseUrl": "https://chat-api.retakt.cc",
+      "model": "qwen3.5:2b",
+      "models": {
+        "default": "qwen3.5:2b",
+        "main": "llama3.2:latest",
+        "planner": "qwen3.5:2b",
+        "reviewer": "qwen3.5:2b",
+        "executor": "qwen3.5:2b",
+        "resultReviewer": "qwen3.5:2b",
+        "finalVerifier": "llama3.2:latest",
+        "reporter": "qwen3.5:2b"
+      },
+      "endpoints": {
+        "default": {
+          "provider": "ollama",
+          "redactedBaseUrl": "https://chat-api.retakt.cc",
+          "hasApiKey": false
+        },
+        "main": {
+          "provider": "ollama",
+          "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+          "hasApiKey": false
+        },
+        "planner": {
+          "provider": "ollama",
+          "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+          "hasApiKey": false
+        },
+        "reviewer": {
+          "provider": "ollama",
+          "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+          "hasApiKey": false
+        },
+        "executor": {
+          "provider": "ollama",
+          "redactedBaseUrl": "https://chat-api.retakt.cc",
+          "hasApiKey": false
+        },
+        "resultReviewer": {
+          "provider": "ollama",
+          "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+          "hasApiKey": false
+        },
+        "finalVerifier": {
+          "provider": "ollama",
+          "redactedBaseUrl": "http://takt-pc.reverse-cliff.ts.net:11434",
+          "hasApiKey": false
+        },
+        "reporter": {
+          "provider": "ollama",
+          "redactedBaseUrl": "https://chat-api.retakt.cc",
+          "hasApiKey": false
+        }
+      },
+      "timeoutMs": 120000,
+      "think": false,
+      "options": {
+        "main": {
+          "temperature": 0.25,
+          "top_p": 0.9,
+          "top_k": 80,
+          "repeat_penalty": 1.08,
+          "num_ctx": 16384,
+          "num_predict": 1024
+        },
+        "planner": {
+          "temperature": 0.15,
+          "top_p": 0.9,
+          "top_k": 80,
+          "repeat_penalty": 1.08,
+          "num_ctx": 16384,
+          "num_predict": 1024
+        },
+        "reviewer": {
+          "temperature": 0.1,
+          "top_p": 0.9,
+          "top_k": 80,
+          "repeat_penalty": 1.08,
+          "num_ctx": 16384,
+          "num_predict": 1024
+        },
+        "executor": {
+          "temperature": 0.1,
+          "top_p": 0.9,
+          "top_k": 80,
+          "repeat_penalty": 1.08,
+          "num_ctx": 16384,
+          "num_predict": 1024
+        },
+        "resultReviewer": {
+          "temperature": 0.1,
+          "top_p": 0.9,
+          "top_k": 80,
+          "repeat_penalty": 1.08,
+          "num_ctx": 16384,
+          "num_predict": 1024
+        },
+        "finalVerifier": {
+          "temperature": 0.15,
+          "top_p": 0.9,
+          "top_k": 80,
+          "repeat_penalty": 1.08,
+          "num_ctx": 16384,
+          "num_predict": 1024
+        },
+        "reporter": {
+          "temperature": 0.25,
+          "top_p": 0.9,
+          "top_k": 80,
+          "repeat_penalty": 1.08,
+          "num_ctx": 16384,
+          "num_predict": 1024
+        }
+      },
+      "prompts": {
+        "strictPromptFiles": false,
+        "planner": {
+          "hasCustomPrompt": false,
+          "path": "",
+          "inline": false
+        },
+        "reporter": {
+          "hasCustomPrompt": false,
+          "path": "",
+          "inline": false
+        }
+      },
+      "strategy": "llm-required",
+      "missing": []
+    },
+    "agentTrace": [
+      {
+        "role": "main_orchestrator",
+        "title": "Main model intent orchestrator",
+        "model": "llama3.2:latest",
+        "status": "ready",
+        "step": null,
+        "tool": "",
+        "ok": true,
+        "durationMs": 5769,
+        "tokens": 636,
+        "input": "Open https://example.com and click More information.",
+        "output": {
+          "status": "ready",
+          "userIntent": "Open https://example.com and click More information.",
+          "steps": [
+            {
+              "instruction": "open/navigate to https://example.com",
+              "expectedAction": "navigate",
+              "successCriteria": "currentUrl === \"https://example.com\""
+            },
+            {
+              "instruction": "click on More information",
+              "expectedAction": "click",
+              "successCriteria": "document.querySelector(\"#more-information\") !== null"
+            }
+          ],
+          "messageToUser": "",
+          "confidence": 0
+        },
+        "summary": "Open https://example.com and click More information.",
+        "reasoning": ""
+      },
+      {
+        "role": "sequence_step",
+        "title": "Step 1",
+        "model": "",
+        "status": "started",
+        "step": 1,
+        "tool": "",
+        "ok": null,
+        "durationMs": null,
+        "tokens": null,
+        "input": "open/navigate to https://example.com",
+        "output": "",
+        "summary": "currentUrl === \"https://example.com\"",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_step_agent",
+        "title": "Gemma step agent",
+        "model": "",
+        "status": "synthetic_ready",
+        "step": 1,
+        "tool": "browserNavigate",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "instruction": "open/navigate to https://example.com",
+          "expectedAction": "navigate",
+          "successCriteria": "currentUrl === \"https://example.com\""
+        },
+        "output": {
+          "status": "ready",
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "reason": "Navigation step can be executed directly without another model call.",
+          "messageToChecker": "",
+          "messageToUser": "",
+          "confidence": 1
+        },
+        "summary": "Navigation step can be executed directly without another model call.",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_checker",
+        "title": "Gemma command checker",
+        "model": "",
+        "status": "auto_approved",
+        "step": 1,
+        "tool": "browserNavigate",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "status": "ready",
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "reason": "Navigation step can be executed directly without another model call.",
+          "messageToChecker": "",
+          "messageToUser": "",
+          "confidence": 1
+        },
+        "output": {
+          "status": "approved",
+          "approved": true,
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "reason": "Low-risk browser command auto-approved to avoid redundant checker call.",
+          "repairInstruction": "",
+          "messageToUser": "",
+          "confidence": 1
+        },
+        "summary": "Low-risk browser command auto-approved to avoid redundant checker call.",
+        "reasoning": ""
+      },
+      {
+        "role": "playwright_controller",
+        "title": "Playwright browser controller",
+        "model": "",
+        "status": "executed",
+        "step": 1,
+        "tool": "browserNavigate",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "intent": "navigate",
+          "tool": "browserNavigate",
+          "args": {
+            "url": "https://example.com"
+          },
+          "notes": "Synthetic low-risk navigation command from orchestrator step."
+        },
+        "output": {
+          "url": "https://example.com/",
+          "title": "Example Domain",
+          "error": "",
+          "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-19-940Z.yml)"
+        },
+        "summary": "### Ran Playwright code ```js await page.goto('https://example.com'); ``` ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-19-940Z.yml)",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_result_checker",
+        "title": "Gemma result checker",
+        "model": "",
+        "status": "auto_passed",
+        "step": 1,
+        "tool": "",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "step": {
+            "instruction": "open/navigate to https://example.com",
+            "expectedAction": "navigate",
+            "successCriteria": "currentUrl === \"https://example.com\""
+          },
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "executionStatus": "executed"
+        },
+        "output": {
+          "status": "passed",
+          "success": true,
+          "summary": "Low-risk step passed. Example Domain — https://example.com/",
+          "evidence": "Example Domain — https://example.com/",
+          "repairInstruction": "",
+          "messageToUser": "",
+          "confidence": 0.95,
+          "command": {
+            "intent": "navigate",
+            "tool": "browserNavigate",
+            "args": {
+              "url": "https://example.com"
+            },
+            "notes": "Synthetic low-risk navigation command from orchestrator step."
+          },
+          "step": {
+            "instruction": "open/navigate to https://example.com",
+            "expectedAction": "navigate",
+            "successCriteria": "currentUrl === \"https://example.com\""
+          }
+        },
+        "summary": "Low-risk step passed. Example Domain — https://example.com/",
+        "reasoning": ""
+      },
+      {
+        "role": "sequence_step",
+        "title": "Step 2",
+        "model": "",
+        "status": "started",
+        "step": 2,
+        "tool": "",
+        "ok": null,
+        "durationMs": null,
+        "tokens": null,
+        "input": "click on More information",
+        "output": "",
+        "summary": "document.querySelector(\"#more-information\") !== null",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_step_agent",
+        "title": "Gemma step agent",
+        "model": "qwen3.5:2b",
+        "status": "ready",
+        "step": 2,
+        "tool": "browserClickByText",
+        "ok": true,
+        "durationMs": 28035,
+        "tokens": 2413,
+        "input": {
+          "instruction": "click on More information",
+          "expectedAction": "click",
+          "successCriteria": "document.querySelector(\"#more-information\") !== null"
+        },
+        "output": {
+          "status": "ready",
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "text": "Learn more",
+              "ref": "e6"
+            },
+            "notes": "The instruction 'click on More information' maps to the visible link 'Learn more' in the snapshot.",
+            "reason": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'.",
+            "messageToChecker": "Clicking 'Learn more' fulfills the instruction to click on the More information link.",
+            "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+            "confidence": 0.95
+          }
+        },
+        "summary": "[object Object]",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_checker",
+        "title": "Gemma command checker",
+        "model": "qwen3.5:2b",
+        "status": "approved",
+        "step": 2,
+        "tool": "browserClickByText",
+        "ok": true,
+        "durationMs": 5349,
+        "tokens": 2225,
+        "input": {
+          "status": "ready",
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "text": "Learn more",
+              "ref": "e6"
+            },
+            "notes": "The instruction 'click on More information' maps to the visible link 'Learn more' in the snapshot.",
+            "reason": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'.",
+            "messageToChecker": "Clicking 'Learn more' fulfills the instruction to click on the More information link.",
+            "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+            "confidence": 0.95
+          }
+        },
+        "output": {
+          "status": "approved",
+          "approved": true,
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "text": "Learn more",
+              "ref": "e6"
+            },
+            "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+          },
+          "reason": "The visible link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain.",
+          "repairInstruction": "",
+          "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+          "confidence": 0.95
+        },
+        "summary": "The visible link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain.",
+        "reasoning": ""
+      },
+      {
+        "role": "playwright_controller",
+        "title": "Playwright browser controller",
+        "model": "",
+        "status": "executed",
+        "step": 2,
+        "tool": "browserClickByText",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "intent": "click_or_open",
+          "tool": "browserClickByText",
+          "args": {
+            "text": "Learn more",
+            "ref": "e6",
+            "currentUrl": "https://example.com/"
+          },
+          "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+        },
+        "output": {
+          "url": "https://www.iana.org/help/example-domains",
+          "title": "Example Domains",
+          "error": "",
+          "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-58-344Z.yml)"
+        },
+        "summary": "Click succeeded using ref_as_target. ### Ran Playwright code ```js await page.getByRole('link', { name: 'Learn more' }).click(); ``` ### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-58-344Z.yml)",
+        "reasoning": ""
+      },
+      {
+        "role": "gemma_result_checker",
+        "title": "Gemma result checker",
+        "model": "",
+        "status": "auto_passed",
+        "step": 2,
+        "tool": "",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "step": {
+            "instruction": "click on More information",
+            "expectedAction": "click",
+            "successCriteria": "document.querySelector(\"#more-information\") !== null"
+          },
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "text": "Learn more",
+              "ref": "e6",
+              "currentUrl": "https://example.com/"
+            },
+            "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+          },
+          "executionStatus": "executed"
+        },
+        "output": {
+          "status": "passed",
+          "success": true,
+          "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+          "evidence": "Example Domains — https://www.iana.org/help/example-domains",
+          "repairInstruction": "",
+          "messageToUser": "",
+          "confidence": 0.95,
+          "command": {
+            "intent": "click_or_open",
+            "tool": "browserClickByText",
+            "args": {
+              "text": "Learn more",
+              "ref": "e6",
+              "currentUrl": "https://example.com/"
+            },
+            "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+          },
+          "step": {
+            "instruction": "click on More information",
+            "expectedAction": "click",
+            "successCriteria": "document.querySelector(\"#more-information\") !== null"
+          }
+        },
+        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "reasoning": ""
+      },
+      {
+        "role": "final_verifier",
+        "title": "Final verifier",
+        "model": "",
+        "status": "synthetic_verified",
+        "step": null,
+        "tool": "",
+        "ok": true,
+        "durationMs": null,
+        "tokens": null,
+        "input": {
+          "originalInstruction": "Open https://example.com and click More information.",
+          "stepResults": [
+            {
+              "stepNumber": 1,
+              "step": {
+                "instruction": "open/navigate to https://example.com",
+                "expectedAction": "navigate",
+                "successCriteria": "currentUrl === \"https://example.com\""
+              },
+              "ok": true,
+              "repaired": false,
+              "status": "passed",
+              "summary": "Low-risk step passed. Example Domain — https://example.com/",
+              "url": "https://example.com/",
+              "title": "Example Domain",
+              "command": {
+                "intent": "navigate",
+                "tool": "browserNavigate",
+                "args": {
+                  "url": "https://example.com"
+                },
+                "notes": "Synthetic low-risk navigation command from orchestrator step."
+              }
+            },
+            {
+              "stepNumber": 2,
+              "step": {
+                "instruction": "click on More information",
+                "expectedAction": "click",
+                "successCriteria": "document.querySelector(\"#more-information\") !== null"
+              },
+              "ok": true,
+              "repaired": false,
+              "status": "passed",
+              "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+              "url": "https://www.iana.org/help/example-domains",
+              "title": "Example Domains",
+              "command": {
+                "intent": "click_or_open",
+                "tool": "browserClickByText",
+                "args": {
+                  "text": "Learn more",
+                  "ref": "e6",
+                  "currentUrl": "https://example.com/"
+                },
+                "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+              }
+            }
+          ]
+        },
+        "output": {
+          "success": true,
+          "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+          "needsUser": false,
+          "nextSafeAction": "Continue with the next browser instruction.",
+          "missingSteps": [],
+          "reason": ""
+        },
+        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "reasoning": ""
+      }
+    ],
+    "browserExecution": {
+      "ok": true,
+      "status": "executed",
+      "executed": true,
+      "tool": "browserClickByText",
+      "engine": "playwright_mcp",
+      "observation": {
+        "ok": true,
+        "url": "https://www.iana.org/help/example-domains",
+        "title": "Example Domains",
+        "textPreview": "### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot ```yaml - generic [active] [ref=e1]: - banner [ref=e2]: - generic [ref=e3]: - link \"Homepage\" [ref=e5] [cursor=pointer]: - /url: / - img \"Homepage\" [ref=e6] - generic [ref=e7]: - list: - listitem [ref=e8]: - link \"Domains\" [ref=e9] [cursor=pointer]: - /url: /domains - listitem [ref=e10]: - link \"Protocols\" [ref=e11] [cursor=pointer]: - /url: /protocols - listitem [ref=e12]: - link \"Numbers\" [ref=e13] [cursor=pointer]: - /url: /numbers - listitem [ref=e14]: - link \"About\" [ref=e15] [cursor=pointer]: - /url: /about - article [ref=e17]: - main [ref=e18]: - generic [ref=e19]: - heading \"Example Domains\" [level=1] [ref=e20] - paragraph [ref=e21]: - text: As described in - link \"RFC 2606\" [ref=e22] [cursor=pointer]: - /url: /go/rfc2606 - text: and - link \"RFC 6761\" [ref=e23] [cursor=pointer]: - /url: /go/rfc6761 - text: \", a number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer.\" - paragraph [ref=e24]: We provide a web service on the example domain hosts to provide basic information on the purpose of the domain. These web services are provided as best effort, but are not designed to support production applications. While incidental traffic for incorrectly configured applications is expected, please do not design applications that require the example domains to have operating HTTP service. - heading \"Further Reading\" [level=2] [ref=e25] - list [ref=e26]: - listitem [ref=e27]: - link \"IANA-managed Reserved Domains\" [ref=e28] [cursor=pointer]: - /url: /domains/reserved - generic [ref=e29]: Last revised 2017-05-13. - contentinfo [ref=e30]: - generic [ref=e31]: - table [ref=e32]: - rowgroup [ref=e33]: - row \"Domain Names Root Zone Registry .INT Registry .ARPA Registry IDN Repository\" [ref=e34]: - cell \"Domain Names\" [ref=e35]: - link \"Domain Names\" [ref=e36] [cursor=pointer]: - /url: /domains - cell \"Root Zone Registry .INT Registry .ARPA Registry IDN Repository\" [ref=e37]: - list: - listitem [ref=e38]: - link \"Root Zone Registry\" [ref=e39] [cursor=pointer]: - /url: /domains/root - listitem [ref=e40]: - link \".INT Registry\" [ref=e41] [cursor=pointer]: - /url: /domains/int - listitem [ref=e42]: - link \".ARPA Registry\" [ref=e43] [cursor=pointer]: - /url: /domains/arpa - listitem [ref=e44]: - link \"IDN Repository\" [ref=e45] [cursor=pointer]: - /url: /domains/idn-tables - row \"Number Resources Abuse Information\" [ref=e46]: - cell \"Number Resources\" [ref=e47]: - link \"Number Resources\" [ref=e48] [cursor=pointer]: - /url: /numbers - cell \"Abuse Information\" [ref=e49]: - list: - listitem [ref=e50]: - link \"Abuse Information\" [ref=e51] [cursor=pointer]: - /url: /abuse - row \"Protocols Protocol Registries Time Zone Database\" [ref=e52]: - cell \"Protocols\" [ref=e53]: - link \"Protocols\" [ref=e54] [cursor=pointer]: - /url: /protocols - cell \"Protocol Registries Time Zone Database\" [ref=e55]: - list: - listitem [ref=e56]: - link \"Protocol Registries\" [ref=e57] [cursor=pointer]: - /url: /protocols - listitem [ref=e58]: - link \"Time Zone Database\" [ref=e59] [cursor=pointer]: - /url: /time-zones - row \"About Us News Performance Excellence Archive Contact Us\" [ref=e60]: - cell \"About Us\" [ref=e61]: - link \"About Us\" [ref=e62] [cursor=pointer]: - /url: /about - cell \"News Performance Excellence Archive Contact Us\" [ref=e63]: - list: - listitem [ref=e64]: - link \"News\" [ref=e65] [cursor=pointer]: - /url: /news - listitem [ref=e66]: - link \"Performance\" [ref=e67] [cursor=pointer]: - /url: /performance - listitem [ref=e68]: - link \"Excellence\" [ref=e69] [cursor=pointer]: - /url: /about/excellence - listitem [ref=e70]: - link \"Archive\" [ref=e71] [cursor=pointer]: - /url: /archive - listitem [ref=e72]: - link \"Contact Us\" [ref=e73] [cursor=pointer]: - /url: /contact - paragraph [ref=e75]: - text: The IANA functions coordinate the Internet’s globally unique identifiers, and are provided by - link \"Public Technical Identifiers\" [ref=e76] [cursor=pointer]: - /url: https://pti.icann.org - text: \", an affiliate of\" - link \"ICANN\" [ref=e77] [cursor=pointer]: - /url: https://www.icann.org/ - text: . - generic [ref=e78]: - list: - listitem [ref=e79]: - link \"Privacy Policy\" [ref=e80] [cursor=pointer]: - /url: https://www.icann.org/privacy/policy - listitem [ref=e81]: - link \"Terms of Service\" [ref=e82] [cursor=pointer]: - /url: https://www.icann.org/privacy/tos ```",
+        "engine": "playwright_mcp",
+        "links": [],
+        "buttons": [],
+        "inputs": [],
+        "forms": [],
+        "interactiveElements": [],
+        "stats": {}
+      },
+      "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains"
+    }
+  },
+  "state": {
+    "sessionId": "debug-browser-1779523212187",
+    "mode": "browser",
+    "currentUrl": "https://www.iana.org/help/example-domains",
+    "currentTitle": "Example Domains",
+    "currentExtensionId": "",
+    "currentPageKey": "help_example-domains",
+    "lastObservation": {
+      "url": "https://www.iana.org/help/example-domains",
+      "title": "Example Domains",
+      "textPreview": "### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot ```yaml - generic [active] [ref=e1]: - banner [ref=e2]: - generic [ref=e3]: - link \"Homepage\" [ref=e5] [cursor=pointer]: - /url: / - img \"Homepage\" [ref=e6] - generic [ref=e7]: - list: - listitem [ref=e8]: - link \"Domains\" [ref=e9] [cursor=pointer]: - /url: /domains - listitem [ref=e10]: - link \"Protocols\" [ref=e11] [cursor=pointer]: - /url: /protocols - listitem [ref=e12]: - link \"Numbers\" [ref=e13] [cursor=pointer]: - /url: /numbers - listitem [ref=e14]: - link \"About\" [ref=e15] [cursor=pointer]: - /url: /about - article [ref=e17]: - main [ref=e18]: - generic [ref=e19]: - heading \"Exam",
+      "engine": "playwright_mcp",
+      "extractionPath": "",
+      "extractionSources": [],
+      "extractionCapabilities": {},
+      "requestedUrl": "",
+      "error": "",
+      "isLoginPage": false,
+      "forms": [],
+      "buttons": [],
+      "links": [],
+      "inputs": [],
+      "interactiveElements": []
+    },
+    "lastValidObservation": {
+      "url": "https://www.iana.org/help/example-domains",
+      "title": "Example Domains",
+      "textPreview": "### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot ```yaml - generic [active] [ref=e1]: - banner [ref=e2]: - generic [ref=e3]: - link \"Homepage\" [ref=e5] [cursor=pointer]: - /url: / - img \"Homepage\" [ref=e6] - generic [ref=e7]: - list: - listitem [ref=e8]: - link \"Domains\" [ref=e9] [cursor=pointer]: - /url: /domains - listitem [ref=e10]: - link \"Protocols\" [ref=e11] [cursor=pointer]: - /url: /protocols - listitem [ref=e12]: - link \"Numbers\" [ref=e13] [cursor=pointer]: - /url: /numbers - listitem [ref=e14]: - link \"About\" [ref=e15] [cursor=pointer]: - /url: /about - article [ref=e17]: - main [ref=e18]: - generic [ref=e19]: - heading \"Exam",
+      "engine": "playwright_mcp",
+      "extractionPath": "",
+      "extractionSources": [],
+      "extractionCapabilities": {},
+      "requestedUrl": "",
+      "error": "",
+      "isLoginPage": false,
+      "forms": [],
+      "buttons": [],
+      "links": [],
+      "inputs": [],
+      "interactiveElements": []
+    },
+    "lastFailedObservation": null,
+    "pendingForm": null,
+    "activeEngine": "playwright_mcp",
+    "engineFailures": {},
+    "pendingInstruction": "",
+    "pendingAction": null,
+    "lastIntent": "",
+    "lastCommand": null,
+    "lastToolResult": null,
+    "visited": [
+      "https://www.iana.org/help/example-domains"
+    ],
+    "learnedAliases": [],
+    "lastToolResults": [],
+    "failureCount": 0,
+    "updatedAt": "2026-05-23T08:00:58.414Z"
+  }
+}
