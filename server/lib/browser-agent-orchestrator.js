@@ -282,6 +282,36 @@ function samePageAnchorHref(href = "", baseUrl = "") {
   }
 }
 
+function isPlainHrefLinkCandidate(entry = {}) {
+  const href = String(entry.href || "").trim();
+  if (!href) return false;
+
+  const kind = String(entry.kind || "").toLowerCase();
+  const selector = String(entry.selector || "").toLowerCase();
+  const attrs = entry.attrs && typeof entry.attrs === "object" ? entry.attrs : {};
+
+  const attrValue = (...names) => names
+    .map((name) => safeText(attrs[name] || "", 120))
+    .find(Boolean) || "";
+
+  const role = safeText(entry.role || attrValue("role"), 80).toLowerCase();
+  const hasControlAttrs = Boolean(
+    attrValue("data-bs-toggle", "data-toggle", "dataBsToggle", "dataToggle") ||
+    attrValue("data-bs-target", "data-target", "dataBsTarget", "dataTarget") ||
+    attrValue("aria-controls", "ariaControls") ||
+    role === "button"
+  );
+
+  const looksLikeAnchor = kind === "link" ||
+    /^a(?:[.#[:\s]|$)/i.test(selector) ||
+    /a\s*\[href/i.test(selector);
+
+  const selectorLooksControl = /\[(?:data-bs-toggle|data-bs-target|data-target|aria-controls|role=['"]?button)/i
+    .test(selector);
+
+  return looksLikeAnchor && !hasControlAttrs && !selectorLooksControl;
+}
+
 function buttonIntentScoreAdjustment(entry = {}, step = {}, baseUrl = "") {
   if (!isButtonIntentStep(step)) return 0;
 
@@ -480,14 +510,18 @@ function compactClickCandidatesForStep({ step = {}, beforeState = null, original
     ...(Array.isArray(beforeState.interactiveElements) ? beforeState.interactiveElements : []).map((entry) => ({ ...entry, kind: entry.href ? "link" : "interactive" })),
   ];
 
-  return candidates
+  const visibleCandidates = isButtonIntentStep(step) && !isExplicitLinkNavigationIntent(step)
+    ? candidates.filter((entry) => !isPlainHrefLinkCandidate(entry))
+    : candidates;
+
+  return visibleCandidates
     .map((entry) => ({
       ref: safeText(entry.ref || "", 80),
       selector: safeText(entry.selector || "", 180),
       kind: safeText(entry.kind || "", 40),
       text: safeText(entry.text || entry.label || entry.name || "", 140),
       href: absoluteHrefFromState(entry.href || "", beforeState.url || ""),
-      score: lightpandaClickScore(entry, targetText, candidates.length) +
+      score: lightpandaClickScore(entry, targetText, visibleCandidates.length) +
         buttonIntentScoreAdjustment(entry, step, beforeState.url || ""),
     }))
     .filter((entry) => entry.text || entry.href || entry.ref || entry.selector)
@@ -539,11 +573,15 @@ function bestLightpandaClickCandidateForStep({ step = {}, beforeState = null, or
     ...(Array.isArray(beforeState.links) ? beforeState.links : []).map((entry) => ({ ...entry, kind: "link" })),
   ];
 
-  const ranked = candidates
+  const executableCandidates = isButtonIntentStep(step) && !isExplicitLinkNavigationIntent(step)
+    ? candidates.filter((entry) => !isPlainHrefLinkCandidate(entry))
+    : candidates;
+
+  const ranked = executableCandidates
     .map((entry) => ({
       entry,
       score:
-        lightpandaClickScore(entry, targetText, candidates.length) +
+        lightpandaClickScore(entry, targetText, executableCandidates.length) +
         buttonIntentScoreAdjustment(entry, step, beforeState.url || ""),
     }))
     .filter((item) => item.score >= 0.55)
@@ -556,31 +594,44 @@ function commandWithLightpandaExecutionTarget(command = {}, { step = {}, beforeS
   if (!command || typeof command !== "object") return command;
   if (!isButtonIntentStep(step)) return command;
 
+  const requestedText = extractClickTargetText(step, originalInstruction) || step.instruction || "";
   const candidate = bestLightpandaClickCandidateForStep({ step, beforeState, originalInstruction });
   if (!candidate) {
-    if (command.tool === "browserNavigate") {
+    if (command.tool === "browserNavigate" || !isExplicitLinkNavigationIntent(step)) {
       return {
         intent: "click",
         tool: "browserClickByText",
         args: {
           currentUrl,
-          text: extractClickTargetText(step, originalInstruction) || step.instruction || "",
+          text: requestedText,
         },
-        notes: "Button intent forced real click; no Lightpanda candidate was available.",
+        notes: "Button intent forced real click by requested text; no acceptable Lightpanda candidate was available.",
       };
     }
     return command;
   }
 
   const href = absoluteHrefFromState(candidate.href || "", beforeState?.url || "");
-  if (href && candidate.kind === "link" && !isExplicitLinkNavigationIntent(step)) {
-    // Same-page docs anchors/links are not acceptable for button/modal/collapse intent.
+  if (href && !isExplicitLinkNavigationIntent(step) && isPlainHrefLinkCandidate(candidate)) {
     return {
       intent: "click",
       tool: "browserClickByText",
       args: {
         currentUrl,
-        text: safeText(candidate.text || candidate.label || extractClickTargetText(step, originalInstruction), 180),
+        text: requestedText,
+      },
+      notes: "Button intent rejected a plain href/navigation link and fell back to the requested visible control text.",
+    };
+  }
+
+  if (href && candidate.kind === "link" && !isExplicitLinkNavigationIntent(step)) {
+    // Control-like links with button attrs may still be clicked, but plain href links are rejected above.
+    return {
+      intent: "click",
+      tool: "browserClickByText",
+      args: {
+        currentUrl,
+        text: safeText(candidate.text || candidate.label || requestedText, 180),
         ref: "",
         lpRef: safeText(candidate.ref || "", 120),
         selector: safeText(candidate.selector || "", 500),
