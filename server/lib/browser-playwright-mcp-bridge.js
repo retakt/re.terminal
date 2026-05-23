@@ -1655,6 +1655,198 @@ export async function activatePlaywrightControlByText(args = {}, state = {}) {
 }
 
 
+export async function togglePlaywrightOpenCollapse(args = {}, state = {}) {
+  const currentUrl = currentUrlFromInput(args, state);
+
+  const script = `async () => {
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const textOf = (el) => String(el?.innerText || el?.textContent || "")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const openCollapses = () => Array.from(document.querySelectorAll(".collapse.show,.accordion-collapse.show"))
+      .filter(visible);
+
+    const userLikeClick = (el) => {
+      if (!el || !visible(el)) return false;
+
+      try {
+        el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      } catch {}
+
+      const rect = el.getBoundingClientRect();
+      const x = Math.max(1, Math.floor(rect.left + rect.width / 2));
+      const y = Math.max(1, Math.floor(rect.top + rect.height / 2));
+
+      const opts = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 1
+      };
+
+      try { el.focus?.(); } catch {}
+
+      for (const type of ["pointerover", "mouseover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        try {
+          const Ctor = type.startsWith("pointer") && window.PointerEvent ? PointerEvent : MouseEvent;
+          el.dispatchEvent(new Ctor(type, opts));
+        } catch {
+          try { el.dispatchEvent(new MouseEvent(type, opts)); } catch {}
+        }
+      }
+
+      try { el.click?.(); } catch {}
+      return true;
+    };
+
+    const state = () => {
+      const opens = openCollapses();
+      const expanded = Array.from(document.querySelectorAll("[aria-expanded='true']")).filter(visible);
+
+      return {
+        open: opens.length > 0,
+        collapses: opens.map((el) => ({
+          id: el.getAttribute("id") || "",
+          className: String(el.className || ""),
+          text: textOf(el).slice(0, 300)
+        })),
+        expandedControls: expanded.map((el) => ({
+          tag: el.tagName.toLowerCase(),
+          text: textOf(el).slice(0, 180),
+          ariaControls: el.getAttribute("aria-controls") || "",
+          dataTarget: el.getAttribute("data-bs-target") || el.getAttribute("data-target") || "",
+          href: el.getAttribute("href") || "",
+          className: String(el.className || "")
+        }))
+      };
+    };
+
+    const before = state();
+    if (!before.open) {
+      return JSON.stringify({ ok: true, toggled: false, method: "already_closed", before, after: before });
+    }
+
+    const openIds = new Set(before.collapses.map((item) => item.id).filter(Boolean));
+
+    const controls = Array.from(document.querySelectorAll([
+      "[aria-expanded='true']",
+      "[data-bs-toggle='collapse']",
+      "[data-toggle='collapse']",
+      "a[href^='#']",
+      "button"
+    ].join(","))).filter(visible).map((el) => {
+      const ariaControls = el.getAttribute("aria-controls") || "";
+      const dataTarget = el.getAttribute("data-bs-target") || el.getAttribute("data-target") || "";
+      const href = el.getAttribute("href") || "";
+      const targetId = ariaControls || dataTarget.replace(/^#/, "") || href.replace(/^#/, "");
+
+      let score = 0;
+      if (openIds.has(targetId)) score += 160;
+      if (el.getAttribute("aria-expanded") === "true") score += 110;
+      if ((el.getAttribute("data-bs-toggle") || el.getAttribute("data-toggle")) === "collapse") score += 80;
+      if (el.tagName.toLowerCase() === "button" || el.getAttribute("role") === "button") score += 20;
+
+      return {
+        el,
+        score,
+        text: textOf(el).slice(0, 180),
+        targetId,
+        ariaControls,
+        dataTarget,
+        href,
+        className: String(el.className || "")
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    const best = controls.find((item) => item.score >= 120);
+    if (!best) {
+      return JSON.stringify({
+        ok: false,
+        toggled: false,
+        method: "no_expanded_trigger",
+        before,
+        candidates: controls.slice(0, 8).map((item) => ({
+          score: item.score,
+          text: item.text,
+          targetId: item.targetId,
+          ariaControls: item.ariaControls,
+          dataTarget: item.dataTarget,
+          href: item.href,
+          className: item.className
+        }))
+      });
+    }
+
+    userLikeClick(best.el);
+
+    let after = state();
+    const started = Date.now();
+    while (Date.now() - started < 1800) {
+      after = state();
+      if (!after.open) break;
+      await delay(100);
+    }
+
+    return JSON.stringify({
+      ok: !after.open,
+      toggled: true,
+      method: "collapse_expanded_trigger",
+      clicked: {
+        score: best.score,
+        text: best.text,
+        targetId: best.targetId,
+        ariaControls: best.ariaControls,
+        dataTarget: best.dataTarget,
+        href: best.href,
+        className: best.className
+      },
+      before,
+      after,
+      reason: after.open ? "Collapse remained open after clicking expanded trigger." : ""
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: script,
+  }).catch((err) => ({
+    ok: false,
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+
+  return {
+    ok: Boolean(parsed?.ok),
+    toggled: Boolean(parsed?.toggled),
+    method: safeText(parsed?.method || "", 120),
+    clicked: parsed?.clicked || null,
+    before: parsed?.before || null,
+    after: parsed?.after || null,
+    candidates: Array.isArray(parsed?.candidates) ? parsed.candidates : [],
+    error: parsed?.reason || result.error || "",
+    rawText: safeText(result.text || result.error || "", 2600),
+    url: currentUrl,
+  };
+}
+
+
 function fieldsFromCommand(command = {}) {
   return Array.isArray(command.args?.fields) ? command.args.fields : Array.isArray(command.fields) ? command.fields : [];
 }

@@ -12,6 +12,7 @@ import {
   snapshotImagesForModel,
   dismissPlaywrightBlockingUi,
   activatePlaywrightControlByText,
+  togglePlaywrightOpenCollapse,
 } from "./browser-playwright-mcp-bridge.js";
 import {
   compactBrowserStateForModel,
@@ -1147,7 +1148,7 @@ function fastSnapshotCheckerForStep({ stepPlan = {}, step = {}, before = null } 
   };
 }
 
-function expectedUiKindForStepV2(step = {}, command = {}) {
+function expectedUiKindForStep(step = {}, command = {}) {
   const haystack = [
     step.instruction,
     step.successCriteria,
@@ -1161,16 +1162,20 @@ function expectedUiKindForStepV2(step = {}, command = {}) {
     command?.args?.scout?.ariaControls,
   ].map((item) => String(item || "")).join(" ").toLowerCase();
 
+  if (/\b(close|closed|dismiss|cancel|hide|hidden|not visible|not open)\b/.test(haystack) || /\b(no element|same toggle again)\b/.test(haystack)) {
+    return "";
+  }
+
   if (/\b(modal|dialog|popup)\b/.test(haystack)) return "modal";
   if (/\b(dropdown|menu)\b/.test(haystack)) return "dropdown";
   if (/\b(collapse|accordion|expand)\b/.test(haystack)) return "collapse";
   return "";
 }
 
-async function deterministicUiStateResultCheckV2({ step = {}, command = {}, execution = null, currentUrl = "", currentState = {} } = {}) {
+async function deterministicUiStateResultCheck({ step = {}, command = {}, execution = null, currentUrl = "", currentState = {} } = {}) {
   if (!execution || execution.ok !== true) return null;
 
-  const kind = expectedUiKindForStepV2(step, command);
+  const kind = expectedUiKindForStep(step, command);
   if (!kind) return null;
 
   const uiState = await probePlaywrightUiState({
@@ -1211,302 +1216,6 @@ async function deterministicUiStateResultCheckV2({ step = {}, command = {}, exec
   };
 }
 
-function isGenericCloseDismissStep(step = {}) {
-  const text = [
-    step.instruction,
-    step.successCriteria,
-    step.expectedAction,
-  ].map((value) => String(value || "")).join(" ").toLowerCase();
-
-  return /\b(close|dismiss|cancel|exit|hide|x|esc|escape)\b/.test(text) &&
-    !/\b(save|submit|confirm|apply|ok|login|delete|purchase|pay)\b/.test(text);
-}
-
-function activeWatcherTextV2(step = {}) {
-  return [
-    step.instruction,
-    step.successCriteria,
-    step.expectedAction,
-  ].map((value) => String(value || "")).join(" ").toLowerCase();
-}
-
-function activeWatcherModalVerifyKindV2(step = {}) {
-  const action = String(step.expectedAction || "").toLowerCase();
-  const instruction = String(step.instruction || "").toLowerCase();
-  const criteria = String(step.successCriteria || "").toLowerCase();
-  const text = [instruction, criteria, action].join(" ");
-
-  // Never classify navigation/open-url steps as modal UI verification.
-  if (isNavigationStep(step)) return "";
-  if (/(open|navigate|visit|go to)/.test(instruction) && /https?:\/\//.test(instruction)) return "";
-
-  // Only observe/report/verify steps should verify modal state.
-  const isVerifyLike =
-    action === "observe" ||
-    action === "report" ||
-    /(verify|check|confirm|observe|report)/.test(instruction);
-
-  if (!isVerifyLike) return "";
-
-  // Avoid URL path false positives like /components/modal/.
-  const modalStateText = [instruction, criteria].join(" ");
-  if (!/(modal|dialog|popup|overlay)/.test(modalStateText)) return "";
-
-  if (/(closed|close|dismissed|gone|hidden|not visible|not open|does not contain)/.test(modalStateText)) {
-    return "closed";
-  }
-
-  if (/(opened|open|visible|shown|appeared|contains)/.test(modalStateText)) {
-    return "opened";
-  }
-
-  return "";
-}
-
-
-function activeWatcherCloseOnlyStepV2(step = {}) {
-  const text = activeWatcherTextV2(step);
-  if (!/\b(close|dismiss|cancel|exit|hide|x|esc|escape)\b/.test(text)) return false;
-  if (/\b(save|submit|confirm|apply|ok|login|delete|purchase|pay)\b/.test(text)) return false;
-  return true;
-}
-
-function activeWatcherStepUsesBlockingUiV2(step = {}) {
-  const text = activeWatcherTextV2(step);
-  return activeWatcherModalVerifyKindV2(step) ||
-    /\b(modal|dialog|popup|overlay|drawer|panel|menu|settings|inside)\b/.test(text) ||
-    activeWatcherCloseOnlyStepV2(step);
-}
-
-function activeWatcherBlockingOpenV2(uiState = {}) {
-  return Boolean(
-    uiState?.blockingOpen ||
-    uiState?.modalOpen ||
-    uiState?.dialogOpen ||
-    uiState?.dropdownOpen ||
-    uiState?.offcanvasOpen ||
-    uiState?.popoverOpen ||
-    (Array.isArray(uiState?.dialogs) && uiState.dialogs.length) ||
-    (Array.isArray(uiState?.modalBackdrops) && uiState.modalBackdrops.length) ||
-    (Array.isArray(uiState?.dropdowns) && uiState.dropdowns.length) ||
-    (Array.isArray(uiState?.offcanvas) && uiState.offcanvas.length) ||
-    (Array.isArray(uiState?.popovers) && uiState.popovers.length)
-  );
-}
-
-async function activeWatcherVerifyUiStepRuntimeV2({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
-  const kind = activeWatcherModalVerifyKindV2(step);
-  if (!kind) return null;
-
-  const uiState = await probePlaywrightUiState({
-    currentUrl,
-    navigate: false,
-  }, currentState).catch((err) => ({
-    ok: false,
-    error: err instanceof Error ? err.message : String(err),
-  }));
-
-  const open = Boolean(uiState.modalOpen || uiState.dialogOpen);
-  const passed = kind === "opened" ? open : !open;
-
-  const summary = passed
-    ? `Active watcher verified modal ${kind} using live Playwright UI state.`
-    : `Active watcher could not verify modal ${kind}; live state says modalOpen=${open}.`;
-
-  trace.push(traceEntry({
-    role: "watcher",
-    title: "Active watcher runtime",
-    step: stepNumber,
-    status: passed ? "passed_ui_state" : "failed_ui_state",
-    input: step,
-    output: {
-      expected: kind,
-      modalOpen: Boolean(uiState.modalOpen),
-      dialogOpen: Boolean(uiState.dialogOpen),
-      blockingOpen: Boolean(uiState.blockingOpen),
-      dialogs: Array.isArray(uiState.dialogs) ? uiState.dialogs.slice(0, 2) : [],
-      error: uiState.error || "",
-    },
-    summary,
-    tool: "browserObserve",
-    ok: passed,
-  }));
-
-  return {
-    stepNumber,
-    step,
-    ok: passed,
-    repaired: false,
-    status: passed ? "passed" : "failed",
-    summary,
-    url: uiState.url || currentUrl,
-    title: uiState.title || currentTitle,
-    command: {
-      intent: "verify_live_ui_state",
-      tool: "browserObserve",
-      args: { currentUrl, uiKind: "modal", expected: kind, navigate: false },
-      notes: "Active watcher verified live Playwright UI state without Lightpanda observe/navigation.",
-    },
-    finalObservation: {
-      url: uiState.url || currentUrl,
-      title: uiState.title || currentTitle,
-      textPreview: summary,
-      uiState,
-    },
-  };
-}
-
-async function activeWatcherGuardRuntimeV2({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
-  // Navigation should happen before any live UI guard. Otherwise about:blank
-  // or URL words like /modal/ can be misread as UI state.
-  if (isNavigationStep(step)) {
-    return { ok: true, action: "skip_navigation_step", uiState: null };
-  }
-
-  const uiState = await probePlaywrightUiState({
-    currentUrl,
-    navigate: false,
-  }, currentState).catch(() => null);
-
-  if (!activeWatcherBlockingOpenV2(uiState)) {
-    return { ok: true, action: "clear", uiState };
-  }
-
-  if (activeWatcherCloseOnlyStepV2(step)) {
-    const dismissed = await dismissPlaywrightBlockingUi({
-      currentUrl,
-      navigate: false,
-    }, currentState).catch((err) => ({
-      ok: false,
-      dismissed: false,
-      method: "error",
-      error: err instanceof Error ? err.message : String(err),
-    }));
-
-    const passed = dismissed?.ok === true && dismissed?.dismissed === true;
-    const summary = passed
-      ? `Active watcher closed the current blocking UI using ${dismissed.method}.`
-      : "Active watcher tried to close the current blocking UI but it remained open.";
-
-    trace.push(traceEntry({
-      role: "watcher",
-      title: "Active watcher runtime",
-      step: stepNumber,
-      status: passed ? "closed_blocking_ui" : "failed_to_close_blocking_ui",
-      input: step,
-      output: dismissed,
-      summary,
-      tool: "browserObserve",
-      ok: passed,
-    }));
-
-    return {
-      ok: passed,
-      action: "executed_step",
-      stepResult: {
-        stepNumber,
-        step,
-        ok: passed,
-        repaired: false,
-        status: passed ? "passed" : "failed",
-        summary,
-        url: currentUrl,
-        title: currentTitle,
-        command: {
-          intent: "close_active_blocking_ui",
-          tool: "browserObserve",
-          args: { currentUrl, method: dismissed?.method || "" },
-          notes: "Active watcher handled a generic close/dismiss step against the currently open UI.",
-        },
-      },
-      finalObservation: {
-        url: currentUrl,
-        title: currentTitle,
-        textPreview: summary,
-        dismissed,
-      },
-    };
-  }
-
-  if (activeWatcherStepUsesBlockingUiV2(step)) {
-    trace.push(traceEntry({
-      role: "watcher",
-      title: "Active watcher runtime",
-      step: stepNumber,
-      status: "kept_blocking_ui",
-      input: step,
-      output: {
-        modalOpen: Boolean(uiState?.modalOpen),
-        dialogOpen: Boolean(uiState?.dialogOpen),
-        blockingOpen: Boolean(uiState?.blockingOpen),
-      },
-      summary: "Active watcher kept the open blocking UI because this step appears to operate inside it.",
-      tool: "browserObserve",
-      ok: true,
-    }));
-
-    return { ok: true, action: "kept", uiState };
-  }
-
-  const dismissed = await dismissPlaywrightBlockingUi({
-    currentUrl,
-    navigate: false,
-  }, currentState).catch((err) => ({
-    ok: false,
-    dismissed: false,
-    method: "error",
-    error: err instanceof Error ? err.message : String(err),
-  }));
-
-  trace.push(traceEntry({
-    role: "watcher",
-    title: "Active watcher runtime",
-    step: stepNumber,
-    status: dismissed?.ok ? "dismissed_unrelated_blocking_ui" : "blocked_by_ui",
-    input: step,
-    output: dismissed,
-    summary: dismissed?.dismissed
-      ? `Active watcher dismissed unrelated blocking UI using ${dismissed.method}.`
-      : "Active watcher could not dismiss unrelated blocking UI.",
-    tool: "browserObserve",
-    ok: dismissed?.ok === true,
-  }));
-
-  return dismissed?.ok
-    ? { ok: true, action: "dismissed", dismissed, uiState }
-    : { ok: false, action: "blocked", dismissed, uiState };
-}
-
-
-function postActionExpectedModalOpenV3(step = {}, command = {}) {
-  const text = [
-    step.instruction,
-    step.successCriteria,
-    step.expectedAction,
-    command?.intent,
-    command?.tool,
-    command?.notes,
-    command?.args?.text,
-    command?.args?.scout?.targetText,
-  ].map((value) => String(value || "")).join(" ").toLowerCase();
-
-  return /\b(modal|dialog|popup)\b/.test(text) &&
-    /\b(click|open|launch|show|visible|opened|button)\b/.test(text) &&
-    !/\b(close|closed|dismiss|cancel|hide|not visible|not open)\b/.test(text);
-}
-
-function postActionTargetTextV3(step = {}, command = {}, originalInstruction = "") {
-  return safeText(
-    command?.args?.text ||
-    command?.args?.scout?.targetText ||
-    extractClickTargetText(step, originalInstruction) ||
-    step.instruction ||
-    "",
-    240
-  );
-}
-
-
 function activeWatcherHardTextV4(step = {}) {
   return [
     step.instruction,
@@ -1516,7 +1225,7 @@ function activeWatcherHardTextV4(step = {}) {
 }
 
 function activeWatcherHardVerifyKindV4(step = {}) {
-  if (isNavigationStep(step)) return "";
+  if (isNavigationStep(step)) return null;
 
   const action = String(step.expectedAction || "").toLowerCase();
   const instruction = String(step.instruction || "").toLowerCase();
@@ -1528,18 +1237,37 @@ function activeWatcherHardVerifyKindV4(step = {}) {
     action === "report" ||
     /\b(verify|check|confirm|observe|report)\b/.test(instruction);
 
-  if (!isVerifyLike) return "";
-  if (!/\b(modal|dialog|popup|overlay)\b/.test(text)) return "";
+  if (!isVerifyLike) return null;
 
-  if (/\b(closed|close|dismissed|gone|hidden|not visible|not open|does not contain)\b/.test(text)) {
-    return "closed";
+  let uiKind = "";
+  if (/\b(modal|dialog|popup|overlay)\b/.test(text)) uiKind = "modal";
+  else if (/\b(dropdown|menu)\b/.test(text)) uiKind = "dropdown";
+  else if (/\b(offcanvas|drawer|panel)\b/.test(text)) uiKind = "offcanvas";
+  else if (/\b(collapse|accordion)\b/.test(text)) uiKind = "collapse";
+
+  if (!uiKind) return null;
+
+  if (/\b(closed|close|dismissed|gone|hidden|not visible|not open|does not contain|no element)\b/.test(text)) {
+    return { uiKind, expected: "closed" };
   }
 
-  if (/\b(opened|open|visible|shown|appeared|contains)\b/.test(text)) {
-    return "opened";
+  if (/\b(opened|open|visible|shown|appeared|contains|expanded)\b/.test(text)) {
+    return { uiKind, expected: "opened" };
   }
 
-  return "";
+  return null;
+}
+
+function activeWatcherCollapseToggleAgainStepV4(step = {}) {
+  if (isNavigationStep(step)) return false;
+
+  const text = activeWatcherHardTextV4(step);
+
+  return /\b(collapse|accordion|toggle)\b/.test(text) &&
+    (
+      /\b(same toggle again|toggle again|click .*again|again)\b/.test(text) ||
+      /\b(close|closed|hide|hidden|not visible|not open|no element)\b/.test(text)
+    );
 }
 
 function activeWatcherHardCloseStepV4(step = {}) {
@@ -1551,12 +1279,20 @@ function activeWatcherHardCloseStepV4(step = {}) {
     !/\b(save|submit|confirm|apply|ok|login|delete|purchase|pay)\b/.test(text);
 }
 
+function activeWatcherUiOpenStateV4(uiState = {}, uiKind = "") {
+  if (uiKind === "modal") return Boolean(uiState.modalOpen || uiState.dialogOpen || uiState.blockingOpen);
+  if (uiKind === "dropdown") return Boolean(uiState.dropdownOpen);
+  if (uiKind === "offcanvas") return Boolean(uiState.offcanvasOpen || uiState.blockingOpen);
+  if (uiKind === "collapse") return Boolean(uiState.collapseOpen);
+  return Boolean(uiState.blockingOpen);
+}
+
 async function activeWatcherHardUiStepV4({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
   if (isNavigationStep(step)) return null;
 
-  const verifyKind = activeWatcherHardVerifyKindV4(step);
+  const verify = activeWatcherHardVerifyKindV4(step);
 
-  if (verifyKind) {
+  if (verify) {
     const uiState = await probePlaywrightUiState({
       currentUrl,
       navigate: false,
@@ -1565,23 +1301,27 @@ async function activeWatcherHardUiStepV4({ step = {}, stepNumber = 0, currentUrl
       error: err instanceof Error ? err.message : String(err),
     }));
 
-    const open = Boolean(uiState.modalOpen || uiState.dialogOpen || uiState.blockingOpen);
-    const passed = verifyKind === "opened" ? open : !open;
+    const open = activeWatcherUiOpenStateV4(uiState, verify.uiKind);
+    const passed = verify.expected === "opened" ? open : !open;
 
     const summary = passed
-      ? `Active watcher verified modal ${verifyKind} using live Playwright UI state.`
-      : `Active watcher could not verify modal ${verifyKind}; live state says modalOpen=${open}.`;
+      ? `Active watcher verified ${verify.uiKind} ${verify.expected} using live Playwright UI state.`
+      : `Active watcher could not verify ${verify.uiKind} ${verify.expected}; live state says open=${open}.`;
 
     trace.push(traceEntry({
       role: "watcher",
       title: "Active watcher hard UI step",
       step: stepNumber,
-      status: passed ? "passed_ui_state_v4" : "failed_ui_state_v4",
+      status: passed ? "passed_ui_state" : "failed_ui_state",
       input: step,
       output: {
-        expected: verifyKind,
+        expected: verify.expected,
+        uiKind: verify.uiKind,
         modalOpen: Boolean(uiState.modalOpen),
         dialogOpen: Boolean(uiState.dialogOpen),
+        dropdownOpen: Boolean(uiState.dropdownOpen),
+        offcanvasOpen: Boolean(uiState.offcanvasOpen),
+        collapseOpen: Boolean(uiState.collapseOpen),
         blockingOpen: Boolean(uiState.blockingOpen),
         dialogs: Array.isArray(uiState.dialogs) ? uiState.dialogs.slice(0, 2) : [],
         error: uiState.error || "",
@@ -1607,11 +1347,11 @@ async function activeWatcherHardUiStepV4({ step = {}, stepNumber = 0, currentUrl
           tool: "browserObserve",
           args: {
             currentUrl,
-            uiKind: "modal",
-            expected: verifyKind,
+            uiKind: verify.uiKind,
+            expected: verify.expected,
             navigate: false,
           },
-          notes: "Active watcher consumed this modal verification step before Lightpanda/LLM could disturb live UI.",
+          notes: "Active watcher consumed this UI verification step before Lightpanda/LLM could disturb live UI.",
         },
         finalObservation: {
           url: uiState.url || currentUrl,
@@ -1627,6 +1367,81 @@ async function activeWatcherHardUiStepV4({ step = {}, stepNumber = 0, currentUrl
         uiState,
       },
     };
+  }
+
+  if (activeWatcherCollapseToggleAgainStepV4(step)) {
+    const before = await probePlaywrightUiState({
+      currentUrl,
+      navigate: false,
+    }, currentState).catch(() => null);
+
+    if (before?.collapseOpen) {
+      const toggled = await togglePlaywrightOpenCollapse({
+        currentUrl,
+        navigate: false,
+      }, currentState).catch((err) => ({
+        ok: false,
+        toggled: false,
+        method: "error",
+        error: err instanceof Error ? err.message : String(err),
+      }));
+
+      const after = await probePlaywrightUiState({
+        currentUrl,
+        navigate: false,
+      }, currentState).catch(() => null);
+
+      const passed = toggled?.ok === true && !after?.collapseOpen;
+      const summary = passed
+        ? `Active watcher closed the current collapse using ${toggled.method || "collapse toggle"}.`
+        : "Active watcher clicked the current collapse toggle again, but the collapse remained open.";
+
+      trace.push(traceEntry({
+        role: "watcher",
+        title: "Active watcher hard UI step",
+        step: stepNumber,
+        status: passed ? "closed_collapse_ui" : "failed_to_close_collapse_ui",
+        input: step,
+        output: {
+          toggled,
+          before,
+          after,
+          openAfter: Boolean(after?.collapseOpen),
+        },
+        summary,
+        tool: "browserObserve",
+        ok: passed,
+      }));
+
+      return {
+        handled: true,
+        stepResult: {
+          stepNumber,
+          step,
+          ok: passed,
+          repaired: false,
+          status: passed ? "passed" : "failed",
+          summary,
+          url: after?.url || currentUrl,
+          title: after?.title || currentTitle,
+          command: {
+            intent: "close_active_collapse_ui",
+            tool: "browserObserve",
+            args: {
+              currentUrl,
+              method: toggled?.method || "",
+            },
+            notes: "Active watcher consumed a same-toggle-again collapse step against live UI before Step Agent/Lightpanda could misroute it.",
+          },
+        },
+        finalObservation: {
+          url: after?.url || currentUrl,
+          title: after?.title || currentTitle,
+          textPreview: summary,
+          uiState: after,
+        },
+      };
+    }
   }
 
   if (activeWatcherHardCloseStepV4(step)) {
@@ -1718,7 +1533,7 @@ async function activeWatcherHardUiStepV4({ step = {}, stepNumber = 0, currentUrl
       role: "watcher",
       title: "Active watcher hard UI step",
       step: stepNumber,
-      status: passed ? "closed_blocking_ui_v4" : "failed_to_close_blocking_ui_v4",
+      status: passed ? "closed_blocking_ui" : "failed_to_close_blocking_ui",
       input: step,
       output: {
         dismissed,
@@ -2491,77 +2306,6 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       continue;
     }
 
-    // ACTIVE_WATCHER_EARLY_RUNTIME_V3
-    // Run before Lightpanda/page-state/snapshot work. Those reads can reload/sync
-    // the page and destroy transient UI like modals, dropdowns, settings panels.
-    const earlyActiveWatcherVerifyV3 = await activeWatcherVerifyUiStepRuntimeV2({
-      step,
-      stepNumber,
-      currentUrl,
-      currentTitle,
-      currentState,
-      trace,
-    });
-
-    if (earlyActiveWatcherVerifyV3) {
-      currentUrl = earlyActiveWatcherVerifyV3.url || currentUrl;
-      currentTitle = earlyActiveWatcherVerifyV3.title || currentTitle;
-      finalObservation = earlyActiveWatcherVerifyV3.finalObservation || finalObservation;
-      stepResults.push(earlyActiveWatcherVerifyV3);
-
-      if (!earlyActiveWatcherVerifyV3.ok) {
-        stoppedReason = earlyActiveWatcherVerifyV3.summary || "Active watcher UI verification failed.";
-        break;
-      }
-
-      continue;
-    }
-
-    const earlyActiveWatcherGuardV3 = await activeWatcherGuardRuntimeV2({
-      step,
-      stepNumber,
-      currentUrl,
-      currentTitle,
-      currentState,
-      trace,
-    });
-
-    if (earlyActiveWatcherGuardV3?.action === "executed_step") {
-      const stepResult = earlyActiveWatcherGuardV3.stepResult;
-      currentUrl = stepResult?.url || currentUrl;
-      currentTitle = stepResult?.title || currentTitle;
-      finalObservation = earlyActiveWatcherGuardV3.finalObservation || finalObservation;
-      stepResults.push(stepResult);
-
-      if (!stepResult?.ok) {
-        stoppedReason = stepResult?.summary || "Active watcher failed while handling blocking UI.";
-        break;
-      }
-
-      continue;
-    }
-
-    if (earlyActiveWatcherGuardV3?.ok === false) {
-      stoppedReason = "Active watcher found a blocking UI and could not safely dismiss it before the next unrelated step.";
-      stepResults.push({
-        stepNumber,
-        step,
-        ok: false,
-        repaired: false,
-        status: "blocked_by_active_ui",
-        summary: stoppedReason,
-        url: currentUrl,
-        title: currentTitle,
-        command: {
-          intent: "watcher_guard",
-          tool: "browserObserve",
-          args: { currentUrl },
-          notes: "Blocked by early active watcher before Lightpanda/page-state work.",
-        },
-      });
-      break;
-    }
-
     const stepTargetUrl = targetUrlForStep(step, instruction);
     const shouldLightpandaReadStepTarget =
       !currentUrl &&
@@ -3009,75 +2753,6 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     const beforeImages = snapshotImagesForModel(before?.snapshot);
     const compactBeforeState = compactBrowserStateForModel(beforeState);
 
-    // ACTIVE_WATCHER_GUARD_CALL_V2
-    const activeWatcherGuardV2 = await activeWatcherGuardRuntimeV2({
-      step,
-      stepNumber,
-      currentUrl,
-      currentTitle,
-      currentState,
-      trace,
-    });
-
-    if (activeWatcherGuardV2?.action === "executed_step") {
-      const stepResult = activeWatcherGuardV2.stepResult;
-      currentUrl = stepResult?.url || currentUrl;
-      currentTitle = stepResult?.title || currentTitle;
-      finalObservation = activeWatcherGuardV2.finalObservation || finalObservation;
-      stepResults.push(stepResult);
-
-      if (!stepResult?.ok) {
-        stoppedReason = stepResult?.summary || "Active watcher failed while handling blocking UI.";
-        break;
-      }
-
-      continue;
-    }
-
-    if (activeWatcherGuardV2?.ok === false) {
-      stoppedReason = "Active watcher found a blocking UI and could not safely dismiss it before the next unrelated step.";
-      stepResults.push({
-        stepNumber,
-        step,
-        ok: false,
-        repaired: false,
-        status: "blocked_by_active_ui",
-        summary: stoppedReason,
-        url: currentUrl,
-        title: currentTitle,
-        command: {
-          intent: "watcher_guard",
-          tool: "browserObserve",
-          args: { currentUrl },
-          notes: "Blocked by active watcher before executing this step.",
-        },
-      });
-      break;
-    }
-
-    const activeWatcherVerifyV2 = await activeWatcherVerifyUiStepRuntimeV2({
-      step,
-      stepNumber,
-      currentUrl,
-      currentTitle,
-      currentState,
-      trace,
-    });
-
-    if (activeWatcherVerifyV2) {
-      currentUrl = activeWatcherVerifyV2.url || currentUrl;
-      currentTitle = activeWatcherVerifyV2.title || currentTitle;
-      finalObservation = activeWatcherVerifyV2.finalObservation || finalObservation;
-      stepResults.push(activeWatcherVerifyV2);
-
-      if (!activeWatcherVerifyV2.ok) {
-        stoppedReason = activeWatcherVerifyV2.summary || "Active watcher UI verification failed.";
-        break;
-      }
-
-      continue;
-    }
-
     if (envFlag("BROWSER_AGENT_REPORT_STEP_FAST_PATH", true) && isReportOnlyStep(step)) {
       const observation = observationFromPageState(beforeState) || before?.observation || observationFromExecution(null, before);
       currentUrl = observation.url || currentUrl;
@@ -3205,7 +2880,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       );
 
       if (
-        isGenericCloseDismissStep(step) &&
+        activeWatcherHardCloseStepV4(step) &&
         !agentProducedExecutableCommand
       ) {
         stepPlan = {
@@ -3469,74 +3144,10 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ok: execution.ok === true,
     }));
 
-    // POST_ACTION_MODAL_REPAIR_V3
-    if (execution?.ok === true && postActionExpectedModalOpenV3(step, executionCommand)) {
-      let liveUiAfterClick = await probePlaywrightUiState({
-        currentUrl: execution.observation?.url || currentUrl || "",
-        navigate: false,
-      }, currentState).catch((err) => ({
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      }));
-
-      if (!(liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen)) {
-        const repairTargetText = postActionTargetTextV3(step, executionCommand, instruction);
-        const activation = await activatePlaywrightControlByText({
-          currentUrl,
-          targetText: repairTargetText,
-          intent: step.instruction || "",
-          navigate: false,
-        }, currentState).catch((err) => ({
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        }));
-
-        liveUiAfterClick = await probePlaywrightUiState({
-          currentUrl: execution.observation?.url || currentUrl || "",
-          navigate: false,
-        }, currentState).catch((err) => ({
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        }));
-
-        trace.push(traceEntry({
-          role: "watcher",
-          title: "Post-action UI repair watcher",
-          step: stepNumber,
-          status: liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen ? "repaired_modal_open" : "modal_still_closed",
-          input: {
-            step,
-            command: executionCommand,
-            repairTargetText,
-          },
-          output: {
-            activation,
-            modalOpen: Boolean(liveUiAfterClick?.modalOpen),
-            dialogOpen: Boolean(liveUiAfterClick?.dialogOpen),
-            probeError: liveUiAfterClick?.error || "",
-          },
-          summary: liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen
-            ? "Watcher repaired the click by deterministically activating the visible control and verified the modal opened."
-            : "Watcher tried deterministic activation, but the modal still did not open.",
-          tool: "browserObserve",
-          ok: Boolean(liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen),
-        }));
-
-        if (liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen) {
-          finalObservation = {
-            url: liveUiAfterClick.url || currentUrl,
-            title: liveUiAfterClick.title || currentTitle,
-            textPreview: "Modal opened after post-action UI repair.",
-            uiState: liveUiAfterClick,
-          };
-        }
-      }
-    }
-
     let resultCheckCall = null;
     let resultCheck = null;
 
-    const deterministicUiCheckV2 = await deterministicUiStateResultCheckV2({
+    const deterministicUiCheckV2 = await deterministicUiStateResultCheck({
       step,
       command: executionCommand,
       execution,
@@ -3550,7 +3161,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         role: "gemma_result_checker",
         title: "Deterministic UI result checker",
         step: stepNumber,
-        status: "auto_passed_ui_state_v2",
+        status: "auto_passed_ui_state",
         input: {
           step,
           command: executionCommand,
@@ -3562,7 +3173,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     } else {
 
-    const deterministicUiCheck = await deterministicUiResultCheckForStep({
+    const deterministicUiCheck = await deterministicUiStateResultCheck({
       step,
       command: executionCommand,
       execution,
