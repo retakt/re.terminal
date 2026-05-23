@@ -89,6 +89,101 @@ function compactPreview(value: unknown, limit = 180) {
   return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
 }
 
+type BrowserAgentTraceEntry = {
+  role?: string;
+  title?: string;
+  model?: string;
+  status?: string;
+  step?: number | null;
+  tool?: string;
+  ok?: boolean | null;
+  durationMs?: number | null;
+  tokens?: number | null;
+  input?: unknown;
+  output?: unknown;
+  summary?: unknown;
+  reasoning?: string;
+};
+
+function parseJsonMaybe(value = ""): any | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    const start = value.indexOf("{");
+    const end = value.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(value.slice(start, end + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function browserAgentTraceFromResult(result = ""): BrowserAgentTraceEntry[] {
+  const data = parseJsonMaybe(result);
+  const trace = Array.isArray(data?.agentTrace)
+    ? data.agentTrace
+    : Array.isArray(data?.pipeline?.agentTrace)
+      ? data.pipeline.agentTrace
+      : [];
+  return trace.filter(Boolean).slice(0, 80);
+}
+
+function traceRoleLabel(role = "") {
+  return role
+    .replace(/^gemma_/i, "gemma ")
+    .replace(/^main_/i, "main ")
+    .replace(/^playwright_/i, "playwright ")
+    .replace(/_/g, " ")
+    .trim() || "agent";
+}
+
+function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
+  if (!trace.length) return null;
+
+  return (
+    <div className="run-reasoning-block">
+      <div className="run-reasoning-block__head">
+        <BrainIcon className="size-3 text-primary" />
+        <span>browser agent trace</span>
+        <em>{trace.length} events</em>
+      </div>
+      <div className="space-y-1.5 p-2">
+        {trace.map((entry, index) => (
+          <div key={`${entry.role || "agent"}-${entry.step ?? "x"}-${index}`} className="rounded-sm border border-border/60 bg-background/60 p-2">
+            <div className="flex items-center gap-1.5">
+              {statusIcon(entry.ok === false ? "error" : entry.status === "running" ? "running" : "complete")}
+              <span className="font-mono text-[10px] font-semibold uppercase text-foreground">
+                {entry.step ? `step ${entry.step} · ` : ""}{entry.title || traceRoleLabel(entry.role)}
+              </span>
+              {entry.model && (
+                <span className="ml-auto max-w-32 truncate rounded-sm border border-primary/20 px-1 font-mono text-[9px] text-muted-foreground">
+                  {shortModelName(entry.model)}
+                </span>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1 font-mono text-[9px] text-muted-foreground">
+              {entry.status && <span>status={entry.status}</span>}
+              {entry.tool && <span>tool={entry.tool}</span>}
+              {typeof entry.tokens === "number" && <span>{entry.tokens.toLocaleString()} tok</span>}
+              {typeof entry.durationMs === "number" && <span>{durationText(entry.durationMs)}</span>}
+            </div>
+            {entry.summary != null && String(entry.summary).trim() && (
+              <div className="mt-1 text-[11px] leading-4 text-foreground/90">
+                {compactPreview(entry.summary, 280)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function durationText(ms?: number) {
   if (typeof ms !== "number") return "running";
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
@@ -533,6 +628,9 @@ function RunToolGroup({
   const latest = logs[logs.length - 1];
   const hasError = logs.some((log) => log.status === "error");
   const totalDuration = logs.reduce((sum, log) => sum + (log.durationMs || 0), 0);
+  const browserAgentTrace = latest?.tool === "mcp__browser_agent__run"
+    ? browserAgentTraceFromResult(latest.result)
+    : [];
 
   if (!latest) return null;
 
@@ -556,6 +654,9 @@ function RunToolGroup({
         <span>{hasError ? "err" : "out"}</span>
         <code>{compactPreview(latest.result, 180) || (latest.status === "running" ? "running" : "empty")}</code>
       </div>
+      {browserAgentTrace.length > 0 && (
+        <BrowserAgentTraceView trace={browserAgentTrace} />
+      )}
       {expanded && (
         <div className="run-tool-expanded">
           {logs.map((log, index) => (
