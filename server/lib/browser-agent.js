@@ -2941,10 +2941,113 @@ export async function browserAgentRun(args = {}) {
     instruction,
   };
 
+  function splitBrowserInstructionSequence(text = "") {
+    const raw = String(text || "").trim();
+    if (!raw) return [];
+
+    const normalized = raw
+      .replace(/\bthen\b/gi, "|||then|||")
+      .replace(/\band then\b/gi, "|||then|||")
+      .replace(/\bafter that\b/gi, "|||then|||")
+      .replace(/\bnext\b/gi, "|||then|||");
+
+    const parts = normalized
+      .split("|||then|||")
+      .map((part) => part.trim().replace(/^[,.;:\-\s]+|[,.;:\-\s]+$/g, ""))
+      .filter(Boolean);
+
+    if (parts.length <= 1) return [];
+
+    const firstUrl = raw.match(/https?:\/\/[^\s,.;]+/i)?.[0] || "";
+    return parts.map((part, index) => {
+      if (index === 0 || !firstUrl) return part;
+      if (/\b(open|visit|go to|navigate)\b/i.test(part) || /https?:\/\//i.test(part)) return part;
+      return `${part} on the current page`;
+    }).slice(0, Math.max(1, Math.min(Number(process.env.BROWSER_AGENT_MAX_SEQUENCE_STEPS || 6), 10)));
+  }
+
+  async function runBrowserAgentPipelineSequence(sequenceItems = []) {
+    const items = [];
+    let rollingState = state;
+    let currentUrl = args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "";
+    let currentTitle = args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "";
+    let finalResult = null;
+
+    for (let index = 0; index < sequenceItems.length; index += 1) {
+      const stepInstruction = sequenceItems[index];
+      const stepResult = await runBrowserAgentPipeline({
+        ...baseArgs,
+        instruction: stepInstruction,
+        state: rollingState,
+        currentUrl,
+        currentTitle,
+      });
+
+      const stepObservation = stepResult?.pipeline?.browserExecution?.observation || null;
+      if (stepObservation && isValidObservation(stepObservation)) {
+        const pageKey = pageKeyForObservation(null, stepObservation);
+        rollingState = updateStateFromObservation(rollingState, stepObservation, null, pageKey);
+        currentUrl = stepObservation.url || stepResult.currentUrl || currentUrl;
+        currentTitle = stepObservation.title || stepResult.currentTitle || currentTitle;
+      } else {
+        currentUrl = stepResult.currentUrl || currentUrl;
+        currentTitle = stepResult.currentTitle || currentTitle;
+      }
+
+      items.push({
+        index,
+        instruction: stepInstruction,
+        ok: Boolean(stepResult.ok),
+        status: stepResult.status || "",
+        summary: stepResult.summary || "",
+        currentUrl,
+        currentTitle,
+        blockedReason: stepResult.blockedReason || "",
+        visualCrosscheck: stepResult.pipeline?.visualCrosscheck || null,
+      });
+
+      finalResult = stepResult;
+
+      if (!stepResult.ok && stepResult.requiresUser) break;
+    }
+
+    const completed = items.filter((item) => item.ok).length;
+    const total = sequenceItems.length;
+    const last = finalResult || {};
+
+    return {
+      ...last,
+      ok: completed === total && Boolean(last.ok),
+      status: completed === total && Boolean(last.ok) ? "success" : "partial",
+      instruction,
+      currentUrl,
+      currentTitle,
+      state: rollingState,
+      summary: completed === total
+        ? last.summary || "Completed the browser sequence."
+        : `Completed ${completed} of ${total} browser steps. Last result: ${last.summary || "No summary."}`,
+      requiresUser: completed !== total || Boolean(last.requiresUser),
+      nextSafeAction: completed === total
+        ? last.nextSafeAction || "Continue with the next browser instruction."
+        : sequenceItems[completed] || last.nextSafeAction || "Continue the remaining browser step.",
+      sequence: {
+        completed,
+        total,
+        stoppedAt: completed < total ? completed : null,
+        items,
+      },
+    };
+  }
+
   // New browser architecture:
   // Browser mode now goes through the multi-agent pipeline by default.
   // The old deterministic watcher/runtime path is legacy-only.
   if (!envFlag("BROWSER_AGENT_LEGACY_RUNTIME", false)) {
+    const sequenceItems = splitBrowserInstructionSequence(instruction);
+    if (sequenceItems.length > 1 && !envFlag("BROWSER_AGENT_DISABLE_SEQUENCE", false)) {
+      return runBrowserAgentPipelineSequence(sequenceItems);
+    }
+
     const pipelineResult = await runBrowserAgentPipeline({
       ...baseArgs,
       state,
