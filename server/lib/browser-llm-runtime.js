@@ -333,6 +333,15 @@ function responseContent(data = {}) {
   ).trim();
 }
 
+function responseThinking(data = {}) {
+  return String(
+    data.thinking ??
+    data.message?.thinking ??
+    data.choices?.[0]?.message?.thinking ??
+    ""
+  ).trim();
+}
+
 function thinkUnsupportedError(data = {}, model = "") {
   const text = String(data?.error || data?.message || data?.response || "").toLowerCase();
   return Boolean(
@@ -417,6 +426,7 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
 
   return {
     content: responseContent(data),
+    thinking: responseThinking(data),
     usage,
     raw: data,
   };
