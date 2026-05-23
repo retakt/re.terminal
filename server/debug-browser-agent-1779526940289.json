@@ -7,8 +7,8 @@
   "extensionId": "",
   "pageKey": "help_example-domains",
   "engine": "playwright_mcp",
-  "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
-  "browserSummary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
+  "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
+  "browserSummary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
   "whatFound": {
     "ok": true,
     "url": "https://www.iana.org/help/example-domains",
@@ -30,11 +30,18 @@
     "visibility": "internal_only",
     "role": "third_party_watcher_spy",
     "status": "completed",
-    "completed": 3,
-    "total": 3,
+    "completed": 2,
+    "total": 2,
     "finalPage": "Example Domains — https://www.iana.org/help/example-domains",
     "failedStep": null,
-    "repairs": [],
+    "repairs": [
+      {
+        "role": "gemma_checker",
+        "step": 2,
+        "status": "repaired",
+        "summary": "Visible page text differs from instruction phrase but clearly points to same target. Using visible text 'Learn more' instead of 'More information' for accuracy."
+      }
+    ],
     "slowAgents": [],
     "keyEvents": [
       {
@@ -83,15 +90,15 @@
         "status": "ready",
         "ok": true,
         "tool": "browserClickByText",
-        "summary": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action."
+        "summary": "The instruction 'click on More information' matches the visible link 'Learn more' in the snapshot"
       },
       {
         "role": "gemma_checker",
         "step": 2,
-        "status": "auto_approved_snapshot_crosscheck",
+        "status": "repaired",
         "ok": true,
         "tool": "browserClickByText",
-        "summary": "Snapshot checker confirmed the non-sensitive click target before model checker was needed."
+        "summary": "Visible page text differs from instruction phrase but clearly points to same target. Using visible text 'Learn more' instead of 'More information' for accuracy."
       },
       {
         "role": "playwright_controller",
@@ -116,7 +123,9 @@
       "responseStyle": "concise, useful, mention final result and optional next step"
     },
     "responseGuidanceForMain": "concise, useful, mention final result and optional next step",
-    "privateNotesForMain": [],
+    "privateNotesForMain": [
+      "Some command repair happened; mention only if useful."
+    ],
     "avoidInUserAnswer": [
       "raw snapshots",
       "full YAML",
@@ -136,14 +145,9 @@
         "successCriteria": "currentUrl is https://example.com"
       },
       {
-        "instruction": "click More information",
+        "instruction": "click on More information",
         "expectedAction": "click",
         "successCriteria": "lastObservation contains 'More information'"
-      },
-      {
-        "instruction": "verify/report final result",
-        "expectedAction": "report",
-        "successCriteria": "lastObservation is not null"
       }
     ],
     "messageToUser": "",
@@ -151,7 +155,7 @@
   },
   "reporter": {
     "success": true,
-    "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
+    "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
     "needsUser": false,
     "nextSafeAction": null,
     "missingSteps": [],
@@ -294,22 +298,26 @@
     "missing": []
   },
   "runtimeTiming": {
-    "totalMs": 21166.4,
-    "pipelineMs": 21166.4,
+    "totalMs": 31068.1,
+    "pipelineMs": 31068.1,
     "mainModelMs": 0
   },
   "tokenUsage": {
-    "totalTokens": 5718,
+    "totalTokens": 7313,
     "planner": {
       "role": "main_orchestrator",
-      "title": "Main model intent orchestrator",
+      "title": "Orchestrator",
+      "roleLabel": "Orchestrator",
+      "agentName": "Orchestrator",
+      "agentKind": "orchestrator",
       "model": "llama3.2:latest",
+      "modelLabel": "llama3.2",
       "status": "ready",
       "step": null,
       "tool": "",
       "ok": true,
-      "durationMs": 4744,
-      "tokens": 666,
+      "durationMs": 6034,
+      "tokens": 632,
       "input": "Open https://example.com and click More information.",
       "output": {
         "status": "ready",
@@ -321,14 +329,9 @@
             "successCriteria": "currentUrl is https://example.com"
           },
           {
-            "instruction": "click More information",
+            "instruction": "click on More information",
             "expectedAction": "click",
             "successCriteria": "lastObservation contains 'More information'"
-          },
-          {
-            "instruction": "verify/report final result",
-            "expectedAction": "report",
-            "successCriteria": "lastObservation is not null"
           }
         ],
         "messageToUser": "",
@@ -339,14 +342,18 @@
     },
     "reporter": {
       "role": "final_verifier",
-      "title": "Final verifier",
+      "title": "Main Response",
+      "roleLabel": "Main Response",
+      "agentName": "Main Response",
+      "agentKind": "main_response",
       "model": "llama3.2:latest",
+      "modelLabel": "llama3.2",
       "status": "verified",
       "step": null,
       "tool": "",
       "ok": true,
-      "durationMs": 3406,
-      "tokens": 3555,
+      "durationMs": 3114,
+      "tokens": 3553,
       "input": {
         "originalInstruction": "Open https://example.com and click More information.",
         "stepResults": [
@@ -375,7 +382,7 @@
           {
             "stepNumber": 2,
             "step": {
-              "instruction": "click More information",
+              "instruction": "click on More information",
               "expectedAction": "click",
               "successCriteria": "lastObservation contains 'More information'"
             },
@@ -389,59 +396,42 @@
               "intent": "click_or_open",
               "tool": "browserClickByText",
               "args": {
-                "currentUrl": "https://example.com/",
                 "text": "Learn more",
-                "ref": "e6"
+                "ref": "e6",
+                "currentUrl": "https://example.com/"
               },
-              "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
-            }
-          },
-          {
-            "stepNumber": 3,
-            "step": {
-              "instruction": "verify/report final result",
-              "expectedAction": "report",
-              "successCriteria": "lastObservation is not null"
-            },
-            "ok": true,
-            "repaired": false,
-            "status": "passed",
-            "summary": "Example Domains — https://www.iana.org/help/example-domains",
-            "url": "https://www.iana.org/help/example-domains",
-            "title": "Example Domains",
-            "command": {
-              "intent": "observe",
-              "tool": "browserObserve",
-              "args": {
-                "currentUrl": "https://www.iana.org/help/example-domains"
-              }
+              "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
             }
           }
         ]
       },
       "output": {
         "success": true,
-        "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
+        "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
         "needsUser": false,
         "nextSafeAction": null,
         "missingSteps": [],
         "reason": ""
       },
-      "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
+      "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
       "reasoning": ""
     }
   },
   "agentTrace": [
     {
       "role": "main_orchestrator",
-      "title": "Main model intent orchestrator",
+      "title": "Orchestrator",
+      "roleLabel": "Orchestrator",
+      "agentName": "Orchestrator",
+      "agentKind": "orchestrator",
       "model": "llama3.2:latest",
+      "modelLabel": "llama3.2",
       "status": "ready",
       "step": null,
       "tool": "",
       "ok": true,
-      "durationMs": 4744,
-      "tokens": 666,
+      "durationMs": 6034,
+      "tokens": 632,
       "input": "Open https://example.com and click More information.",
       "output": {
         "status": "ready",
@@ -453,14 +443,9 @@
             "successCriteria": "currentUrl is https://example.com"
           },
           {
-            "instruction": "click More information",
+            "instruction": "click on More information",
             "expectedAction": "click",
             "successCriteria": "lastObservation contains 'More information'"
-          },
-          {
-            "instruction": "verify/report final result",
-            "expectedAction": "report",
-            "successCriteria": "lastObservation is not null"
           }
         ],
         "messageToUser": "",
@@ -472,7 +457,11 @@
     {
       "role": "sequence_step",
       "title": "Step 1",
+      "roleLabel": "Step 1",
+      "agentName": "Step 1",
+      "agentKind": "agent",
       "model": "",
+      "modelLabel": "",
       "status": "started",
       "step": 1,
       "tool": "",
@@ -486,8 +475,12 @@
     },
     {
       "role": "gemma_step_agent",
-      "title": "Gemma step agent",
+      "title": "Step Agent",
+      "roleLabel": "Step Agent",
+      "agentName": "Step Agent",
+      "agentKind": "step_agent",
       "model": "",
+      "modelLabel": "",
       "status": "synthetic_ready",
       "step": 1,
       "tool": "browserNavigate",
@@ -519,8 +512,12 @@
     },
     {
       "role": "gemma_checker",
-      "title": "Gemma command checker",
+      "title": "Checker",
+      "roleLabel": "Checker",
+      "agentName": "Checker",
+      "agentKind": "checker",
       "model": "",
+      "modelLabel": "",
       "status": "auto_approved",
       "step": 1,
       "tool": "browserNavigate",
@@ -563,8 +560,12 @@
     },
     {
       "role": "playwright_controller",
-      "title": "Playwright browser controller",
+      "title": "Browser",
+      "roleLabel": "Browser",
+      "agentName": "Browser",
+      "agentKind": "browser",
       "model": "",
+      "modelLabel": "",
       "status": "executed",
       "step": 1,
       "tool": "browserNavigate",
@@ -583,15 +584,19 @@
         "url": "https://example.com/",
         "title": "Example Domain",
         "error": "",
-        "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-43-26-878Z.yml)"
+        "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T09-01-56-927Z.yml)"
       },
       "summary": "Example Domain — https://example.com/",
       "reasoning": ""
     },
     {
       "role": "gemma_result_checker",
-      "title": "Gemma result checker",
+      "title": "Watcher",
+      "roleLabel": "Watcher",
+      "agentName": "Watcher",
+      "agentKind": "watcher",
       "model": "",
+      "modelLabel": "",
       "status": "auto_passed",
       "step": 1,
       "tool": "",
@@ -642,30 +647,38 @@
     {
       "role": "sequence_step",
       "title": "Step 2",
+      "roleLabel": "Step 2",
+      "agentName": "Step 2",
+      "agentKind": "agent",
       "model": "",
+      "modelLabel": "",
       "status": "started",
       "step": 2,
       "tool": "",
       "ok": null,
       "durationMs": null,
       "tokens": null,
-      "input": "click More information",
+      "input": "click on More information",
       "output": "",
       "summary": "lastObservation contains 'More information'",
       "reasoning": ""
     },
     {
       "role": "gemma_step_agent",
-      "title": "Gemma step agent",
+      "title": "Step Agent",
+      "roleLabel": "Step Agent",
+      "agentName": "Step Agent",
+      "agentKind": "step_agent",
       "model": "qwen3.5:2b",
+      "modelLabel": "qwen3.5:2b",
       "status": "ready",
       "step": 2,
       "tool": "browserClickByText",
       "ok": true,
-      "durationMs": 4280,
-      "tokens": 1497,
+      "durationMs": 8161,
+      "tokens": 1576,
       "input": {
-        "instruction": "click More information",
+        "instruction": "click on More information",
         "expectedAction": "click",
         "successCriteria": "lastObservation contains 'More information'"
       },
@@ -675,76 +688,77 @@
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
-            "currentUrl": "https://example.com/",
             "text": "Learn more",
             "ref": "e6"
           },
-          "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action.",
-          "reason": "Snapshot shows 'Learn more' link with ref=e6. This is the visible equivalent of 'More information' button/link.",
-          "messageToChecker": "Clicking 'Learn more' will trigger navigation to the information page.",
-          "messageToUser": "Clicking 'Learn more' will open the information page.",
-          "confidence": 0.95
-        }
+          "notes": "Visible text 'Learn more' corresponds to 'More information' link"
+        },
+        "reason": "The instruction 'click on More information' matches the visible link 'Learn more' in the snapshot",
+        "messageToChecker": "Clicking 'Learn more' will fulfill the 'click More information' instruction",
+        "messageToUser": "Click the 'Learn more' link visible on the page",
+        "confidence": 0.9
       },
-      "summary": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action.",
+      "summary": "The instruction 'click on More information' matches the visible link 'Learn more' in the snapshot",
       "reasoning": ""
     },
     {
       "role": "gemma_checker",
-      "title": "Snapshot command checker",
-      "model": "",
-      "status": "auto_approved_snapshot_crosscheck",
+      "title": "Checker",
+      "roleLabel": "Checker",
+      "agentName": "Checker",
+      "agentKind": "checker",
+      "model": "qwen3.5:2b",
+      "modelLabel": "qwen3.5:2b",
+      "status": "repaired",
       "step": 2,
       "tool": "browserClickByText",
       "ok": true,
-      "durationMs": null,
-      "tokens": null,
+      "durationMs": 7298,
+      "tokens": 1552,
       "input": {
         "status": "ready",
         "command": {
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
-            "currentUrl": "https://example.com/",
             "text": "Learn more",
             "ref": "e6"
           },
-          "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action.",
-          "reason": "Snapshot shows 'Learn more' link with ref=e6. This is the visible equivalent of 'More information' button/link.",
-          "messageToChecker": "Clicking 'Learn more' will trigger navigation to the information page.",
-          "messageToUser": "Clicking 'Learn more' will open the information page.",
-          "confidence": 0.95
-        }
+          "notes": "Visible text 'Learn more' corresponds to 'More information' link"
+        },
+        "reason": "The instruction 'click on More information' matches the visible link 'Learn more' in the snapshot",
+        "messageToChecker": "Clicking 'Learn more' will fulfill the 'click More information' instruction",
+        "messageToUser": "Click the 'Learn more' link visible on the page",
+        "confidence": 0.9
       },
       "output": {
-        "status": "auto_approved_snapshot_crosscheck",
+        "status": "repaired",
         "approved": true,
         "command": {
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
-            "currentUrl": "https://example.com/",
             "text": "Learn more",
             "ref": "e6"
           },
-          "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more",
-          "reason": "Snapshot shows 'Learn more' link with ref=e6. This is the visible equivalent of 'More information' button/link.",
-          "messageToChecker": "Clicking 'Learn more' will trigger navigation to the information page.",
-          "messageToUser": "Clicking 'Learn more' will open the information page.",
-          "confidence": 0.95
+          "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
         },
-        "reason": "Snapshot checker confirmed the non-sensitive click target before model checker was needed.",
-        "repairInstruction": "",
-        "messageToUser": "",
-        "confidence": 0.85
+        "reason": "Visible page text differs from instruction phrase but clearly points to same target. Using visible text 'Learn more' instead of 'More information' for accuracy.",
+        "repairInstruction": "Replace 'More information' with 'Learn more' in the click command",
+        "messageToUser": "Command repaired: Clicking 'Learn more' instead of 'More information' as that's the visible text on the page.",
+        "confidence": 0.95
       },
-      "summary": "Snapshot checker confirmed the non-sensitive click target before model checker was needed.",
+      "summary": "Visible page text differs from instruction phrase but clearly points to same target. Using visible text 'Learn more' instead of 'More information' for accuracy.",
       "reasoning": ""
     },
     {
       "role": "playwright_controller",
-      "title": "Playwright browser controller",
+      "title": "Browser",
+      "roleLabel": "Browser",
+      "agentName": "Browser",
+      "agentKind": "browser",
       "model": "",
+      "modelLabel": "",
       "status": "executed",
       "step": 2,
       "tool": "browserClickByText",
@@ -755,25 +769,29 @@
         "intent": "click_or_open",
         "tool": "browserClickByText",
         "args": {
-          "currentUrl": "https://example.com/",
           "text": "Learn more",
-          "ref": "e6"
+          "ref": "e6",
+          "currentUrl": "https://example.com/"
         },
-        "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
+        "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
       },
       "output": {
         "url": "https://www.iana.org/help/example-domains",
         "title": "Example Domains",
         "error": "",
-        "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-43-37-878Z.yml)\n### Events\n- New console entries: .playwright-mcp\\console-2026-05-23T08-43-26-884Z.log#L1"
+        "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T09-02-17-156Z.yml)\n### Events\n- New console entries: .playwright-mcp\\console-2026-05-23T09-01-56-936Z.log#L1"
       },
       "summary": "Example Domains — https://www.iana.org/help/example-domains",
       "reasoning": ""
     },
     {
       "role": "gemma_result_checker",
-      "title": "Gemma result checker",
+      "title": "Watcher",
+      "roleLabel": "Watcher",
+      "agentName": "Watcher",
+      "agentKind": "watcher",
       "model": "",
+      "modelLabel": "",
       "status": "auto_passed",
       "step": 2,
       "tool": "",
@@ -782,7 +800,7 @@
       "tokens": null,
       "input": {
         "step": {
-          "instruction": "click More information",
+          "instruction": "click on More information",
           "expectedAction": "click",
           "successCriteria": "lastObservation contains 'More information'"
         },
@@ -790,11 +808,11 @@
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
-            "currentUrl": "https://example.com/",
             "text": "Learn more",
-            "ref": "e6"
+            "ref": "e6",
+            "currentUrl": "https://example.com/"
           },
-          "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
+          "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
         },
         "executionStatus": "executed"
       },
@@ -810,14 +828,14 @@
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
-            "currentUrl": "https://example.com/",
             "text": "Learn more",
-            "ref": "e6"
+            "ref": "e6",
+            "currentUrl": "https://example.com/"
           },
-          "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
+          "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
         },
         "step": {
-          "instruction": "click More information",
+          "instruction": "click on More information",
           "expectedAction": "click",
           "successCriteria": "lastObservation contains 'More information'"
         }
@@ -826,53 +844,19 @@
       "reasoning": ""
     },
     {
-      "role": "sequence_step",
-      "title": "Step 3",
-      "model": "",
-      "status": "started",
-      "step": 3,
-      "tool": "",
-      "ok": null,
-      "durationMs": null,
-      "tokens": null,
-      "input": "verify/report final result",
-      "output": "",
-      "summary": "lastObservation is not null",
-      "reasoning": ""
-    },
-    {
-      "role": "report_step_observe",
-      "title": "Report step observer",
-      "model": "",
-      "status": "passed",
-      "step": 3,
-      "tool": "browserObserve",
-      "ok": true,
-      "durationMs": null,
-      "tokens": null,
-      "input": {
-        "instruction": "verify/report final result",
-        "expectedAction": "report",
-        "successCriteria": "lastObservation is not null"
-      },
-      "output": {
-        "url": "https://www.iana.org/help/example-domains",
-        "title": "Example Domains",
-        "textPreview": "### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot ```yaml - generic [active] [ref=e1]: - banner [ref=e2]: - generic [ref=e3]: - link \"Homepage\" [ref=e5] [cursor=pointer]: - /url: / - img \"Homepage\" [ref=e6] - generic [ref=e7]: - list: - listitem [ref=e8]: - link \"Domains\" [ref=e9] [cursor=pointer]: - /url: /domains - listitem [ref=e10]: - link \"Protocols\" [ref=e11] [cursor=pointer]: - /url: /protocols - listitem [ref=e12]: - link \"Numbers\" [ref=e13] [cursor=pointer]: - /url: /numbers - listitem [ref=e14]: - link \"About\" [ref=e15] [cursor=pointer]: - /url: /about - article [ref=e17]: - main [ref=e18]: - generic [ref=e19]: - heading \"Example Domains\" [level=1] [ref=e20] - paragraph [ref=e21]: - text: As described in - link \"RFC 2606\" [ref=e22] [cursor=pointer]: - /url: /go/rfc2606 - text: and - link \"RFC 6761\" [ref=e23] [cursor=pointe"
-      },
-      "summary": "Example Domains — https://www.iana.org/help/example-domains",
-      "reasoning": ""
-    },
-    {
       "role": "final_verifier",
-      "title": "Final verifier",
+      "title": "Main Response",
+      "roleLabel": "Main Response",
+      "agentName": "Main Response",
+      "agentKind": "main_response",
       "model": "llama3.2:latest",
+      "modelLabel": "llama3.2",
       "status": "verified",
       "step": null,
       "tool": "",
       "ok": true,
-      "durationMs": 3406,
-      "tokens": 3555,
+      "durationMs": 3114,
+      "tokens": 3553,
       "input": {
         "originalInstruction": "Open https://example.com and click More information.",
         "stepResults": [
@@ -901,7 +885,7 @@
           {
             "stepNumber": 2,
             "step": {
-              "instruction": "click More information",
+              "instruction": "click on More information",
               "expectedAction": "click",
               "successCriteria": "lastObservation contains 'More information'"
             },
@@ -915,51 +899,30 @@
               "intent": "click_or_open",
               "tool": "browserClickByText",
               "args": {
-                "currentUrl": "https://example.com/",
                 "text": "Learn more",
-                "ref": "e6"
+                "ref": "e6",
+                "currentUrl": "https://example.com/"
               },
-              "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
-            }
-          },
-          {
-            "stepNumber": 3,
-            "step": {
-              "instruction": "verify/report final result",
-              "expectedAction": "report",
-              "successCriteria": "lastObservation is not null"
-            },
-            "ok": true,
-            "repaired": false,
-            "status": "passed",
-            "summary": "Example Domains — https://www.iana.org/help/example-domains",
-            "url": "https://www.iana.org/help/example-domains",
-            "title": "Example Domains",
-            "command": {
-              "intent": "observe",
-              "tool": "browserObserve",
-              "args": {
-                "currentUrl": "https://www.iana.org/help/example-domains"
-              }
+              "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
             }
           }
         ]
       },
       "output": {
         "success": true,
-        "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
+        "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
         "needsUser": false,
         "nextSafeAction": null,
         "missingSteps": [],
         "reason": ""
       },
-      "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
+      "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
       "reasoning": ""
     }
   ],
   "sequence": {
-    "completed": 3,
-    "total": 3,
+    "completed": 2,
+    "total": 2,
     "stoppedAt": null,
     "items": [
       {
@@ -974,20 +937,10 @@
       },
       {
         "index": 1,
-        "instruction": "click More information",
+        "instruction": "click on More information",
         "ok": true,
         "status": "passed",
         "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
-        "currentUrl": "https://www.iana.org/help/example-domains",
-        "currentTitle": "Example Domains",
-        "blockedReason": ""
-      },
-      {
-        "index": 2,
-        "instruction": "verify/report final result",
-        "ok": true,
-        "status": "passed",
-        "summary": "Example Domains — https://www.iana.org/help/example-domains",
         "currentUrl": "https://www.iana.org/help/example-domains",
         "currentTitle": "Example Domains",
         "blockedReason": ""
@@ -1133,14 +1086,18 @@
     "agentTrace": [
       {
         "role": "main_orchestrator",
-        "title": "Main model intent orchestrator",
+        "title": "Orchestrator",
+        "roleLabel": "Orchestrator",
+        "agentName": "Orchestrator",
+        "agentKind": "orchestrator",
         "model": "llama3.2:latest",
+        "modelLabel": "llama3.2",
         "status": "ready",
         "step": null,
         "tool": "",
         "ok": true,
-        "durationMs": 4744,
-        "tokens": 666,
+        "durationMs": 6034,
+        "tokens": 632,
         "input": "Open https://example.com and click More information.",
         "output": {
           "status": "ready",
@@ -1152,14 +1109,9 @@
               "successCriteria": "currentUrl is https://example.com"
             },
             {
-              "instruction": "click More information",
+              "instruction": "click on More information",
               "expectedAction": "click",
               "successCriteria": "lastObservation contains 'More information'"
-            },
-            {
-              "instruction": "verify/report final result",
-              "expectedAction": "report",
-              "successCriteria": "lastObservation is not null"
             }
           ],
           "messageToUser": "",
@@ -1171,7 +1123,11 @@
       {
         "role": "sequence_step",
         "title": "Step 1",
+        "roleLabel": "Step 1",
+        "agentName": "Step 1",
+        "agentKind": "agent",
         "model": "",
+        "modelLabel": "",
         "status": "started",
         "step": 1,
         "tool": "",
@@ -1185,8 +1141,12 @@
       },
       {
         "role": "gemma_step_agent",
-        "title": "Gemma step agent",
+        "title": "Step Agent",
+        "roleLabel": "Step Agent",
+        "agentName": "Step Agent",
+        "agentKind": "step_agent",
         "model": "",
+        "modelLabel": "",
         "status": "synthetic_ready",
         "step": 1,
         "tool": "browserNavigate",
@@ -1218,8 +1178,12 @@
       },
       {
         "role": "gemma_checker",
-        "title": "Gemma command checker",
+        "title": "Checker",
+        "roleLabel": "Checker",
+        "agentName": "Checker",
+        "agentKind": "checker",
         "model": "",
+        "modelLabel": "",
         "status": "auto_approved",
         "step": 1,
         "tool": "browserNavigate",
@@ -1262,8 +1226,12 @@
       },
       {
         "role": "playwright_controller",
-        "title": "Playwright browser controller",
+        "title": "Browser",
+        "roleLabel": "Browser",
+        "agentName": "Browser",
+        "agentKind": "browser",
         "model": "",
+        "modelLabel": "",
         "status": "executed",
         "step": 1,
         "tool": "browserNavigate",
@@ -1282,15 +1250,19 @@
           "url": "https://example.com/",
           "title": "Example Domain",
           "error": "",
-          "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-43-26-878Z.yml)"
+          "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T09-01-56-927Z.yml)"
         },
         "summary": "Example Domain — https://example.com/",
         "reasoning": ""
       },
       {
         "role": "gemma_result_checker",
-        "title": "Gemma result checker",
+        "title": "Watcher",
+        "roleLabel": "Watcher",
+        "agentName": "Watcher",
+        "agentKind": "watcher",
         "model": "",
+        "modelLabel": "",
         "status": "auto_passed",
         "step": 1,
         "tool": "",
@@ -1341,30 +1313,38 @@
       {
         "role": "sequence_step",
         "title": "Step 2",
+        "roleLabel": "Step 2",
+        "agentName": "Step 2",
+        "agentKind": "agent",
         "model": "",
+        "modelLabel": "",
         "status": "started",
         "step": 2,
         "tool": "",
         "ok": null,
         "durationMs": null,
         "tokens": null,
-        "input": "click More information",
+        "input": "click on More information",
         "output": "",
         "summary": "lastObservation contains 'More information'",
         "reasoning": ""
       },
       {
         "role": "gemma_step_agent",
-        "title": "Gemma step agent",
+        "title": "Step Agent",
+        "roleLabel": "Step Agent",
+        "agentName": "Step Agent",
+        "agentKind": "step_agent",
         "model": "qwen3.5:2b",
+        "modelLabel": "qwen3.5:2b",
         "status": "ready",
         "step": 2,
         "tool": "browserClickByText",
         "ok": true,
-        "durationMs": 4280,
-        "tokens": 1497,
+        "durationMs": 8161,
+        "tokens": 1576,
         "input": {
-          "instruction": "click More information",
+          "instruction": "click on More information",
           "expectedAction": "click",
           "successCriteria": "lastObservation contains 'More information'"
         },
@@ -1374,76 +1354,77 @@
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
-              "currentUrl": "https://example.com/",
               "text": "Learn more",
               "ref": "e6"
             },
-            "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action.",
-            "reason": "Snapshot shows 'Learn more' link with ref=e6. This is the visible equivalent of 'More information' button/link.",
-            "messageToChecker": "Clicking 'Learn more' will trigger navigation to the information page.",
-            "messageToUser": "Clicking 'Learn more' will open the information page.",
-            "confidence": 0.95
-          }
+            "notes": "Visible text 'Learn more' corresponds to 'More information' link"
+          },
+          "reason": "The instruction 'click on More information' matches the visible link 'Learn more' in the snapshot",
+          "messageToChecker": "Clicking 'Learn more' will fulfill the 'click More information' instruction",
+          "messageToUser": "Click the 'Learn more' link visible on the page",
+          "confidence": 0.9
         },
-        "summary": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action.",
+        "summary": "The instruction 'click on More information' matches the visible link 'Learn more' in the snapshot",
         "reasoning": ""
       },
       {
         "role": "gemma_checker",
-        "title": "Snapshot command checker",
-        "model": "",
-        "status": "auto_approved_snapshot_crosscheck",
+        "title": "Checker",
+        "roleLabel": "Checker",
+        "agentName": "Checker",
+        "agentKind": "checker",
+        "model": "qwen3.5:2b",
+        "modelLabel": "qwen3.5:2b",
+        "status": "repaired",
         "step": 2,
         "tool": "browserClickByText",
         "ok": true,
-        "durationMs": null,
-        "tokens": null,
+        "durationMs": 7298,
+        "tokens": 1552,
         "input": {
           "status": "ready",
           "command": {
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
-              "currentUrl": "https://example.com/",
               "text": "Learn more",
               "ref": "e6"
             },
-            "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action.",
-            "reason": "Snapshot shows 'Learn more' link with ref=e6. This is the visible equivalent of 'More information' button/link.",
-            "messageToChecker": "Clicking 'Learn more' will trigger navigation to the information page.",
-            "messageToUser": "Clicking 'Learn more' will open the information page.",
-            "confidence": 0.95
-          }
+            "notes": "Visible text 'Learn more' corresponds to 'More information' link"
+          },
+          "reason": "The instruction 'click on More information' matches the visible link 'Learn more' in the snapshot",
+          "messageToChecker": "Clicking 'Learn more' will fulfill the 'click More information' instruction",
+          "messageToUser": "Click the 'Learn more' link visible on the page",
+          "confidence": 0.9
         },
         "output": {
-          "status": "auto_approved_snapshot_crosscheck",
+          "status": "repaired",
           "approved": true,
           "command": {
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
-              "currentUrl": "https://example.com/",
               "text": "Learn more",
               "ref": "e6"
             },
-            "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more",
-            "reason": "Snapshot shows 'Learn more' link with ref=e6. This is the visible equivalent of 'More information' button/link.",
-            "messageToChecker": "Clicking 'Learn more' will trigger navigation to the information page.",
-            "messageToUser": "Clicking 'Learn more' will open the information page.",
-            "confidence": 0.95
+            "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
           },
-          "reason": "Snapshot checker confirmed the non-sensitive click target before model checker was needed.",
-          "repairInstruction": "",
-          "messageToUser": "",
-          "confidence": 0.85
+          "reason": "Visible page text differs from instruction phrase but clearly points to same target. Using visible text 'Learn more' instead of 'More information' for accuracy.",
+          "repairInstruction": "Replace 'More information' with 'Learn more' in the click command",
+          "messageToUser": "Command repaired: Clicking 'Learn more' instead of 'More information' as that's the visible text on the page.",
+          "confidence": 0.95
         },
-        "summary": "Snapshot checker confirmed the non-sensitive click target before model checker was needed.",
+        "summary": "Visible page text differs from instruction phrase but clearly points to same target. Using visible text 'Learn more' instead of 'More information' for accuracy.",
         "reasoning": ""
       },
       {
         "role": "playwright_controller",
-        "title": "Playwright browser controller",
+        "title": "Browser",
+        "roleLabel": "Browser",
+        "agentName": "Browser",
+        "agentKind": "browser",
         "model": "",
+        "modelLabel": "",
         "status": "executed",
         "step": 2,
         "tool": "browserClickByText",
@@ -1454,25 +1435,29 @@
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
-            "currentUrl": "https://example.com/",
             "text": "Learn more",
-            "ref": "e6"
+            "ref": "e6",
+            "currentUrl": "https://example.com/"
           },
-          "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
+          "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
         },
         "output": {
           "url": "https://www.iana.org/help/example-domains",
           "title": "Example Domains",
           "error": "",
-          "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-43-37-878Z.yml)\n### Events\n- New console entries: .playwright-mcp\\console-2026-05-23T08-43-26-884Z.log#L1"
+          "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T09-02-17-156Z.yml)\n### Events\n- New console entries: .playwright-mcp\\console-2026-05-23T09-01-56-936Z.log#L1"
         },
         "summary": "Example Domains — https://www.iana.org/help/example-domains",
         "reasoning": ""
       },
       {
         "role": "gemma_result_checker",
-        "title": "Gemma result checker",
+        "title": "Watcher",
+        "roleLabel": "Watcher",
+        "agentName": "Watcher",
+        "agentKind": "watcher",
         "model": "",
+        "modelLabel": "",
         "status": "auto_passed",
         "step": 2,
         "tool": "",
@@ -1481,7 +1466,7 @@
         "tokens": null,
         "input": {
           "step": {
-            "instruction": "click More information",
+            "instruction": "click on More information",
             "expectedAction": "click",
             "successCriteria": "lastObservation contains 'More information'"
           },
@@ -1489,11 +1474,11 @@
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
-              "currentUrl": "https://example.com/",
               "text": "Learn more",
-              "ref": "e6"
+              "ref": "e6",
+              "currentUrl": "https://example.com/"
             },
-            "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
+            "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
           },
           "executionStatus": "executed"
         },
@@ -1509,14 +1494,14 @@
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
-              "currentUrl": "https://example.com/",
               "text": "Learn more",
-              "ref": "e6"
+              "ref": "e6",
+              "currentUrl": "https://example.com/"
             },
-            "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
+            "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
           },
           "step": {
-            "instruction": "click More information",
+            "instruction": "click on More information",
             "expectedAction": "click",
             "successCriteria": "lastObservation contains 'More information'"
           }
@@ -1525,53 +1510,19 @@
         "reasoning": ""
       },
       {
-        "role": "sequence_step",
-        "title": "Step 3",
-        "model": "",
-        "status": "started",
-        "step": 3,
-        "tool": "",
-        "ok": null,
-        "durationMs": null,
-        "tokens": null,
-        "input": "verify/report final result",
-        "output": "",
-        "summary": "lastObservation is not null",
-        "reasoning": ""
-      },
-      {
-        "role": "report_step_observe",
-        "title": "Report step observer",
-        "model": "",
-        "status": "passed",
-        "step": 3,
-        "tool": "browserObserve",
-        "ok": true,
-        "durationMs": null,
-        "tokens": null,
-        "input": {
-          "instruction": "verify/report final result",
-          "expectedAction": "report",
-          "successCriteria": "lastObservation is not null"
-        },
-        "output": {
-          "url": "https://www.iana.org/help/example-domains",
-          "title": "Example Domains",
-          "textPreview": "### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot ```yaml - generic [active] [ref=e1]: - banner [ref=e2]: - generic [ref=e3]: - link \"Homepage\" [ref=e5] [cursor=pointer]: - /url: / - img \"Homepage\" [ref=e6] - generic [ref=e7]: - list: - listitem [ref=e8]: - link \"Domains\" [ref=e9] [cursor=pointer]: - /url: /domains - listitem [ref=e10]: - link \"Protocols\" [ref=e11] [cursor=pointer]: - /url: /protocols - listitem [ref=e12]: - link \"Numbers\" [ref=e13] [cursor=pointer]: - /url: /numbers - listitem [ref=e14]: - link \"About\" [ref=e15] [cursor=pointer]: - /url: /about - article [ref=e17]: - main [ref=e18]: - generic [ref=e19]: - heading \"Example Domains\" [level=1] [ref=e20] - paragraph [ref=e21]: - text: As described in - link \"RFC 2606\" [ref=e22] [cursor=pointer]: - /url: /go/rfc2606 - text: and - link \"RFC 6761\" [ref=e23] [cursor=pointe"
-        },
-        "summary": "Example Domains — https://www.iana.org/help/example-domains",
-        "reasoning": ""
-      },
-      {
         "role": "final_verifier",
-        "title": "Final verifier",
+        "title": "Main Response",
+        "roleLabel": "Main Response",
+        "agentName": "Main Response",
+        "agentKind": "main_response",
         "model": "llama3.2:latest",
+        "modelLabel": "llama3.2",
         "status": "verified",
         "step": null,
         "tool": "",
         "ok": true,
-        "durationMs": 3406,
-        "tokens": 3555,
+        "durationMs": 3114,
+        "tokens": 3553,
         "input": {
           "originalInstruction": "Open https://example.com and click More information.",
           "stepResults": [
@@ -1600,7 +1551,7 @@
             {
               "stepNumber": 2,
               "step": {
-                "instruction": "click More information",
+                "instruction": "click on More information",
                 "expectedAction": "click",
                 "successCriteria": "lastObservation contains 'More information'"
               },
@@ -1614,45 +1565,24 @@
                 "intent": "click_or_open",
                 "tool": "browserClickByText",
                 "args": {
-                  "currentUrl": "https://example.com/",
                   "text": "Learn more",
-                  "ref": "e6"
+                  "ref": "e6",
+                  "currentUrl": "https://example.com/"
                 },
-                "notes": "Visible link 'Learn more' on page matches semantic target 'More information'. Using visible text for click action. Snapshot-confirmed visible target: Learn more"
-              }
-            },
-            {
-              "stepNumber": 3,
-              "step": {
-                "instruction": "verify/report final result",
-                "expectedAction": "report",
-                "successCriteria": "lastObservation is not null"
-              },
-              "ok": true,
-              "repaired": false,
-              "status": "passed",
-              "summary": "Example Domains — https://www.iana.org/help/example-domains",
-              "url": "https://www.iana.org/help/example-domains",
-              "title": "Example Domains",
-              "command": {
-                "intent": "observe",
-                "tool": "browserObserve",
-                "args": {
-                  "currentUrl": "https://www.iana.org/help/example-domains"
-                }
+                "notes": "Visible text 'Learn more' corresponds to 'More information' link - using visible text for accuracy"
               }
             }
           ]
         },
         "output": {
           "success": true,
-          "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
+          "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
           "needsUser": false,
           "nextSafeAction": null,
           "missingSteps": [],
           "reason": ""
         },
-        "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage.",
+        "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result.",
         "reasoning": ""
       }
     ],
@@ -1660,7 +1590,7 @@
       "ok": true,
       "status": "executed",
       "executed": true,
-      "tool": "browserObserve",
+      "tool": "browserClickByText",
       "engine": "playwright_mcp",
       "observation": {
         "ok": true,
@@ -1675,11 +1605,11 @@
         "interactiveElements": [],
         "stats": {}
       },
-      "summary": "The user's original intent was satisfied. The final result is that the user is taken to https://www.iana.org/help/example-domains, where they can find information about example domains and their usage."
+      "summary": "User's original intent was satisfied. The user opened https://example.com and clicked on the 'More information' link, which led to the expected result."
     }
   },
   "state": {
-    "sessionId": "debug-browser-1779525800439",
+    "sessionId": "debug-browser-1779526909212",
     "mode": "browser",
     "currentUrl": "https://www.iana.org/help/example-domains",
     "currentTitle": "Example Domains",
@@ -1734,6 +1664,6 @@
     "learnedAliases": [],
     "lastToolResults": [],
     "failureCount": 0,
-    "updatedAt": "2026-05-23T08:43:41.612Z"
+    "updatedAt": "2026-05-23T09:02:20.285Z"
   }
 }
