@@ -32,7 +32,10 @@ import {
 } from "./browser-task-runner.js";
 import { verifyBrowserResult } from "./browser-result-verifier.js";
 import { adviseBrowserFailure } from "./browser-error-advisor.js";
-import { runBrowserAgentPipeline } from "./browser-agent-pipeline.js";
+import {
+  planBrowserInstructionWithMainModel,
+  runBrowserAgentPipeline,
+} from "./browser-agent-pipeline.js";
 import {
   getExtension,
   getExtensionSkill,
@@ -2945,25 +2948,46 @@ export async function browserAgentRun(args = {}) {
     const raw = String(text || "").trim();
     if (!raw) return [];
 
-    const normalized = raw
-      .replace(/\bthen\b/gi, "|||then|||")
-      .replace(/\band then\b/gi, "|||then|||")
-      .replace(/\bafter that\b/gi, "|||then|||")
-      .replace(/\bnext\b/gi, "|||then|||");
+    const maxSteps = Math.max(1, Math.min(Number(process.env.BROWSER_AGENT_MAX_SEQUENCE_STEPS || 8), 12));
+    const firstUrl = raw.match(/https?:\/\/[^\s,.;]+/i)?.[0] || "";
 
-    const parts = normalized
-      .split("|||then|||")
+    let normalized = raw
+      .replace(/\b(and\s+then|then|after\s+that|next)\b/gi, "|||")
+      .replace(/[,;]+\s*(?=(?:visually\s+)?(?:confirm|verify|check|inspect|look|observe|tell|report|summarize|click|press|open|visit|navigate|go\s+to|fill|type|enter|submit|select)\b)/gi, "|||")
+      .replace(/\s+and\s+(?=(?:visually\s+)?(?:confirm|verify|check|inspect|look|observe|tell|report|summarize|click|press|open|visit|navigate|go\s+to|fill|type|enter|submit|select)\b)/gi, "|||");
+
+    let parts = normalized
+      .split("|||")
       .map((part) => part.trim().replace(/^[,.;:\-\s]+|[,.;:\-\s]+$/g, ""))
       .filter(Boolean);
 
     if (parts.length <= 1) return [];
 
-    const firstUrl = raw.match(/https?:\/\/[^\s,.;]+/i)?.[0] || "";
-    return parts.map((part, index) => {
-      if (index === 0 || !firstUrl) return part;
-      if (/\b(open|visit|go to|navigate)\b/i.test(part) || /https?:\/\//i.test(part)) return part;
-      return `${part} on the current page`;
-    }).slice(0, Math.max(1, Math.min(Number(process.env.BROWSER_AGENT_MAX_SEQUENCE_STEPS || 6), 10)));
+    parts = parts.map((part, index) => {
+      let step = part;
+
+      if (index === 0) {
+        return step;
+      }
+
+      if (!/\b(open|visit|go to|navigate)\b/i.test(step) && !/https?:\/\//i.test(step)) {
+        step = `${step} on the current page`;
+      }
+
+      if (/\b(tell|report|summarize)\b/i.test(step) && !/\b(observe|inspect|read|look)\b/i.test(step)) {
+        step = `Observe the current page and ${step}`;
+      }
+
+      return step;
+    });
+
+    const cleaned = [];
+    for (const part of parts) {
+      const previous = cleaned[cleaned.length - 1] || "";
+      if (part && part.toLowerCase() !== previous.toLowerCase()) cleaned.push(part);
+    }
+
+    return cleaned.slice(0, maxSteps);
   }
 
   async function runBrowserAgentPipelineSequence(sequenceItems = []) {
@@ -3043,9 +3067,35 @@ export async function browserAgentRun(args = {}) {
   // Browser mode now goes through the multi-agent pipeline by default.
   // The old deterministic watcher/runtime path is legacy-only.
   if (!envFlag("BROWSER_AGENT_LEGACY_RUNTIME", false)) {
-    const sequenceItems = splitBrowserInstructionSequence(instruction);
+    const mainIntent = envFlag("BROWSER_AGENT_MAIN_INTENT_ENABLED", true)
+      ? await planBrowserInstructionWithMainModel({
+          ...baseArgs,
+          state,
+          currentUrl: args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
+          currentTitle: args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "",
+        })
+      : null;
+
+    const mainIntentSteps = Array.isArray(mainIntent?.plan?.steps)
+      ? mainIntent.plan.steps.map((step) => step.instruction).filter(Boolean)
+      : [];
+
+    const sequenceItems = mainIntentSteps.length > 1
+      ? mainIntentSteps
+      : splitBrowserInstructionSequence(instruction);
+
     if (sequenceItems.length > 1 && !envFlag("BROWSER_AGENT_DISABLE_SEQUENCE", false)) {
-      return runBrowserAgentPipelineSequence(sequenceItems);
+      const sequenceResult = await runBrowserAgentPipelineSequence(sequenceItems);
+      return {
+        ...sequenceResult,
+        mainIntent: mainIntent?.plan || null,
+        tokenUsage: sequenceResult.tokenUsage || {
+          totalTokens: Number(mainIntent?.usage?.totalTokens || 0),
+          planner: mainIntent?.usage || null,
+          reporter: null,
+          mainIntent: mainIntent?.usage || null,
+        },
+      };
     }
 
     const pipelineResult = await runBrowserAgentPipeline({

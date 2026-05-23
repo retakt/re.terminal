@@ -14230,3 +14230,166 @@ display: flex !important;
   overscroll-behavior: none;
   -webkit-touch-callout: none;
 }
+
+
+/* ─── Chat mobile drawer clipping fix ────────────────────────────────────── */
+/* Keep the activity drawer, pane, and scroll body constrained to the drawer
+   width. This prevents long run/tool rows from forcing an intrinsic width and
+   getting visually clipped while the panel animates or refreshes. */
+
+.chat-mobile-panel-drawer,
+.chat-mobile-context-drawer {
+  box-sizing: border-box;
+  min-width: 0;
+  contain: layout paint;
+}
+
+.chat-mobile-panel-drawer {
+  width: min(92vw, 420px);
+  min-width: min(92vw, 420px);
+}
+
+.chat-mobile-context-drawer {
+  width: min(92vw, 420px);
+  min-width: min(92vw, 420px);
+}
+
+.chat-mobile-panel-drawer .chat-activity-pane,
+.chat-mobile-context-drawer .chat-context-pane,
+.chat-mobile-panel-drawer .chat-activity-panel,
+.chat-mobile-context-drawer .chat-context-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.chat-activity-panel,
+.chat-context-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-activity-panel [data-radix-scroll-area-viewport],
+.chat-context-panel [data-radix-scroll-area-viewport] {
+  width: 100% !important;
+  max-width: 100%;
+  overflow-x: hidden !important;
+}
+
+.chat-activity-panel .chat-panel-section,
+.chat-activity-panel .run-card,
+.chat-activity-panel .run-card__details,
+.chat-activity-panel .run-tool-row,
+.chat-activity-panel .run-tool-expanded,
+.chat-activity-panel .chat-log-card,
+.chat-activity-panel .run-reasoning-block,
+.chat-activity-panel .chat-code-block {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.chat-activity-panel pre,
+.chat-activity-panel code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+
+/* ─── Chat activity panel hard width clamp ───────────────────────────────── */
+/* Radix ScrollArea inserts an inner sizing wrapper. Long run titles/tool JSON
+   can make that wrapper wider than the drawer, so force the whole activity
+   panel tree to stay inside its available width. */
+
+.chat-activity-panel,
+.chat-activity-panel *,
+.chat-context-panel,
+.chat-context-panel * {
+  box-sizing: border-box;
+}
+
+.chat-activity-pane,
+.chat-activity-panel,
+.chat-context-pane,
+.chat-context-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-activity-panel [data-radix-scroll-area-viewport],
+.chat-context-panel [data-radix-scroll-area-viewport] {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.chat-activity-panel [data-radix-scroll-area-viewport] > div,
+.chat-context-panel [data-radix-scroll-area-viewport] > div {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.chat-activity-panel [data-radix-scroll-area-viewport] > div > div,
+.chat-context-panel [data-radix-scroll-area-viewport] > div > div {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.chat-activity-panel .chat-panel-section,
+.chat-activity-panel .run-card,
+.chat-activity-panel .run-card__details,
+.chat-activity-panel .run-tool-row,
+.chat-activity-panel .run-tool-expanded,
+.chat-activity-panel .run-reasoning-block,
+.chat-activity-panel .chat-log-card,
+.chat-activity-panel .chat-code-block {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.chat-activity-panel .run-card__summary,
+.chat-activity-panel .run-tool-row__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-activity-panel .run-card__main,
+.chat-activity-panel .run-card__title,
+.chat-activity-panel .run-card__meta,
+.chat-activity-panel .run-tool-preview,
+.chat-activity-panel .run-tool-preview code {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-activity-panel .run-card__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-activity-panel .run-card__meta {
+  overflow: hidden;
+}
+
+.chat-activity-panel pre,
+.chat-activity-panel code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

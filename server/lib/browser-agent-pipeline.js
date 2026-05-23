@@ -311,6 +311,90 @@ async function safeCaptureBeforeSnapshot(args, state) {
   }
 }
 
+function mainIntentSystemPrompt() {
+  return `You are the Main Browser Intent Agent.
+
+You are the first browser-mode brain. You are not the executor.
+Your job is to read the user's full browser instruction and break it into clear ordered browser steps.
+
+Return ONLY strict JSON. Do not use markdown.
+
+Important:
+- Preserve all user intent.
+- Split multi-operation prompts into multiple steps.
+- Each step should be something the browser planner/reviewer/executor can perform in one turn.
+- Do not collapse click + report + navigate into one step.
+- For final answer requests, create an observation/report step.
+- Use natural browser instructions, not code.
+
+Return schema:
+{
+  "status": "ready|needs_user",
+  "userIntent": "short interpretation",
+  "steps": [
+    {
+      "instruction": "single browser step",
+      "purpose": "why this step exists",
+      "expectedAction": "navigate|observe|click|fill|submit|report|unknown"
+    }
+  ],
+  "messageToUser": "",
+  "confidence": 0.0
+}`;
+}
+
+function normalizeMainIntentPlan(value = {}, fallbackInstruction = "") {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const status = String(raw.status || "ready").toLowerCase() === "needs_user" ? "needs_user" : "ready";
+  const steps = Array.isArray(raw.steps)
+    ? raw.steps
+        .map((step) => {
+          if (typeof step === "string") {
+            return { instruction: safeText(step, 600), purpose: "", expectedAction: "unknown" };
+          }
+          const entry = step && typeof step === "object" ? step : {};
+          return {
+            instruction: safeText(entry.instruction || entry.step || entry.text || "", 600),
+            purpose: safeText(entry.purpose || entry.reason || "", 300),
+            expectedAction: safeText(entry.expectedAction || entry.action || "unknown", 80),
+          };
+        })
+        .filter((step) => step.instruction)
+    : [];
+
+  return {
+    status,
+    userIntent: safeText(raw.userIntent || raw.intent || "", 700),
+    steps: steps.length ? steps : [{ instruction: fallbackInstruction, purpose: "Original user instruction", expectedAction: "unknown" }],
+    messageToUser: safeText(raw.messageToUser || "", 700),
+    confidence: Number.isFinite(Number(raw.confidence)) ? Math.max(0, Math.min(1, Number(raw.confidence))) : 0.5,
+  };
+}
+
+export async function planBrowserInstructionWithMainModel(args = {}) {
+  const instruction = String(args.instruction || "").trim();
+  const state = args.state || {};
+
+  const result = await safeRoleCall("main_intent", () => callBrowserAgentMainHandoff({
+    instruction,
+    currentUrl: args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
+    currentTitle: args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "",
+    currentState: compactState(state),
+    architecture: {
+      mainChatModelIsNotBrowserAgent: true,
+      thisRole: "main_browser_intent_agent",
+      nextRole: "browser planner / reviewer / executor pipeline",
+    },
+  }, mainIntentSystemPrompt()));
+
+  return {
+    ok: result.ok,
+    plan: normalizeMainIntentPlan(result.call?.data, instruction),
+    usage: usageFromRoleCall(result),
+    error: result.error || "",
+  };
+}
+
 export async function runBrowserAgentPipeline(args = {}) {
   const startedAt = nowMs();
   const instruction = String(args.instruction || "").trim();
