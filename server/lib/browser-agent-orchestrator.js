@@ -89,6 +89,34 @@ function syntheticPassedResult({ execution = {}, step = {}, command = {} } = {})
   };
 }
 
+function isSensitiveStep(step = {}) {
+  return /\b(submit|pay|payment|delete|remove|approve|reject|password|otp|login|sign in|checkout|profile update|attendance|payroll)\b/i
+    .test(String(step?.instruction || ""));
+}
+
+function isSnapshotResultAutoPassCommand(command = {}, step = {}, execution = {}) {
+  const tool = String(command?.tool || "");
+  if (isSensitiveStep(step)) return false;
+  if (execution?.ok !== true) return false;
+  if (execution?.error) return false;
+  if (/###\\s*Error|invalid_type|expected .* received/i.test(String(execution?.actionResult?.text || ""))) return false;
+
+  const observation = observationFromExecution(execution);
+  const hasSnapshotEvidence = Boolean(observation?.url || observation?.title || observation?.textPreview);
+
+  if (["browserNavigate", "browserObserve", "browserStatus", "browserShowActions"].includes(tool)) {
+    return hasSnapshotEvidence;
+  }
+
+  if (tool === "browserClickByText") {
+    const beforeUrl = String(command?.args?.currentUrl || "");
+    const afterUrl = String(observation?.url || "");
+    return hasSnapshotEvidence && Boolean(afterUrl && beforeUrl && afterUrl !== beforeUrl);
+  }
+
+  return false;
+}
+
 function extractHttpUrl(text = "") {
   const raw = String(text || "");
   const match = raw.match(/https?:\/\/[^\s"'<>)}\]]+/i)?.[0] || "";
@@ -727,7 +755,10 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     let resultCheckCall = null;
     let resultCheck = null;
 
-    if (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_RESULT_CHECKER", true) && isLowRiskAutoCheckCommand(normalized.command, step)) {
+    if (
+      (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_RESULT_CHECKER", true) && isLowRiskAutoCheckCommand(normalized.command, step)) ||
+      (envFlag("BROWSER_AGENT_SNAPSHOT_RESULT_FAST_PATH", true) && isSnapshotResultAutoPassCommand(normalized.command, step, execution))
+    ) {
       resultCheck = syntheticPassedResult({ execution, step, command: normalized.command });
       trace.push(traceEntry({
         role: "gemma_result_checker",
@@ -906,39 +937,56 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }
   }
 
-  const finalCall = await safeRole("final_verifier", () => callBrowserAgentRoleJson("main", {
-    system: finalVerifierSystemPrompt(),
-    schemaName: "final_verifier",
-    context: {
-      originalInstruction: instruction,
-      orchestratorPlan: { ...orchestratorPlan, steps },
-      stepResults,
-      stoppedReason,
-      finalObservation,
-      trace: trace.map((entry) => ({
-        role: entry.role,
-        step: entry.step,
-        status: entry.status,
-        ok: entry.ok,
-        summary: entry.summary,
-        tool: entry.tool,
-      })),
-    },
-  }));
+  const passedAllSteps = stepResults.length === steps.length && stepResults.every((step) => step.ok);
+  let finalCall = null;
+  let final = null;
 
-  const final = finalCall.call?.data || {
-    success: stepResults.length === steps.length && stepResults.every((step) => step.ok),
-    summary: stoppedReason || stepResults.at(-1)?.summary || "Browser task finished.",
-    needsUser: Boolean(stoppedReason),
-    nextSafeAction: stoppedReason || "Continue with the next browser instruction.",
-    missingSteps: [],
-    reason: stoppedReason || "",
-  };
+  if (envFlag("BROWSER_AGENT_FINAL_VERIFIER_ENABLED", false)) {
+    finalCall = await safeRole("final_verifier", () => callBrowserAgentRoleJson("main", {
+      system: finalVerifierSystemPrompt(),
+      schemaName: "final_verifier",
+      context: {
+        originalInstruction: instruction,
+        orchestratorPlan: { ...orchestratorPlan, steps },
+        stepResults,
+        stoppedReason,
+        finalObservation,
+        trace: trace.map((entry) => ({
+          role: entry.role,
+          step: entry.step,
+          status: entry.status,
+          ok: entry.ok,
+          summary: entry.summary,
+          tool: entry.tool,
+        })),
+      },
+    }));
+
+    final = finalCall.call?.data || {
+      success: passedAllSteps,
+      summary: stoppedReason || stepResults.at(-1)?.summary || "Browser task finished.",
+      needsUser: Boolean(stoppedReason),
+      nextSafeAction: stoppedReason || "Continue with the next browser instruction.",
+      missingSteps: [],
+      reason: stoppedReason || "",
+    };
+  } else {
+    const lastStep = stepResults.at(-1) || {};
+    const finalWhere = [finalObservation?.title, finalObservation?.url].filter(Boolean).join(" — ");
+    final = {
+      success: passedAllSteps,
+      summary: stoppedReason || lastStep.summary || finalWhere || "Browser task finished.",
+      needsUser: Boolean(stoppedReason) || !passedAllSteps,
+      nextSafeAction: stoppedReason || "Continue with the next browser instruction.",
+      missingSteps: passedAllSteps ? [] : steps.slice(stepResults.length).map((step) => step.instruction),
+      reason: stoppedReason || "",
+    };
+  }
 
   trace.push(traceEntry({
     role: "final_verifier",
     title: "Final verifier",
-    status: final.success ? "verified" : "incomplete",
+    status: final.success ? (finalCall ? "verified" : "synthetic_verified") : "incomplete",
     input: {
       originalInstruction: instruction,
       stepResults,
@@ -985,7 +1033,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     },
     possibleNextActions: [],
     requiresUser: final.needsUser === true || !ok,
-    blockedReason: stoppedReason || final.reason || "",
+    blockedReason: ok ? "" : (stoppedReason || final.reason || ""),
     nextSafeAction: final.nextSafeAction || "Continue with the next browser instruction.",
     watcher: null,
     planner: orchestratorPlan,

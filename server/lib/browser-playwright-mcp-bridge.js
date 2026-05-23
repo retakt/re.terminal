@@ -164,12 +164,21 @@ async function findTool(aliases = []) {
 async function callPlaywrightTool(aliases = [], args = {}) {
   const tool = await findTool(aliases);
   const result = await callExternalMcpTool(SERVER_ID, tool, args);
+  const text = textFromMcp(result);
+  const isError = Boolean(
+    result?.isError ||
+    result?.error ||
+    /(^|\\n)###\\s*Error\\b/i.test(text) ||
+    /invalid_type|expected .* received|tool call failed/i.test(text)
+  );
+
   return {
-    ok: true,
+    ok: !isError,
     tool,
     result,
-    text: textFromMcp(result),
+    text,
     images: imagesFromMcp(result),
+    error: isError ? text || String(result?.error || "Playwright MCP tool returned an error.") : "",
   };
 }
 
@@ -293,6 +302,7 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     if (!text) return { ok: false, error: "Click needs visible text." };
 
     return callPlaywrightTool(["browser_click", "click"], {
+      target: text,
       element: text,
       ref: commandArgs.ref || commandArgs.selector || text,
     });
@@ -389,7 +399,7 @@ export async function executePlaywrightMcpBrowserCommand({ command = {}, args = 
     beforeSnapshot: before.snapshot,
     afterSnapshot: after.snapshot,
     observation: after.observation,
-    error: action.error || "",
+    error: action.error || after.error || "",
   };
 }
 
