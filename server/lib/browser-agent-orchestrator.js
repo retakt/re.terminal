@@ -7,7 +7,11 @@ import {
   capturePlaywrightMcpSnapshot,
   compactSnapshotForModel,
   executePlaywrightMcpBrowserCommand,
+  probePlaywrightUiState,
+  scoutPlaywrightControlTarget,
   snapshotImagesForModel,
+  dismissPlaywrightBlockingUi,
+  activatePlaywrightControlByText,
 } from "./browser-playwright-mcp-bridge.js";
 import {
   compactBrowserStateForModel,
@@ -590,9 +594,177 @@ function bestLightpandaClickCandidateForStep({ step = {}, beforeState = null, or
   return ranked[0]?.entry || null;
 }
 
+function supervisedScoutRepairTarget(value = "") {
+  const raw = safeText(value, 240);
+  const repaired = raw
+    .replace(/\b(click|press|tap|select|choose|open|launch)\b/ig, " ")
+    .replace(/\b(button|link|control|element|field|item|option)\b/ig, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!repaired || repaired.toLowerCase() === raw.toLowerCase()) return "";
+  if (repaired.length < 3) return "";
+  return repaired;
+}
+
+function shouldUsePlaywrightControlScout({ step = {}, beforeState = null, originalInstruction = "" } = {}) {
+  if (!envFlag("BROWSER_AGENT_PLAYWRIGHT_CONTROL_SCOUT", true)) return false;
+  if (!isButtonIntentStep(step) || isExplicitLinkNavigationIntent(step)) return false;
+
+  const candidate = bestLightpandaClickCandidateForStep({ step, beforeState, originalInstruction });
+  if (!candidate) return true;
+  if (isPlainHrefLinkCandidate(candidate)) return true;
+
+  const selector = safeText(candidate.selector || "", 500);
+  const attrs = candidate.attrs && typeof candidate.attrs === "object" ? candidate.attrs : {};
+  const hasControlAttrs = Boolean(
+    attrs["data-bs-toggle"] ||
+    attrs["data-toggle"] ||
+    attrs["data-bs-target"] ||
+    attrs["data-target"] ||
+    attrs["aria-controls"] ||
+    attrs.role === "button"
+  );
+
+  return !selector && !hasControlAttrs;
+}
+
+function controlScoutCoreText(value = "") {
+  return normalizedTargetText(value)
+    .replace(/\b(click|press|tap|select|choose|open)\b/g, " ")
+    .replace(/\b(button|link|control|element|field|item|option)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function playwrightSnapshotRefScout({ snapshot = null, step = {}, originalInstruction = "" } = {}) {
+  const raw = String(snapshot?.text || snapshot?.dom?.rawText || snapshot?.dom?.textPreview || "");
+  if (!raw.trim()) return null;
+
+  const targetText = extractClickTargetText(step, originalInstruction) || step.instruction || "";
+  const wanted = normalizedTargetText(targetText);
+  const wantedCore = controlScoutCoreText(targetText);
+
+  const lines = raw.split(/\r?\n/);
+  const scored = [];
+
+  for (const line of lines) {
+    const ref = String(line.match(/\[ref=([^\]]+)\]/i)?.[1] || "").trim();
+    if (!ref) continue;
+
+    const lineNorm = normalizedTargetText(line);
+    const lineCore = controlScoutCoreText(line);
+
+    const isButtonLike = /\bbutton\b/i.test(line) || /\brole=["']?button/i.test(line);
+    const isPlainLink = /\blink\b/i.test(line) && !isButtonLike;
+
+    let score = 0;
+    if (wanted && lineNorm.includes(wanted)) score += 120;
+    if (wantedCore && lineNorm.includes(wantedCore)) score += 110;
+    if (wantedCore && lineCore.includes(wantedCore)) score += 105;
+    if (isButtonLike) score += 35;
+    if (isPlainLink) score -= 80;
+    if (/tooltip/i.test(line)) score -= 80;
+
+    if (score >= 120) {
+      scored.push({
+        ref,
+        score,
+        line: safeText(line, 500),
+        text: safeText(targetText, 240),
+        selector: "",
+        source: "playwright_snapshot_ref",
+      });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0] || null;
+}
+
+function syntheticStepPlanFromPlaywrightScout({ scout = null, step = {}, currentUrl = "", originalInstruction = "" } = {}) {
+  if (!scout || scout.ok !== true || (!scout.selector && !scout.ref)) return null;
+  const requestedText = extractClickTargetText(step, originalInstruction) || step.instruction || "";
+  const hasSelector = Boolean(scout.selector);
+  const hasRef = Boolean(scout.ref);
+  return {
+    status: "ready",
+    syntheticSource: "playwright_control_scout",
+    command: {
+      intent: "click_or_open",
+      tool: "browserClickByText",
+      args: {
+        currentUrl,
+        text: safeText(scout.text || requestedText, 240),
+        selector: safeText(scout.selector || "", 500),
+        ref: safeText(scout.ref || "", 180),
+        selectorOnly: hasSelector,
+        requireSelector: hasSelector,
+        refOnly: !hasSelector && hasRef,
+        requireRef: !hasSelector && hasRef,
+        scout: {
+          score: Number(scout.score || 0),
+          targetText: safeText(scout.targetText || requestedText, 240),
+          heading: safeText(scout.selected?.heading || "", 180),
+          tag: safeText(scout.selected?.tag || "", 80),
+          role: safeText(scout.selected?.role || "", 80),
+          dataToggle: safeText(scout.selected?.dataToggle || "", 120),
+          dataTarget: safeText(scout.selected?.dataTarget || "", 180),
+          ariaControls: safeText(scout.selected?.ariaControls || "", 180),
+        },
+      },
+      notes: "Playwright control scout selected concrete selector-only target: " + safeText(scout.selector || "", 500),
+    },
+    reason: "Playwright control scout found a concrete visible control matching the button/modal intent.",
+    messageToChecker: "",
+    messageToUser: "",
+    confidence: 0.94,
+  };
+}
+
+function playwrightScoutEvidenceCheckerForStep({ stepPlan = {}, step = {} } = {}) {
+  if (!stepPlan || stepPlan.syntheticSource !== "playwright_control_scout") return null;
+  if (!isButtonIntentStep(step) || isExplicitLinkNavigationIntent(step)) return null;
+
+  const command = stepPlan.command || null;
+  const selector = safeText(command?.args?.selector || "", 500);
+  const ref = safeText(command?.args?.ref || "", 180);
+  if (!command || command.tool !== "browserClickByText" || (!selector && !ref)) return null;
+
+  return {
+    status: "approved_playwright_scout",
+    approved: true,
+    command,
+    reason: "Local Playwright control scout approved selector-only click on a real visible control.",
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: Math.max(0.9, Number(stepPlan.confidence || 0.9)),
+  };
+}
+
 function commandWithLightpandaExecutionTarget(command = {}, { step = {}, beforeState = null, originalInstruction = "", currentUrl = "" } = {}) {
   if (!command || typeof command !== "object") return command;
   if (!isButtonIntentStep(step)) return command;
+
+  if (
+    command.args?.selectorOnly === true ||
+    command.args?.requireSelector === true ||
+    command.args?.refOnly === true ||
+    command.args?.requireRef === true
+  ) {
+    return {
+      ...command,
+      tool: "browserClickByText",
+      args: {
+        ...(command.args || {}),
+        currentUrl: currentUrl || command.args?.currentUrl || "",
+      },
+      notes: safeText([
+        command.notes,
+        "Preserved selector-only scout command for button/modal/collapse intent.",
+      ].filter(Boolean).join(" "), 500),
+    };
+  }
 
   const requestedText = extractClickTargetText(step, originalInstruction) || step.instruction || "";
   const candidate = bestLightpandaClickCandidateForStep({ step, beforeState, originalInstruction });
@@ -974,6 +1146,869 @@ function fastSnapshotCheckerForStep({ stepPlan = {}, step = {}, before = null } 
     confidence: Math.max(0.85, Number(stepPlan.confidence || 0.85)),
   };
 }
+
+function expectedUiKindForStep(step = {}, command = {}) {
+  const haystack = [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+    command?.intent,
+    command?.notes,
+    command?.args?.text,
+    command?.args?.scout?.dataToggle,
+    command?.args?.scout?.dataTarget,
+    command?.args?.scout?.ariaControls,
+  ].map((item) => String(item || "")).join(" ").toLowerCase();
+
+  if (/\b(modal|dialog|popup)\b/.test(haystack)) return "modal";
+  if (/\b(dropdown|menu)\b/.test(haystack)) return "dropdown";
+  if (/\b(collapse|accordion|expand)\b/.test(haystack)) return "collapse";
+  return "";
+}
+
+async function deterministicUiResultCheckForStep({ step = {}, command = {}, execution = null, currentUrl = "", currentState = {} } = {}) {
+  if (!execution || execution.ok !== true) return null;
+
+  const uiKind = expectedUiKindForStep(step, command);
+  if (!uiKind) return null;
+
+  const uiState = await probePlaywrightUiState({
+    currentUrl: execution.observation?.url || currentUrl || "",
+    navigate: false,
+  }, currentState).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const passed =
+    (uiKind === "modal" && (uiState.modalOpen || uiState.dialogOpen)) ||
+    (uiKind === "dropdown" && uiState.dropdownOpen) ||
+    (uiKind === "collapse" && uiState.collapseOpen);
+
+  if (!passed) {
+    return {
+      status: "needs_repair",
+      success: false,
+      summary: `UI ${uiKind} state was not detected after the click.`,
+      evidence: safeText(uiState.error || JSON.stringify({
+        modalOpen: uiState.modalOpen,
+        dialogOpen: uiState.dialogOpen,
+        dropdownOpen: uiState.dropdownOpen,
+        collapseOpen: uiState.collapseOpen,
+      }), 900),
+      repairInstruction: "Retry with a concrete selector/ref or inspect the page state.",
+      messageToUser: "",
+      confidence: 0.75,
+      uiState,
+      deterministic: true,
+    };
+  }
+
+  return {
+    status: "passed",
+    success: true,
+    summary: `Detected opened ${uiKind} UI after the click.`,
+    evidence: safeText(JSON.stringify({
+      modalOpen: uiState.modalOpen,
+      dialogOpen: uiState.dialogOpen,
+      dropdownOpen: uiState.dropdownOpen,
+      collapseOpen: uiState.collapseOpen,
+      dialogs: uiState.dialogs?.slice?.(0, 2) || [],
+      expandedControls: uiState.expandedControls?.slice?.(0, 3) || [],
+    }), 1200),
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: 0.95,
+    uiState,
+    deterministic: true,
+  };
+}
+
+function expectedUiKindForStepV2(step = {}, command = {}) {
+  const haystack = [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+    command?.intent,
+    command?.notes,
+    command?.args?.text,
+    command?.args?.scout?.targetText,
+    command?.args?.scout?.dataToggle,
+    command?.args?.scout?.dataTarget,
+    command?.args?.scout?.ariaControls,
+  ].map((item) => String(item || "")).join(" ").toLowerCase();
+
+  if (/\b(modal|dialog|popup)\b/.test(haystack)) return "modal";
+  if (/\b(dropdown|menu)\b/.test(haystack)) return "dropdown";
+  if (/\b(collapse|accordion|expand)\b/.test(haystack)) return "collapse";
+  return "";
+}
+
+async function deterministicUiStateResultCheckV2({ step = {}, command = {}, execution = null, currentUrl = "", currentState = {} } = {}) {
+  if (!execution || execution.ok !== true) return null;
+
+  const kind = expectedUiKindForStepV2(step, command);
+  if (!kind) return null;
+
+  const uiState = await probePlaywrightUiState({
+    currentUrl: execution.observation?.url || currentUrl || "",
+    navigate: false,
+  }, currentState).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const success =
+    (kind === "modal" && (uiState.modalOpen || uiState.dialogOpen)) ||
+    (kind === "dropdown" && uiState.dropdownOpen) ||
+    (kind === "collapse" && uiState.collapseOpen);
+
+  if (!success) return null;
+
+  return {
+    status: "passed",
+    success: true,
+    summary: `Detected opened ${kind} UI after the click.`,
+    evidence: safeText(JSON.stringify({
+      modalOpen: uiState.modalOpen,
+      dialogOpen: uiState.dialogOpen,
+      dropdownOpen: uiState.dropdownOpen,
+      collapseOpen: uiState.collapseOpen,
+      dialogs: Array.isArray(uiState.dialogs) ? uiState.dialogs.slice(0, 2) : [],
+      modalBackdrops: Array.isArray(uiState.modalBackdrops) ? uiState.modalBackdrops.slice(0, 2) : [],
+      dropdowns: Array.isArray(uiState.dropdowns) ? uiState.dropdowns.slice(0, 2) : [],
+      collapses: Array.isArray(uiState.collapses) ? uiState.collapses.slice(0, 2) : [],
+    }), 1400),
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: 0.96,
+    deterministic: true,
+    uiKind: kind,
+    uiState,
+  };
+}
+
+function activeWatcherStepText(step = {}) {
+  return [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+}
+
+function activeWatcherModalVerificationKind(step = {}) {
+  const text = activeWatcherStepText(step);
+  if (!/\b(modal|dialog|popup|overlay)\b/.test(text)) return "";
+  if (/\b(closed|close|dismissed|gone|hidden|not open)\b/.test(text)) return "closed";
+  if (/\b(opened|open|visible|shown|appeared)\b/.test(text)) return "opened";
+  return "";
+}
+
+function activeWatcherStepUsesBlockingUi(step = {}) {
+  const text = activeWatcherStepText(step);
+
+  if (activeWatcherModalVerificationKind(step)) return true;
+
+  return /\b(modal|dialog|popup|overlay|drawer|panel|menu|settings|inside)\b/.test(text) ||
+    /\b(close|dismiss|cancel|save|confirm|ok|done|apply|submit|x)\b/.test(text);
+}
+
+function activeWatcherBlockingOpen(uiState = {}) {
+  return Boolean(
+    uiState?.blockingOpen ||
+    uiState?.modalOpen ||
+    uiState?.dialogOpen ||
+    uiState?.dropdownOpen ||
+    uiState?.offcanvasOpen ||
+    uiState?.popoverOpen ||
+    (Array.isArray(uiState?.dialogs) && uiState.dialogs.length) ||
+    (Array.isArray(uiState?.modalBackdrops) && uiState.modalBackdrops.length) ||
+    (Array.isArray(uiState?.dropdowns) && uiState.dropdowns.length) ||
+    (Array.isArray(uiState?.offcanvas) && uiState.offcanvas.length) ||
+    (Array.isArray(uiState?.popovers) && uiState.popovers.length)
+  );
+}
+
+async function activeWatcherVerifyUiStep({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
+  const kind = activeWatcherModalVerificationKind(step);
+  if (!kind) return null;
+
+  const uiState = await probePlaywrightUiState({
+    currentUrl,
+    navigate: false,
+  }, currentState).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const open = Boolean(uiState.modalOpen || uiState.dialogOpen);
+  const passed = kind === "opened" ? open : !open;
+
+  const summary = passed
+    ? `Watcher verified modal ${kind} using live Playwright UI state.`
+    : `Watcher could not verify modal ${kind}; live Playwright state says modalOpen=${open}.`;
+
+  trace.push(traceEntry({
+    role: "watcher",
+    title: "Active UI watcher",
+    step: stepNumber,
+    status: passed ? "passed" : "needs_repair",
+    input: step,
+    output: {
+      expected: kind,
+      modalOpen: Boolean(uiState.modalOpen),
+      dialogOpen: Boolean(uiState.dialogOpen),
+      blockingOpen: Boolean(uiState.blockingOpen),
+      dialogs: Array.isArray(uiState.dialogs) ? uiState.dialogs.slice(0, 2) : [],
+      error: uiState.error || "",
+    },
+    summary,
+    tool: "browserObserve",
+    ok: passed,
+  }));
+
+  return {
+    stepNumber,
+    step,
+    ok: passed,
+    repaired: false,
+    status: passed ? "passed" : "failed",
+    summary,
+    url: uiState.url || currentUrl,
+    title: uiState.title || currentTitle,
+    command: {
+      intent: "verify_ui_state",
+      tool: "browserObserve",
+      args: {
+        currentUrl,
+        uiKind: "modal",
+        expected: kind,
+        navigate: false,
+      },
+      notes: "Watcher verified live Playwright UI state without Lightpanda reload.",
+    },
+    finalObservation: {
+      url: uiState.url || currentUrl,
+      title: uiState.title || currentTitle,
+      textPreview: summary,
+      uiState,
+    },
+  };
+}
+
+async function activeWatcherGuardBeforeStep({ step = {}, stepNumber = 0, currentUrl = "", currentState = {}, trace = [] } = {}) {
+  const uiState = await probePlaywrightUiState({
+    currentUrl,
+    navigate: false,
+  }, currentState).catch(() => null);
+
+  if (!activeWatcherBlockingOpen(uiState)) return { ok: true, action: "clear", uiState };
+
+  if (activeWatcherStepUsesBlockingUi(step)) {
+    trace.push(traceEntry({
+      role: "watcher",
+      title: "Active UI watcher",
+      step: stepNumber,
+      status: "kept_blocking_ui",
+      input: step,
+      output: {
+        modalOpen: Boolean(uiState?.modalOpen),
+        dialogOpen: Boolean(uiState?.dialogOpen),
+        blockingOpen: Boolean(uiState?.blockingOpen),
+      },
+      summary: "Watcher kept active blocking UI because the next step appears to operate inside it.",
+      tool: "browserObserve",
+      ok: true,
+    }));
+
+    return { ok: true, action: "kept", uiState };
+  }
+
+  const dismissed = await dismissPlaywrightBlockingUi({
+    currentUrl,
+    navigate: false,
+  }, currentState).catch((err) => ({
+    ok: false,
+    dismissed: false,
+    method: "error",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  trace.push(traceEntry({
+    role: "watcher",
+    title: "Active UI watcher",
+    step: stepNumber,
+    status: dismissed?.ok ? "dismissed_blocking_ui" : "blocked_by_ui",
+    input: step,
+    output: dismissed,
+    summary: dismissed?.dismissed
+      ? `Watcher dismissed unrelated blocking UI using ${dismissed.method}.`
+      : "Watcher could not dismiss unrelated blocking UI.",
+    tool: "browserObserve",
+    ok: dismissed?.ok === true,
+  }));
+
+  return dismissed?.ok
+    ? { ok: true, action: "dismissed", dismissed, uiState }
+    : { ok: false, action: "blocked", dismissed, uiState };
+}
+
+
+
+function isGenericCloseDismissStep(step = {}) {
+  const text = [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return /\b(close|dismiss|cancel|exit|hide|x|esc|escape)\b/.test(text) &&
+    !/\b(save|submit|confirm|apply|ok|login|delete|purchase|pay)\b/.test(text);
+}
+
+function activeWatcherTextV2(step = {}) {
+  return [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+}
+
+function activeWatcherModalVerifyKindV2(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const instruction = String(step.instruction || "").toLowerCase();
+  const criteria = String(step.successCriteria || "").toLowerCase();
+  const text = [instruction, criteria, action].join(" ");
+
+  // Never classify navigation/open-url steps as modal UI verification.
+  if (isNavigationStep(step)) return "";
+  if (/(open|navigate|visit|go to)/.test(instruction) && /https?:\/\//.test(instruction)) return "";
+
+  // Only observe/report/verify steps should verify modal state.
+  const isVerifyLike =
+    action === "observe" ||
+    action === "report" ||
+    /(verify|check|confirm|observe|report)/.test(instruction);
+
+  if (!isVerifyLike) return "";
+
+  // Avoid URL path false positives like /components/modal/.
+  const modalStateText = [instruction, criteria].join(" ");
+  if (!/(modal|dialog|popup|overlay)/.test(modalStateText)) return "";
+
+  if (/(closed|close|dismissed|gone|hidden|not visible|not open|does not contain)/.test(modalStateText)) {
+    return "closed";
+  }
+
+  if (/(opened|open|visible|shown|appeared|contains)/.test(modalStateText)) {
+    return "opened";
+  }
+
+  return "";
+}
+
+
+function activeWatcherCloseOnlyStepV2(step = {}) {
+  const text = activeWatcherTextV2(step);
+  if (!/\b(close|dismiss|cancel|exit|hide|x|esc|escape)\b/.test(text)) return false;
+  if (/\b(save|submit|confirm|apply|ok|login|delete|purchase|pay)\b/.test(text)) return false;
+  return true;
+}
+
+function activeWatcherStepUsesBlockingUiV2(step = {}) {
+  const text = activeWatcherTextV2(step);
+  return activeWatcherModalVerifyKindV2(step) ||
+    /\b(modal|dialog|popup|overlay|drawer|panel|menu|settings|inside)\b/.test(text) ||
+    activeWatcherCloseOnlyStepV2(step);
+}
+
+function activeWatcherBlockingOpenV2(uiState = {}) {
+  return Boolean(
+    uiState?.blockingOpen ||
+    uiState?.modalOpen ||
+    uiState?.dialogOpen ||
+    uiState?.dropdownOpen ||
+    uiState?.offcanvasOpen ||
+    uiState?.popoverOpen ||
+    (Array.isArray(uiState?.dialogs) && uiState.dialogs.length) ||
+    (Array.isArray(uiState?.modalBackdrops) && uiState.modalBackdrops.length) ||
+    (Array.isArray(uiState?.dropdowns) && uiState.dropdowns.length) ||
+    (Array.isArray(uiState?.offcanvas) && uiState.offcanvas.length) ||
+    (Array.isArray(uiState?.popovers) && uiState.popovers.length)
+  );
+}
+
+async function activeWatcherVerifyUiStepRuntimeV2({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
+  const kind = activeWatcherModalVerifyKindV2(step);
+  if (!kind) return null;
+
+  const uiState = await probePlaywrightUiState({
+    currentUrl,
+    navigate: false,
+  }, currentState).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const open = Boolean(uiState.modalOpen || uiState.dialogOpen);
+  const passed = kind === "opened" ? open : !open;
+
+  const summary = passed
+    ? `Active watcher verified modal ${kind} using live Playwright UI state.`
+    : `Active watcher could not verify modal ${kind}; live state says modalOpen=${open}.`;
+
+  trace.push(traceEntry({
+    role: "watcher",
+    title: "Active watcher runtime",
+    step: stepNumber,
+    status: passed ? "passed_ui_state" : "failed_ui_state",
+    input: step,
+    output: {
+      expected: kind,
+      modalOpen: Boolean(uiState.modalOpen),
+      dialogOpen: Boolean(uiState.dialogOpen),
+      blockingOpen: Boolean(uiState.blockingOpen),
+      dialogs: Array.isArray(uiState.dialogs) ? uiState.dialogs.slice(0, 2) : [],
+      error: uiState.error || "",
+    },
+    summary,
+    tool: "browserObserve",
+    ok: passed,
+  }));
+
+  return {
+    stepNumber,
+    step,
+    ok: passed,
+    repaired: false,
+    status: passed ? "passed" : "failed",
+    summary,
+    url: uiState.url || currentUrl,
+    title: uiState.title || currentTitle,
+    command: {
+      intent: "verify_live_ui_state",
+      tool: "browserObserve",
+      args: { currentUrl, uiKind: "modal", expected: kind, navigate: false },
+      notes: "Active watcher verified live Playwright UI state without Lightpanda observe/navigation.",
+    },
+    finalObservation: {
+      url: uiState.url || currentUrl,
+      title: uiState.title || currentTitle,
+      textPreview: summary,
+      uiState,
+    },
+  };
+}
+
+async function activeWatcherGuardRuntimeV2({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
+  // Navigation should happen before any live UI guard. Otherwise about:blank
+  // or URL words like /modal/ can be misread as UI state.
+  if (isNavigationStep(step)) {
+    return { ok: true, action: "skip_navigation_step", uiState: null };
+  }
+
+  const uiState = await probePlaywrightUiState({
+    currentUrl,
+    navigate: false,
+  }, currentState).catch(() => null);
+
+  if (!activeWatcherBlockingOpenV2(uiState)) {
+    return { ok: true, action: "clear", uiState };
+  }
+
+  if (activeWatcherCloseOnlyStepV2(step)) {
+    const dismissed = await dismissPlaywrightBlockingUi({
+      currentUrl,
+      navigate: false,
+    }, currentState).catch((err) => ({
+      ok: false,
+      dismissed: false,
+      method: "error",
+      error: err instanceof Error ? err.message : String(err),
+    }));
+
+    const passed = dismissed?.ok === true && dismissed?.dismissed === true;
+    const summary = passed
+      ? `Active watcher closed the current blocking UI using ${dismissed.method}.`
+      : "Active watcher tried to close the current blocking UI but it remained open.";
+
+    trace.push(traceEntry({
+      role: "watcher",
+      title: "Active watcher runtime",
+      step: stepNumber,
+      status: passed ? "closed_blocking_ui" : "failed_to_close_blocking_ui",
+      input: step,
+      output: dismissed,
+      summary,
+      tool: "browserObserve",
+      ok: passed,
+    }));
+
+    return {
+      ok: passed,
+      action: "executed_step",
+      stepResult: {
+        stepNumber,
+        step,
+        ok: passed,
+        repaired: false,
+        status: passed ? "passed" : "failed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "close_active_blocking_ui",
+          tool: "browserObserve",
+          args: { currentUrl, method: dismissed?.method || "" },
+          notes: "Active watcher handled a generic close/dismiss step against the currently open UI.",
+        },
+      },
+      finalObservation: {
+        url: currentUrl,
+        title: currentTitle,
+        textPreview: summary,
+        dismissed,
+      },
+    };
+  }
+
+  if (activeWatcherStepUsesBlockingUiV2(step)) {
+    trace.push(traceEntry({
+      role: "watcher",
+      title: "Active watcher runtime",
+      step: stepNumber,
+      status: "kept_blocking_ui",
+      input: step,
+      output: {
+        modalOpen: Boolean(uiState?.modalOpen),
+        dialogOpen: Boolean(uiState?.dialogOpen),
+        blockingOpen: Boolean(uiState?.blockingOpen),
+      },
+      summary: "Active watcher kept the open blocking UI because this step appears to operate inside it.",
+      tool: "browserObserve",
+      ok: true,
+    }));
+
+    return { ok: true, action: "kept", uiState };
+  }
+
+  const dismissed = await dismissPlaywrightBlockingUi({
+    currentUrl,
+    navigate: false,
+  }, currentState).catch((err) => ({
+    ok: false,
+    dismissed: false,
+    method: "error",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  trace.push(traceEntry({
+    role: "watcher",
+    title: "Active watcher runtime",
+    step: stepNumber,
+    status: dismissed?.ok ? "dismissed_unrelated_blocking_ui" : "blocked_by_ui",
+    input: step,
+    output: dismissed,
+    summary: dismissed?.dismissed
+      ? `Active watcher dismissed unrelated blocking UI using ${dismissed.method}.`
+      : "Active watcher could not dismiss unrelated blocking UI.",
+    tool: "browserObserve",
+    ok: dismissed?.ok === true,
+  }));
+
+  return dismissed?.ok
+    ? { ok: true, action: "dismissed", dismissed, uiState }
+    : { ok: false, action: "blocked", dismissed, uiState };
+}
+
+
+function postActionExpectedModalOpenV3(step = {}, command = {}) {
+  const text = [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+    command?.intent,
+    command?.tool,
+    command?.notes,
+    command?.args?.text,
+    command?.args?.scout?.targetText,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return /\b(modal|dialog|popup)\b/.test(text) &&
+    /\b(click|open|launch|show|visible|opened|button)\b/.test(text) &&
+    !/\b(close|closed|dismiss|cancel|hide|not visible|not open)\b/.test(text);
+}
+
+function postActionTargetTextV3(step = {}, command = {}, originalInstruction = "") {
+  return safeText(
+    command?.args?.text ||
+    command?.args?.scout?.targetText ||
+    extractClickTargetText(step, originalInstruction) ||
+    step.instruction ||
+    "",
+    240
+  );
+}
+
+
+
+function activeWatcherHardTextV4(step = {}) {
+  return [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+}
+
+function activeWatcherHardVerifyKindV4(step = {}) {
+  if (isNavigationStep(step)) return "";
+
+  const action = String(step.expectedAction || "").toLowerCase();
+  const instruction = String(step.instruction || "").toLowerCase();
+  const criteria = String(step.successCriteria || "").toLowerCase();
+  const text = [instruction, criteria].join(" ");
+
+  const isVerifyLike =
+    action === "observe" ||
+    action === "report" ||
+    /\b(verify|check|confirm|observe|report)\b/.test(instruction);
+
+  if (!isVerifyLike) return "";
+  if (!/\b(modal|dialog|popup|overlay)\b/.test(text)) return "";
+
+  if (/\b(closed|close|dismissed|gone|hidden|not visible|not open|does not contain)\b/.test(text)) {
+    return "closed";
+  }
+
+  if (/\b(opened|open|visible|shown|appeared|contains)\b/.test(text)) {
+    return "opened";
+  }
+
+  return "";
+}
+
+function activeWatcherHardCloseStepV4(step = {}) {
+  if (isNavigationStep(step)) return false;
+
+  const text = activeWatcherHardTextV4(step);
+
+  return /\b(close|dismiss|cancel|exit|hide|x|esc|escape)\b/.test(text) &&
+    !/\b(save|submit|confirm|apply|ok|login|delete|purchase|pay)\b/.test(text);
+}
+
+async function activeWatcherHardUiStepV4({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
+  if (isNavigationStep(step)) return null;
+
+  const verifyKind = activeWatcherHardVerifyKindV4(step);
+
+  if (verifyKind) {
+    const uiState = await probePlaywrightUiState({
+      currentUrl,
+      navigate: false,
+    }, currentState).catch((err) => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    }));
+
+    const open = Boolean(uiState.modalOpen || uiState.dialogOpen || uiState.blockingOpen);
+    const passed = verifyKind === "opened" ? open : !open;
+
+    const summary = passed
+      ? `Active watcher verified modal ${verifyKind} using live Playwright UI state.`
+      : `Active watcher could not verify modal ${verifyKind}; live state says modalOpen=${open}.`;
+
+    trace.push(traceEntry({
+      role: "watcher",
+      title: "Active watcher hard UI step",
+      step: stepNumber,
+      status: passed ? "passed_ui_state_v4" : "failed_ui_state_v4",
+      input: step,
+      output: {
+        expected: verifyKind,
+        modalOpen: Boolean(uiState.modalOpen),
+        dialogOpen: Boolean(uiState.dialogOpen),
+        blockingOpen: Boolean(uiState.blockingOpen),
+        dialogs: Array.isArray(uiState.dialogs) ? uiState.dialogs.slice(0, 2) : [],
+        error: uiState.error || "",
+      },
+      summary,
+      tool: "browserObserve",
+      ok: passed,
+    }));
+
+    return {
+      handled: true,
+      stepResult: {
+        stepNumber,
+        step,
+        ok: passed,
+        repaired: false,
+        status: passed ? "passed" : "failed",
+        summary,
+        url: uiState.url || currentUrl,
+        title: uiState.title || currentTitle,
+        command: {
+          intent: "verify_live_ui_state",
+          tool: "browserObserve",
+          args: {
+            currentUrl,
+            uiKind: "modal",
+            expected: verifyKind,
+            navigate: false,
+          },
+          notes: "Active watcher consumed this modal verification step before Lightpanda/LLM could disturb live UI.",
+        },
+        finalObservation: {
+          url: uiState.url || currentUrl,
+          title: uiState.title || currentTitle,
+          textPreview: summary,
+          uiState,
+        },
+      },
+      finalObservation: {
+        url: uiState.url || currentUrl,
+        title: uiState.title || currentTitle,
+        textPreview: summary,
+        uiState,
+      },
+    };
+  }
+
+  if (activeWatcherHardCloseStepV4(step)) {
+    const before = await probePlaywrightUiState({
+      currentUrl,
+      navigate: false,
+    }, currentState).catch(() => null);
+
+    const openBefore = Boolean(
+      before?.modalOpen ||
+      before?.dialogOpen ||
+      before?.blockingOpen ||
+      before?.dropdownOpen ||
+      before?.offcanvasOpen ||
+      before?.popoverOpen
+    );
+
+    if (!openBefore) {
+      const summary = "No active blocking UI was open; close/dismiss step treated as already clear.";
+
+      trace.push(traceEntry({
+        role: "watcher",
+        title: "Active watcher hard UI step",
+        step: stepNumber,
+        status: "already_clear",
+        input: step,
+        output: { openBefore: false },
+        summary,
+        tool: "browserObserve",
+        ok: true,
+      }));
+
+      return {
+        handled: true,
+        stepResult: {
+          stepNumber,
+          step,
+          ok: true,
+          repaired: false,
+          status: "passed",
+          summary,
+          url: currentUrl,
+          title: currentTitle,
+          command: {
+            intent: "close_active_blocking_ui",
+            tool: "browserObserve",
+            args: { currentUrl, method: "already_clear" },
+            notes: "Active watcher prevented generic close from becoming a page/global link click.",
+          },
+        },
+        finalObservation: {
+          url: currentUrl,
+          title: currentTitle,
+          textPreview: summary,
+        },
+      };
+    }
+
+    const dismissed = await dismissPlaywrightBlockingUi({
+      currentUrl,
+      navigate: false,
+    }, currentState).catch((err) => ({
+      ok: false,
+      dismissed: false,
+      method: "error",
+      error: err instanceof Error ? err.message : String(err),
+    }));
+
+    const after = await probePlaywrightUiState({
+      currentUrl,
+      navigate: false,
+    }, currentState).catch(() => null);
+
+    const openAfter = Boolean(
+      after?.modalOpen ||
+      after?.dialogOpen ||
+      after?.blockingOpen ||
+      after?.dropdownOpen ||
+      after?.offcanvasOpen ||
+      after?.popoverOpen
+    );
+
+    const passed = dismissed?.ok === true && !openAfter;
+    const summary = passed
+      ? `Active watcher closed the current blocking UI using ${dismissed.method || "dismiss"}.`
+      : "Active watcher tried to close the current blocking UI but it remained open.";
+
+    trace.push(traceEntry({
+      role: "watcher",
+      title: "Active watcher hard UI step",
+      step: stepNumber,
+      status: passed ? "closed_blocking_ui_v4" : "failed_to_close_blocking_ui_v4",
+      input: step,
+      output: {
+        dismissed,
+        openBefore,
+        openAfter,
+        after,
+      },
+      summary,
+      tool: "browserObserve",
+      ok: passed,
+    }));
+
+    return {
+      handled: true,
+      stepResult: {
+        stepNumber,
+        step,
+        ok: passed,
+        repaired: false,
+        status: passed ? "passed" : "failed",
+        summary,
+        url: after?.url || currentUrl,
+        title: after?.title || currentTitle,
+        command: {
+          intent: "close_active_blocking_ui",
+          tool: "browserObserve",
+          args: {
+            currentUrl,
+            method: dismissed?.method || "",
+          },
+          notes: "Active watcher consumed this generic close step against live UI before Step Agent/Lightpanda could misroute it.",
+        },
+      },
+      finalObservation: {
+        url: after?.url || currentUrl,
+        title: after?.title || currentTitle,
+        textPreview: summary,
+        uiState: after,
+      },
+    };
+  }
+
+  return null;
+}
+
 
 function isSnapshotResultAutoPassCommand(command = {}, step = {}, execution = {}) {
   const tool = String(command?.tool || "");
@@ -1674,6 +2709,104 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ok: null,
     }));
 
+    // ACTIVE_WATCHER_HARD_UI_STEP_V4
+    // This must run before Lightpanda/page-state/snapshot work. Verification
+    // and generic close/dismiss steps should be fully consumed by the live watcher.
+    const activeWatcherHardV4 = await activeWatcherHardUiStepV4({
+      step,
+      stepNumber,
+      currentUrl,
+      currentTitle,
+      currentState,
+      trace,
+    });
+
+    if (activeWatcherHardV4?.handled) {
+      const stepResult = activeWatcherHardV4.stepResult;
+      currentUrl = stepResult?.url || currentUrl;
+      currentTitle = stepResult?.title || currentTitle;
+      finalObservation = activeWatcherHardV4.finalObservation || finalObservation;
+      stepResults.push(stepResult);
+
+      if (!stepResult?.ok) {
+        stoppedReason = stepResult?.summary || "Active watcher hard UI step failed.";
+        break;
+      }
+
+      continue;
+    }
+
+    // ACTIVE_WATCHER_EARLY_RUNTIME_V3
+    // Run before Lightpanda/page-state/snapshot work. Those reads can reload/sync
+    // the page and destroy transient UI like modals, dropdowns, settings panels.
+    const earlyActiveWatcherVerifyV3 = await activeWatcherVerifyUiStepRuntimeV2({
+      step,
+      stepNumber,
+      currentUrl,
+      currentTitle,
+      currentState,
+      trace,
+    });
+
+    if (earlyActiveWatcherVerifyV3) {
+      currentUrl = earlyActiveWatcherVerifyV3.url || currentUrl;
+      currentTitle = earlyActiveWatcherVerifyV3.title || currentTitle;
+      finalObservation = earlyActiveWatcherVerifyV3.finalObservation || finalObservation;
+      stepResults.push(earlyActiveWatcherVerifyV3);
+
+      if (!earlyActiveWatcherVerifyV3.ok) {
+        stoppedReason = earlyActiveWatcherVerifyV3.summary || "Active watcher UI verification failed.";
+        break;
+      }
+
+      continue;
+    }
+
+    const earlyActiveWatcherGuardV3 = await activeWatcherGuardRuntimeV2({
+      step,
+      stepNumber,
+      currentUrl,
+      currentTitle,
+      currentState,
+      trace,
+    });
+
+    if (earlyActiveWatcherGuardV3?.action === "executed_step") {
+      const stepResult = earlyActiveWatcherGuardV3.stepResult;
+      currentUrl = stepResult?.url || currentUrl;
+      currentTitle = stepResult?.title || currentTitle;
+      finalObservation = earlyActiveWatcherGuardV3.finalObservation || finalObservation;
+      stepResults.push(stepResult);
+
+      if (!stepResult?.ok) {
+        stoppedReason = stepResult?.summary || "Active watcher failed while handling blocking UI.";
+        break;
+      }
+
+      continue;
+    }
+
+    if (earlyActiveWatcherGuardV3?.ok === false) {
+      stoppedReason = "Active watcher found a blocking UI and could not safely dismiss it before the next unrelated step.";
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: false,
+        repaired: false,
+        status: "blocked_by_active_ui",
+        summary: stoppedReason,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "watcher_guard",
+          tool: "browserObserve",
+          args: { currentUrl },
+          notes: "Blocked by early active watcher before Lightpanda/page-state work.",
+        },
+      });
+      break;
+    }
+
     const stepTargetUrl = targetUrlForStep(step, instruction);
     const shouldLightpandaReadStepTarget =
       !currentUrl &&
@@ -1869,8 +3002,326 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       };
     }
 
+    let playwrightScout = null;
+
+    if (shouldUsePlaywrightControlScout({ step, beforeState, originalInstruction: instruction })) {
+      const scoutTargetText = extractClickTargetText(step, instruction) || step.instruction || "";
+      try {
+        playwrightScout = await scoutPlaywrightControlTarget({
+          ...args,
+          currentUrl,
+          targetText: scoutTargetText,
+          intent: step.instruction || "",
+          navigate: Boolean(currentUrl),
+        }, currentState);
+      } catch (err) {
+        playwrightScout = {
+          ok: false,
+          status: "failed",
+          targetText: scoutTargetText,
+          selector: "",
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+
+      trace.push(traceEntry({
+        role: "playwright_controller",
+        title: "Playwright control scout",
+        step: stepNumber,
+        status: playwrightScout?.ok === true ? "found" : "not_found",
+        input: {
+          targetText: scoutTargetText,
+          currentUrl,
+          intent: step.instruction || "",
+        },
+        output: {
+          selector: playwrightScout?.selector || "",
+          text: playwrightScout?.text || "",
+          score: playwrightScout?.score || 0,
+          targetCore: playwrightScout?.targetCore || "",
+          selected: playwrightScout?.selected || null,
+          candidates: Array.isArray(playwrightScout?.candidates) ? playwrightScout.candidates.slice(0, 8) : [],
+          error: playwrightScout?.error || "",
+        },
+        summary: playwrightScout?.ok === true
+          ? "Playwright scout found selector-only control: " + safeText(playwrightScout.selector || "", 220)
+          : "Playwright scout found no reliable selector-only control.",
+        tool: "browserObserve",
+        ok: playwrightScout?.ok === true,
+      }));
+
+      if (playwrightScout?.ok !== true) {
+        const repairedScoutTarget = supervisedScoutRepairTarget(scoutTargetText);
+        if (repairedScoutTarget) {
+          trace.push(traceEntry({
+            role: "pipeline_supervisor",
+            title: "Live scout supervisor",
+            step: stepNumber,
+            status: "repairing_target",
+            input: {
+              failedTargetText: scoutTargetText,
+              scoutError: playwrightScout?.error || "",
+            },
+            output: {
+              repairedTargetText: repairedScoutTarget,
+              reason: "Removed generic action/control words before falling back to LLM agents.",
+            },
+            summary: `Scout failed for "${scoutTargetText}". Retrying with "${repairedScoutTarget}".`,
+            tool: "browserObserve",
+            ok: null,
+          }));
+
+          try {
+            const retryScout = await scoutPlaywrightControlTarget({
+              ...args,
+              currentUrl,
+              targetText: repairedScoutTarget,
+              intent: step.instruction || "",
+              navigate: false,
+            }, currentState);
+
+            trace.push(traceEntry({
+              role: "playwright_controller",
+              title: "Playwright control scout retry",
+              step: stepNumber,
+              status: retryScout?.ok === true ? "found" : "not_found",
+              input: {
+                targetText: repairedScoutTarget,
+                currentUrl,
+                intent: step.instruction || "",
+              },
+              output: {
+                selector: retryScout?.selector || "",
+                text: retryScout?.text || "",
+                score: retryScout?.score || 0,
+                targetCore: retryScout?.targetCore || "",
+                selected: retryScout?.selected || null,
+                candidates: Array.isArray(retryScout?.candidates) ? retryScout.candidates.slice(0, 8) : [],
+                error: retryScout?.error || "",
+              },
+              summary: retryScout?.ok === true
+                ? "Supervisor retry found selector-only control: " + safeText(retryScout.selector || "", 220)
+                : "Supervisor retry found no reliable selector-only control.",
+              tool: "browserObserve",
+              ok: retryScout?.ok === true,
+            }));
+
+            if (retryScout?.ok === true) {
+              playwrightScout = {
+                ...retryScout,
+                supervisedRepair: {
+                  from: scoutTargetText,
+                  to: repairedScoutTarget,
+                  reason: "generic_control_word_removed",
+                },
+              };
+            }
+          } catch (err) {
+            trace.push(traceEntry({
+              role: "pipeline_supervisor",
+              title: "Live scout supervisor",
+              step: stepNumber,
+              status: "repair_failed",
+              input: repairedScoutTarget,
+              output: {
+                error: err instanceof Error ? err.message : String(err),
+              },
+              summary: "Supervisor scout retry failed.",
+              tool: "browserObserve",
+              ok: false,
+            }));
+          }
+        }
+      }
+    }
+
+    if (
+      playwrightScout &&
+      playwrightScout.ok !== true &&
+      isButtonIntentStep(step) &&
+      !isExplicitLinkNavigationIntent(step)
+    ) {
+      let snapshotRefScout = null;
+      try {
+        const scoutSnapshot = before?.snapshot?.text
+          ? before
+          : await capturePlaywrightMcpSnapshot({
+              ...args,
+              currentUrl,
+              label: `step_${stepNumber}_snapshot_ref_scout`,
+              navigate: false,
+            }, currentState);
+
+        snapshotRefScout = playwrightSnapshotRefScout({
+          snapshot: scoutSnapshot?.snapshot || null,
+          step,
+          originalInstruction: instruction,
+        });
+      } catch {}
+
+      if (snapshotRefScout?.ref) {
+        playwrightScout = {
+          ok: true,
+          status: "found",
+          engine: "playwright_mcp",
+          targetText: snapshotRefScout.text || extractClickTargetText(step, instruction) || step.instruction || "",
+          selector: "",
+          ref: snapshotRefScout.ref,
+          text: snapshotRefScout.text || extractClickTargetText(step, instruction) || "",
+          score: snapshotRefScout.score || 0,
+          selected: snapshotRefScout,
+          snapshotRefFallback: true,
+        };
+
+        trace.push(traceEntry({
+          role: "playwright_controller",
+          title: "Playwright snapshot-ref scout",
+          step: stepNumber,
+          status: "found",
+          input: {
+            targetText: playwrightScout.targetText,
+            currentUrl,
+          },
+          output: snapshotRefScout,
+          summary: "Snapshot-ref scout found concrete Playwright ref: " + safeText(snapshotRefScout.ref || "", 120),
+          tool: "browserObserve",
+          ok: true,
+        }));
+      }
+    }
+
+    if (
+      playwrightScout &&
+      playwrightScout.ok !== true &&
+      isButtonIntentStep(step) &&
+      !isExplicitLinkNavigationIntent(step)
+    ) {
+      stoppedReason = [
+        "Playwright Scout could not lock a concrete selector for this button/modal/collapse target.",
+        "Loose text click fallback was blocked to avoid clicking ads, docs links, or unrelated controls.",
+        playwrightScout.error ? "Scout error: " + playwrightScout.error : "",
+      ].filter(Boolean).join(" ");
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Live scout supervisor",
+        step: stepNumber,
+        status: "blocked_loose_fallback",
+        input: {
+          step,
+          scout: {
+            targetText: playwrightScout.targetText || "",
+            targetCore: playwrightScout.targetCore || "",
+            error: playwrightScout.error || "",
+            candidates: Array.isArray(playwrightScout.candidates)
+              ? playwrightScout.candidates.slice(0, 8)
+              : [],
+          },
+        },
+        output: {
+          decision: "blocked",
+          reason: stoppedReason,
+        },
+        summary: stoppedReason,
+        tool: "browserObserve",
+        ok: false,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: false,
+        repaired: false,
+        status: "scout_not_found",
+        summary: stoppedReason,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "click_or_open",
+          tool: "browserClickByText",
+          args: {
+            currentUrl,
+            text: extractClickTargetText(step, instruction) || step.instruction || "",
+            selectorRequired: true,
+          },
+          notes: "Blocked because Scout did not provide a concrete selector.",
+        },
+      });
+
+      break;
+    }
+
     const beforeImages = snapshotImagesForModel(before?.snapshot);
     const compactBeforeState = compactBrowserStateForModel(beforeState);
+
+    // ACTIVE_WATCHER_GUARD_CALL_V2
+    const activeWatcherGuardV2 = await activeWatcherGuardRuntimeV2({
+      step,
+      stepNumber,
+      currentUrl,
+      currentTitle,
+      currentState,
+      trace,
+    });
+
+    if (activeWatcherGuardV2?.action === "executed_step") {
+      const stepResult = activeWatcherGuardV2.stepResult;
+      currentUrl = stepResult?.url || currentUrl;
+      currentTitle = stepResult?.title || currentTitle;
+      finalObservation = activeWatcherGuardV2.finalObservation || finalObservation;
+      stepResults.push(stepResult);
+
+      if (!stepResult?.ok) {
+        stoppedReason = stepResult?.summary || "Active watcher failed while handling blocking UI.";
+        break;
+      }
+
+      continue;
+    }
+
+    if (activeWatcherGuardV2?.ok === false) {
+      stoppedReason = "Active watcher found a blocking UI and could not safely dismiss it before the next unrelated step.";
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: false,
+        repaired: false,
+        status: "blocked_by_active_ui",
+        summary: stoppedReason,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "watcher_guard",
+          tool: "browserObserve",
+          args: { currentUrl },
+          notes: "Blocked by active watcher before executing this step.",
+        },
+      });
+      break;
+    }
+
+    const activeWatcherVerifyV2 = await activeWatcherVerifyUiStepRuntimeV2({
+      step,
+      stepNumber,
+      currentUrl,
+      currentTitle,
+      currentState,
+      trace,
+    });
+
+    if (activeWatcherVerifyV2) {
+      currentUrl = activeWatcherVerifyV2.url || currentUrl;
+      currentTitle = activeWatcherVerifyV2.title || currentTitle;
+      finalObservation = activeWatcherVerifyV2.finalObservation || finalObservation;
+      stepResults.push(activeWatcherVerifyV2);
+
+      if (!activeWatcherVerifyV2.ok) {
+        stoppedReason = activeWatcherVerifyV2.summary || "Active watcher UI verification failed.";
+        break;
+      }
+
+      continue;
+    }
 
     if (envFlag("BROWSER_AGENT_REPORT_STEP_FAST_PATH", true) && isReportOnlyStep(step)) {
       const observation = observationFromPageState(beforeState) || before?.observation || observationFromExecution(null, before);
@@ -1914,9 +3365,18 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }
 
     let stepAgentCall = null;
-    let stepPlan = envFlag("BROWSER_AGENT_SYNTHETIC_LOW_RISK_STEPS", true)
-      ? syntheticStepPlanForLowRisk(step, currentUrl, instruction)
-      : null;
+    let stepPlan = syntheticStepPlanFromPlaywrightScout({
+      scout: playwrightScout,
+      step,
+      currentUrl,
+      originalInstruction: instruction,
+    });
+
+    if (!stepPlan) {
+      stepPlan = envFlag("BROWSER_AGENT_SYNTHETIC_LOW_RISK_STEPS", true)
+        ? syntheticStepPlanForLowRisk(step, currentUrl, instruction)
+        : null;
+    }
 
     const lightpandaClickPlannerMode = String(process.env.BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER_MODE || "fallback").trim().toLowerCase();
 
@@ -1990,6 +3450,18 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       );
 
       if (
+        isGenericCloseDismissStep(step) &&
+        !agentProducedExecutableCommand
+      ) {
+        stepPlan = {
+          status: "needs_runtime_watcher",
+          command: null,
+          reason: "Generic close/dismiss step must be handled by active watcher against live Playwright UI, not by Lightpanda link navigation.",
+          messageToChecker: "",
+          messageToUser: "",
+          confidence: 1,
+        };
+      } else if (
         !agentProducedExecutableCommand &&
         envFlag("BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER", true) &&
         lightpandaClickPlannerMode !== "off"
@@ -2021,11 +3493,25 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     let checker = null;
 
     const snapshotChecker = fastSnapshotCheckerForStep({ stepPlan, step, before });
+    const playwrightScoutChecker = playwrightScoutEvidenceCheckerForStep({ stepPlan, step });
     const lightpandaEvidenceChecker = envFlag("BROWSER_AGENT_LIGHTPANDA_EVIDENCE_CHECKER", true)
       ? lightpandaEvidenceCheckerForStep({ stepPlan, beforeState, step })
       : null;
 
-    if (lightpandaEvidenceChecker) {
+    if (playwrightScoutChecker) {
+      checker = playwrightScoutChecker;
+      trace.push(traceEntry({
+        role: "gemma_checker",
+        title: "Playwright scout checker",
+        step: stepNumber,
+        status: checker.status,
+        input: stepPlan,
+        output: checker,
+        summary: checker.reason || "",
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: true,
+      }));
+    } else if (lightpandaEvidenceChecker) {
       checker = lightpandaEvidenceChecker;
       trace.push(traceEntry({
         role: "gemma_checker",
@@ -2228,10 +3714,124 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ok: execution.ok === true,
     }));
 
+    // POST_ACTION_MODAL_REPAIR_V3
+    if (execution?.ok === true && postActionExpectedModalOpenV3(step, executionCommand)) {
+      let liveUiAfterClick = await probePlaywrightUiState({
+        currentUrl: execution.observation?.url || currentUrl || "",
+        navigate: false,
+      }, currentState).catch((err) => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+
+      if (!(liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen)) {
+        const repairTargetText = postActionTargetTextV3(step, executionCommand, instruction);
+        const activation = await activatePlaywrightControlByText({
+          currentUrl,
+          targetText: repairTargetText,
+          intent: step.instruction || "",
+          navigate: false,
+        }, currentState).catch((err) => ({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+
+        liveUiAfterClick = await probePlaywrightUiState({
+          currentUrl: execution.observation?.url || currentUrl || "",
+          navigate: false,
+        }, currentState).catch((err) => ({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+
+        trace.push(traceEntry({
+          role: "watcher",
+          title: "Post-action UI repair watcher",
+          step: stepNumber,
+          status: liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen ? "repaired_modal_open" : "modal_still_closed",
+          input: {
+            step,
+            command: executionCommand,
+            repairTargetText,
+          },
+          output: {
+            activation,
+            modalOpen: Boolean(liveUiAfterClick?.modalOpen),
+            dialogOpen: Boolean(liveUiAfterClick?.dialogOpen),
+            probeError: liveUiAfterClick?.error || "",
+          },
+          summary: liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen
+            ? "Watcher repaired the click by deterministically activating the visible control and verified the modal opened."
+            : "Watcher tried deterministic activation, but the modal still did not open.",
+          tool: "browserObserve",
+          ok: Boolean(liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen),
+        }));
+
+        if (liveUiAfterClick?.modalOpen || liveUiAfterClick?.dialogOpen) {
+          finalObservation = {
+            url: liveUiAfterClick.url || currentUrl,
+            title: liveUiAfterClick.title || currentTitle,
+            textPreview: "Modal opened after post-action UI repair.",
+            uiState: liveUiAfterClick,
+          };
+        }
+      }
+    }
+
     let resultCheckCall = null;
     let resultCheck = null;
 
-    if (
+    const deterministicUiCheckV2 = await deterministicUiStateResultCheckV2({
+      step,
+      command: executionCommand,
+      execution,
+      currentUrl,
+      currentState,
+    });
+
+    if (deterministicUiCheckV2?.success === true) {
+      resultCheck = deterministicUiCheckV2;
+      trace.push(traceEntry({
+        role: "gemma_result_checker",
+        title: "Deterministic UI result checker",
+        step: stepNumber,
+        status: "auto_passed_ui_state_v2",
+        input: {
+          step,
+          command: executionCommand,
+          executionStatus: execution.status,
+        },
+        output: resultCheck,
+        summary: resultCheck.summary || resultCheck.evidence || "",
+        ok: true,
+      }));
+    } else {
+
+    const deterministicUiCheck = await deterministicUiResultCheckForStep({
+      step,
+      command: executionCommand,
+      execution,
+      currentUrl,
+      currentState,
+    });
+
+    if (deterministicUiCheck?.success === true) {
+      resultCheck = deterministicUiCheck;
+      trace.push(traceEntry({
+        role: "gemma_result_checker",
+        title: "Deterministic UI result checker",
+        step: stepNumber,
+        status: "auto_passed_ui_state",
+        input: {
+          step,
+          command: executionCommand,
+          executionStatus: execution.status,
+        },
+        output: resultCheck,
+        summary: resultCheck.summary || resultCheck.evidence || "",
+        ok: true,
+      }));
+    } else if (
       (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_RESULT_CHECKER", true) && isLowRiskAutoCheckCommand(normalized.command, step)) ||
       (envFlag("BROWSER_AGENT_SNAPSHOT_RESULT_FAST_PATH", true) && isSnapshotResultAutoPassCommand(normalized.command, step, execution))
     ) {
@@ -2252,6 +3852,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     } else {
       const resultImages = snapshotImagesForModel(execution.beforeSnapshot || before?.snapshot, execution.afterSnapshot);
+      const liveUiStateAfterExecution = await probePlaywrightUiState({
+        currentUrl: execution.observation?.url || currentUrl || "",
+        navigate: false,
+      }, currentState).catch((err) => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      }));
 
       resultCheckCall = await safeRole("gemma_result_checker", () => runWatcherAgent({
         schemaName: "gemma_result_checker",
@@ -2269,6 +3876,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             observation: observationFromExecution(execution),
           },
           beforeState: compactBeforeState,
+          liveUiStateAfterExecution,
           watcherContext: watcherHybridContext({
             stepResults,
             trace,
@@ -2308,6 +3916,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
+
+    }
     let repaired = false;
     const initialSyncRepair = parseWatcherSyncRepairInstruction(resultCheck?.repairInstruction || "");
     const effectiveRepairAttempts = initialSyncRepair ? Math.max(1, maxRepairAttempts) : maxRepairAttempts;
