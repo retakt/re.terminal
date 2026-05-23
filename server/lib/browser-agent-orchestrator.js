@@ -146,153 +146,21 @@ function strictSnapshotClickApproval({ command = {}, before = null } = {}) {
 
 
 
-function checkerFallbackAfterModelError({ checkerCall = null, stepPlan = {}, step = {}, before = null } = {}) {
+
+function checkerFallbackAfterModelError({ checkerCall = null } = {}) {
   if (!checkerCall || checkerCall.ok !== false) return null;
 
   const error = String(checkerCall.error || "");
   if (!/invalid JSON|BROWSER_AGENT_LLM_INVALID_JSON/i.test(error)) return null;
 
-  const command = stepPlan?.command || null;
-  const tool = String(command?.tool || "");
-  if (!command || !tool) return null;
-  if (isSensitiveStep(step)) return null;
-
-  const allowed = new Set(["browserNavigate", "browserObserve", "browserClickByText", "browserStatus", "browserShowActions"]);
-  if (!allowed.has(tool)) return null;
-
-  if (tool === "browserClickByText") {
-    const approval = strictSnapshotClickApproval({ command, before });
-    if (!approval.ok) {
-      return {
-        status: "blocked_checker_invalid_json",
-        approved: false,
-        command: null,
-        reason: approval.reason,
-        repairInstruction: "Run the model checker again or ask Step Agent to choose a target that exactly matches the snapshot.",
-        messageToUser: "",
-        confidence: 0.2,
-      };
-    }
-
-    return {
-      status: "auto_approved_snapshot_strict_fallback",
-      approved: true,
-      command: {
-        ...command,
-        args: {
-          ...(command.args || {}),
-          text: approval.visible,
-        },
-        notes: safeText([
-          command.notes,
-          "Strict snapshot fallback approved exact clickable target: " + approval.visible,
-        ].filter(Boolean).join(" "), 500),
-      },
-      reason: "Checker returned invalid JSON. Strict snapshot fallback approved because ref/text matched a clickable snapshot line exactly.",
-      repairInstruction: "",
-      messageToUser: "",
-      confidence: Math.min(Number(stepPlan.confidence || 0.85), 0.9),
-    };
-  }
-
   return {
-    status: "auto_approved_checker_fallback",
-    approved: true,
-    command,
-    reason: "Checker returned invalid JSON. Non-sensitive non-click command was approved by deterministic fallback.",
-    repairInstruction: "",
+    status: "blocked_checker_invalid_json",
+    approved: false,
+    command: null,
+    reason: "Checker returned invalid JSON. Browser action blocked so the agent does not click without valid checker approval.",
+    repairInstruction: "Retry the checker or ask the step agent to produce a simpler command.",
     messageToUser: "",
-    confidence: Math.min(Number(stepPlan.confidence || 0.75), 0.85),
-  };
-}
-
- = {}) {
-  if (!checkerCall || checkerCall.ok !== false) return null;
-
-  const error = String(checkerCall.error || "");
-  if (!/invalid JSON|BROWSER_AGENT_LLM_INVALID_JSON/i.test(error)) return null;
-
-  const command = stepPlan?.command || null;
-  const tool = String(command?.tool || "");
-  if (!command || !tool) return null;
-  if (isSensitiveStep(step)) return null;
-
-  const allowed = new Set(["browserNavigate", "browserObserve", "browserClickByText", "browserStatus", "browserShowActions"]);
-  if (!allowed.has(tool)) return null;
-
-  if (tool === "browserClickByText") {
-    const approval = strictSnapshotClickApproval({ command, before });
-    if (!approval.ok) {
-      return {
-        status: "blocked_checker_invalid_json",
-        approved: false,
-        command: null,
-        reason: approval.reason,
-        repairInstruction: "Run the model checker again or ask Step Agent to choose a target that exactly matches the snapshot.",
-        messageToUser: "",
-        confidence: 0.2,
-      };
-    }
-
-    return {
-      status: "auto_approved_snapshot_strict_fallback",
-      approved: true,
-      command: {
-        ...command,
-        args: {
-          ...(command.args || {}),
-          text: approval.visible,
-        },
-        notes: safeText([
-          command.notes,
-          "Strict snapshot fallback approved exact clickable target: " + approval.visible,
-        ].filter(Boolean).join(" "), 500),
-      },
-      reason: "Checker returned invalid JSON. Strict snapshot fallback approved because ref/text matched a clickable snapshot line exactly.",
-      repairInstruction: "",
-      messageToUser: "",
-      confidence: Math.min(Number(stepPlan.confidence || 0.85), 0.9),
-    };
-  }
-
-  return {
-    status: "auto_approved_checker_fallback",
-    approved: true,
-    command,
-    reason: "Checker returned invalid JSON. Non-sensitive non-click command was approved by deterministic fallback.",
-    repairInstruction: "",
-    messageToUser: "",
-    confidence: Math.min(Number(stepPlan.confidence || 0.75), 0.85),
-  };
-}
-
- = {}) {
-  if (!checkerCall || checkerCall.ok !== false) return null;
-
-  const error = String(checkerCall.error || "");
-  if (!/invalid JSON|BROWSER_AGENT_LLM_INVALID_JSON/i.test(error)) return null;
-
-  const command = stepPlan?.command || null;
-  const tool = String(command?.tool || "");
-  if (!command || !tool) return null;
-  if (isSensitiveStep(step)) return null;
-
-  const allowed = new Set(["browserNavigate", "browserObserve", "browserClickByText", "browserStatus", "browserShowActions"]);
-  if (!allowed.has(tool)) return null;
-
-  if (tool === "browserClickByText") {
-    const args = command.args || {};
-    if (!args.text && !args.ref && !args.selector) return null;
-  }
-
-  return {
-    status: "auto_approved_checker_fallback",
-    approved: true,
-    command,
-    reason: "Checker returned invalid JSON. Non-sensitive Step Agent command was approved by deterministic fallback.",
-    repairInstruction: "",
-    messageToUser: "",
-    confidence: Math.min(Number(stepPlan.confidence || 0.75), 0.85),
+    confidence: 0.2,
   };
 }
 
@@ -337,7 +205,7 @@ function visibleTextFromSnapshotLine(line = "") {
 }
 
 function fastSnapshotCheckerForStep({ stepPlan = {}, step = {}, before = null } = {}) {
-  if (!envFlag("BROWSER_AGENT_FAST_SNAPSHOT_CHECKER", true)) return null;
+  if (!envFlag("BROWSER_AGENT_FAST_SNAPSHOT_CHECKER", false)) return null;
   if (isSensitiveStep(step)) return null;
 
   const command = stepPlan?.command || null;
