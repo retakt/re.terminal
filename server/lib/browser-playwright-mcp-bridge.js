@@ -443,6 +443,212 @@ async function tryPlaywrightClick(command = {}, args = {}, state = {}) {
   };
 }
 
+function fieldDisplayName(field = {}) {
+  return safeText(
+    field.label ||
+    field.name ||
+    field.id ||
+    field.placeholder ||
+    field.selector ||
+    field.ref ||
+    "field",
+    180
+  );
+}
+
+function fieldIsSecret(field = {}) {
+  const haystack = [
+    field.label,
+    field.name,
+    field.id,
+    field.placeholder,
+    field.selector,
+    field.type,
+  ].map((item) => String(item || "")).join(" ").toLowerCase();
+
+  return Boolean(field.secret) || /password|passcode|pin|otp|token|secret/.test(haystack);
+}
+
+function redactedFieldValue(field = {}, value = "") {
+  if (fieldIsSecret(field)) return "[redacted]";
+  return safeText(value, 120);
+}
+
+function uniqueAttemptList(attempts = []) {
+  const seen = new Set();
+  return attempts.filter((attempt) => {
+    const key = JSON.stringify(attempt.args || {});
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function typeAttemptsForField(field = {}) {
+  const label = fieldDisplayName(field);
+  const ref = safeText(field.ref || field.selector || "", 180);
+  const placeholder = safeText(field.placeholder || "", 180);
+  const name = safeText(field.name || field.id || "", 180);
+  const value = String(field.value ?? "");
+
+  return uniqueAttemptList([
+    ref && label ? { label: "label_ref", args: { element: label, ref, text: value } } : null,
+    ref ? { label: "ref_element", args: { element: ref, ref, text: value } } : null,
+    label ? { label: "label_only", args: { element: label, text: value } } : null,
+    placeholder ? { label: "placeholder", args: { element: placeholder, text: value } } : null,
+    name ? { label: "name_or_id", args: { element: name, text: value } } : null,
+  ].filter(Boolean));
+}
+
+async function tryPlaywrightTypeField(field = {}) {
+  const label = fieldDisplayName(field);
+  const value = String(field.value ?? "");
+  if (!value && value !== "") return { ok: false, error: "Field value is missing.", text: "" };
+
+  const attempts = typeAttemptsForField(field);
+  const failures = [];
+
+  for (const attempt of attempts) {
+    // Focus first when possible. If focus/click fails, still try browser_type.
+    await callPlaywrightTool(["browser_click", "click"], {
+      element: attempt.args.element,
+      ref: attempt.args.ref || attempt.args.element,
+    }).catch(() => null);
+
+    const result = await callPlaywrightTool(["browser_type", "type"], attempt.args).catch((err) => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      text: err instanceof Error ? err.message : String(err),
+    }));
+
+    if (!clickResultFailed(result)) {
+      return {
+        ...result,
+        ok: true,
+        text: `Filled ${label} using ${attempt.label} with ${redactedFieldValue(field, value)}.`,
+      };
+    }
+
+    failures.push(`${attempt.label}: ${safeText(result.error || result.text || "", 500)}`);
+  }
+
+  return {
+    ok: false,
+    error: `Could not type into ${label}.`,
+    text: failures.join("\n"),
+  };
+}
+
+async function tryDomFillFields(fields = []) {
+  const payload = fields.map((field) => ({
+    label: fieldDisplayName(field),
+    name: safeText(field.name || field.id || "", 180),
+    placeholder: safeText(field.placeholder || "", 180),
+    type: safeText(field.type || "", 80),
+    value: String(field.value ?? ""),
+    secret: fieldIsSecret(field),
+  }));
+
+  const script = `() => {
+    const fields = ${JSON.stringify(payload)};
+
+    const norm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+
+    const textFor = (el) => {
+      const parts = [];
+      const id = el.getAttribute("id");
+      if (id) {
+        document.querySelectorAll('label[for="' + CSS.escape(id) + '"]').forEach((label) => parts.push(label.textContent || ""));
+      }
+      const parentLabel = el.closest("label");
+      if (parentLabel) parts.push(parentLabel.textContent || "");
+      parts.push(
+        el.getAttribute("aria-label") || "",
+        el.getAttribute("placeholder") || "",
+        el.getAttribute("name") || "",
+        el.getAttribute("id") || "",
+        el.getAttribute("type") || ""
+      );
+      return parts.join(" ");
+    };
+
+    const candidates = Array.from(document.querySelectorAll("input, textarea, [contenteditable=true]")).filter(visible);
+    const filled = [];
+    const missing = [];
+
+    function setNativeValue(el, value) {
+      if (el.isContentEditable) {
+        el.focus();
+        el.textContent = value;
+      } else {
+        const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        el.focus();
+        if (setter) setter.call(el, value);
+        else el.value = value;
+      }
+
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      el.dispatchEvent(new Event("blur", { bubbles: true }));
+    }
+
+    for (const field of fields) {
+      const wanted = [field.label, field.name, field.placeholder].map(norm).filter(Boolean);
+      const isSecret = field.secret || /password|pass|pin|otp|secret/.test(norm(field.label + " " + field.name + " " + field.type));
+
+      let target = candidates.find((el) => {
+        const hay = norm(textFor(el));
+        return wanted.some((needle) => needle && hay.includes(needle));
+      });
+
+      if (!target && isSecret) {
+        target = candidates.find((el) => String(el.getAttribute("type") || "").toLowerCase() === "password");
+      }
+
+      if (!target) {
+        missing.push(field.label);
+        continue;
+      }
+
+      setNativeValue(target, field.value);
+      filled.push({
+        label: field.label,
+        secret: field.secret,
+        value: field.secret ? "[redacted]" : field.value,
+      });
+    }
+
+    return { ok: missing.length === 0, filled, missing };
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  if (clickResultFailed(result)) {
+    return {
+      ok: false,
+      error: "DOM fill fallback failed.",
+      text: result.error || result.text || "",
+    };
+  }
+
+  return {
+    ...result,
+    ok: true,
+    text: ["DOM fill fallback executed.", result.text].filter(Boolean).join("\n"),
+  };
+}
+
+
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";
   const commandArgs = command.args || {};
@@ -467,20 +673,28 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
 
     const results = [];
     for (const field of fields) {
-      const label = safeText(field.label || field.name || field.id || field.placeholder || field.selector || "", 180);
-      const value = String(field.value ?? "");
-
-      results.push(await callPlaywrightTool(["browser_type", "type"], {
-        element: label,
-        ref: field.ref || field.selector || label,
-        text: value,
-      }));
+      results.push(await tryPlaywrightTypeField(field));
     }
 
+    if (results.every((result) => result.ok === true)) {
+      return {
+        ok: true,
+        results,
+        text: results.map((result) => result.text).filter(Boolean).join("\n"),
+      };
+    }
+
+    const domFallback = await tryDomFillFields(fields);
+
     return {
-      ok: results.every((result) => !/error/i.test(result.text || "")),
+      ok: domFallback.ok === true,
       results,
-      text: results.map((result) => result.text).join("\n"),
+      domFallback,
+      error: domFallback.ok === true ? "" : domFallback.error || "Fill failed.",
+      text: [
+        results.map((result) => result.text || result.error || "").filter(Boolean).join("\n"),
+        domFallback.text || domFallback.error || "",
+      ].filter(Boolean).join("\n"),
     };
   }
 
