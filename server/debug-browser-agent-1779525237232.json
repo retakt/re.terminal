@@ -7,8 +7,8 @@
   "extensionId": "",
   "pageKey": "help_example-domains",
   "engine": "playwright_mcp",
-  "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
-  "browserSummary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+  "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
+  "browserSummary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
   "whatFound": {
     "ok": true,
     "url": "https://www.iana.org/help/example-domains",
@@ -26,7 +26,115 @@
   "requiresUser": false,
   "blockedReason": "",
   "nextSafeAction": "Continue with the next browser instruction.",
-  "watcher": null,
+  "watcher": {
+    "visibility": "internal_only",
+    "role": "third_party_watcher_spy",
+    "status": "completed",
+    "completed": 2,
+    "total": 2,
+    "finalPage": "Example Domains — https://www.iana.org/help/example-domains",
+    "failedStep": null,
+    "repairs": [
+      {
+        "role": "gemma_checker",
+        "step": 2,
+        "status": "repaired",
+        "summary": "Instruction 'More information' matches visible link 'Learn more' on page - semantic equivalence confirmed"
+      }
+    ],
+    "slowAgents": [],
+    "keyEvents": [
+      {
+        "role": "main_orchestrator",
+        "step": null,
+        "status": "ready",
+        "ok": true,
+        "tool": "",
+        "summary": "Open https://example.com and click More information."
+      },
+      {
+        "role": "gemma_step_agent",
+        "step": 1,
+        "status": "synthetic_ready",
+        "ok": true,
+        "tool": "browserNavigate",
+        "summary": "Navigation step can be executed directly without another model call."
+      },
+      {
+        "role": "gemma_checker",
+        "step": 1,
+        "status": "auto_approved",
+        "ok": true,
+        "tool": "browserNavigate",
+        "summary": "Low-risk browser command auto-approved to avoid redundant checker call."
+      },
+      {
+        "role": "playwright_controller",
+        "step": 1,
+        "status": "executed",
+        "ok": true,
+        "tool": "browserNavigate",
+        "summary": "Example Domain — https://example.com/"
+      },
+      {
+        "role": "gemma_result_checker",
+        "step": 1,
+        "status": "auto_passed",
+        "ok": true,
+        "tool": "",
+        "summary": "Low-risk step passed. Example Domain — https://example.com/"
+      },
+      {
+        "role": "gemma_step_agent",
+        "step": 2,
+        "status": "ready",
+        "ok": true,
+        "tool": "browserClickByText",
+        "summary": "Visible text 'Learn more' corresponds to instruction 'More information' - semantic mapping: 'Learn more' = 'More information'"
+      },
+      {
+        "role": "gemma_checker",
+        "step": 2,
+        "status": "repaired",
+        "ok": true,
+        "tool": "browserClickByText",
+        "summary": "Instruction 'More information' matches visible link 'Learn more' on page - semantic equivalence confirmed"
+      },
+      {
+        "role": "playwright_controller",
+        "step": 2,
+        "status": "executed",
+        "ok": true,
+        "tool": "browserClickByText",
+        "summary": "Example Domains — https://www.iana.org/help/example-domains"
+      },
+      {
+        "role": "gemma_result_checker",
+        "step": 2,
+        "status": "auto_passed",
+        "ok": true,
+        "tool": "",
+        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains"
+      }
+    ],
+    "userBehavior": {
+      "raw": "",
+      "signals": [],
+      "responseStyle": "concise, useful, mention final result and optional next step"
+    },
+    "responseGuidanceForMain": "concise, useful, mention final result and optional next step",
+    "privateNotesForMain": [
+      "Some command repair happened; mention only if useful."
+    ],
+    "avoidInUserAnswer": [
+      "raw snapshots",
+      "full YAML",
+      "internal refs unless needed",
+      "long token/debug details unless user asks",
+      "watcher identity",
+      "private watcher notes"
+    ]
+  },
   "planner": {
     "status": "ready",
     "userIntent": "Open https://example.com and click More information.",
@@ -34,12 +142,12 @@
       {
         "instruction": "open/navigate to https://example.com",
         "expectedAction": "navigate",
-        "successCriteria": "currentUrl === \"https://example.com\""
+        "successCriteria": "currentUrl is https://example.com"
       },
       {
-        "instruction": "click on More information",
+        "instruction": "click More information",
         "expectedAction": "click",
-        "successCriteria": "document.querySelector(\"#more-information\") !== null"
+        "successCriteria": "lastObservation contains 'More information'"
       }
     ],
     "messageToUser": "",
@@ -47,7 +155,7 @@
   },
   "reporter": {
     "success": true,
-    "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+    "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
     "needsUser": false,
     "nextSafeAction": "Continue with the next browser instruction.",
     "missingSteps": [],
@@ -190,12 +298,12 @@
     "missing": []
   },
   "runtimeTiming": {
-    "totalMs": 46220.3,
-    "pipelineMs": 46220.3,
+    "totalMs": 26707.4,
+    "pipelineMs": 26707.4,
     "mainModelMs": 0
   },
   "tokenUsage": {
-    "totalTokens": 5274,
+    "totalTokens": 3810,
     "planner": {
       "role": "main_orchestrator",
       "title": "Main model intent orchestrator",
@@ -204,8 +312,8 @@
       "step": null,
       "tool": "",
       "ok": true,
-      "durationMs": 5769,
-      "tokens": 636,
+      "durationMs": 3728,
+      "tokens": 631,
       "input": "Open https://example.com and click More information.",
       "output": {
         "status": "ready",
@@ -214,12 +322,12 @@
           {
             "instruction": "open/navigate to https://example.com",
             "expectedAction": "navigate",
-            "successCriteria": "currentUrl === \"https://example.com\""
+            "successCriteria": "currentUrl is https://example.com"
           },
           {
-            "instruction": "click on More information",
+            "instruction": "click More information",
             "expectedAction": "click",
-            "successCriteria": "document.querySelector(\"#more-information\") !== null"
+            "successCriteria": "lastObservation contains 'More information'"
           }
         ],
         "messageToUser": "",
@@ -246,7 +354,7 @@
             "step": {
               "instruction": "open/navigate to https://example.com",
               "expectedAction": "navigate",
-              "successCriteria": "currentUrl === \"https://example.com\""
+              "successCriteria": "currentUrl is https://example.com"
             },
             "ok": true,
             "repaired": false,
@@ -266,9 +374,9 @@
           {
             "stepNumber": 2,
             "step": {
-              "instruction": "click on More information",
+              "instruction": "click More information",
               "expectedAction": "click",
-              "successCriteria": "document.querySelector(\"#more-information\") !== null"
+              "successCriteria": "lastObservation contains 'More information'"
             },
             "ok": true,
             "repaired": false,
@@ -280,24 +388,24 @@
               "intent": "click_or_open",
               "tool": "browserClickByText",
               "args": {
+                "currentUrl": "https://example.com/",
                 "text": "Learn more",
-                "ref": "e6",
-                "currentUrl": "https://example.com/"
+                "ref": "e6"
               },
-              "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+              "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
             }
           }
         ]
       },
       "output": {
         "success": true,
-        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
         "needsUser": false,
         "nextSafeAction": "Continue with the next browser instruction.",
         "missingSteps": [],
         "reason": ""
       },
-      "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+      "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
       "reasoning": ""
     }
   },
@@ -310,8 +418,8 @@
       "step": null,
       "tool": "",
       "ok": true,
-      "durationMs": 5769,
-      "tokens": 636,
+      "durationMs": 3728,
+      "tokens": 631,
       "input": "Open https://example.com and click More information.",
       "output": {
         "status": "ready",
@@ -320,12 +428,12 @@
           {
             "instruction": "open/navigate to https://example.com",
             "expectedAction": "navigate",
-            "successCriteria": "currentUrl === \"https://example.com\""
+            "successCriteria": "currentUrl is https://example.com"
           },
           {
-            "instruction": "click on More information",
+            "instruction": "click More information",
             "expectedAction": "click",
-            "successCriteria": "document.querySelector(\"#more-information\") !== null"
+            "successCriteria": "lastObservation contains 'More information'"
           }
         ],
         "messageToUser": "",
@@ -346,7 +454,7 @@
       "tokens": null,
       "input": "open/navigate to https://example.com",
       "output": "",
-      "summary": "currentUrl === \"https://example.com\"",
+      "summary": "currentUrl is https://example.com",
       "reasoning": ""
     },
     {
@@ -362,7 +470,7 @@
       "input": {
         "instruction": "open/navigate to https://example.com",
         "expectedAction": "navigate",
-        "successCriteria": "currentUrl === \"https://example.com\""
+        "successCriteria": "currentUrl is https://example.com"
       },
       "output": {
         "status": "ready",
@@ -448,9 +556,9 @@
         "url": "https://example.com/",
         "title": "Example Domain",
         "error": "",
-        "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-19-940Z.yml)"
+        "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-33-36-647Z.yml)"
       },
-      "summary": "### Ran Playwright code ```js await page.goto('https://example.com'); ``` ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-19-940Z.yml)",
+      "summary": "Example Domain — https://example.com/",
       "reasoning": ""
     },
     {
@@ -467,7 +575,7 @@
         "step": {
           "instruction": "open/navigate to https://example.com",
           "expectedAction": "navigate",
-          "successCriteria": "currentUrl === \"https://example.com\""
+          "successCriteria": "currentUrl is https://example.com"
         },
         "command": {
           "intent": "navigate",
@@ -498,7 +606,7 @@
         "step": {
           "instruction": "open/navigate to https://example.com",
           "expectedAction": "navigate",
-          "successCriteria": "currentUrl === \"https://example.com\""
+          "successCriteria": "currentUrl is https://example.com"
         }
       },
       "summary": "Low-risk step passed. Example Domain — https://example.com/",
@@ -514,9 +622,9 @@
       "ok": null,
       "durationMs": null,
       "tokens": null,
-      "input": "click on More information",
+      "input": "click More information",
       "output": "",
-      "summary": "document.querySelector(\"#more-information\") !== null",
+      "summary": "lastObservation contains 'More information'",
       "reasoning": ""
     },
     {
@@ -527,12 +635,12 @@
       "step": 2,
       "tool": "browserClickByText",
       "ok": true,
-      "durationMs": 28035,
-      "tokens": 2413,
+      "durationMs": 4596,
+      "tokens": 1478,
       "input": {
-        "instruction": "click on More information",
+        "instruction": "click More information",
         "expectedAction": "click",
-        "successCriteria": "document.querySelector(\"#more-information\") !== null"
+        "successCriteria": "lastObservation contains 'More information'"
       },
       "output": {
         "status": "ready",
@@ -540,63 +648,66 @@
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
+            "currentUrl": "https://example.com/",
             "text": "Learn more",
             "ref": "e6"
           },
-          "notes": "The instruction 'click on More information' maps to the visible link 'Learn more' in the snapshot.",
-          "reason": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'.",
-          "messageToChecker": "Clicking 'Learn more' fulfills the instruction to click on the More information link.",
-          "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+          "notes": "Visible text 'Learn more' corresponds to instruction 'More information' - semantic mapping: 'Learn more' = 'More information'",
+          "reason": "The instruction 'click More information' matches the visible link 'Learn more' on the page",
+          "messageToChecker": "Clicking 'Learn more' will trigger the navigation to the information page",
+          "messageToUser": "Clicking 'Learn more' will open the information page",
           "confidence": 0.95
         }
       },
-      "summary": "[object Object]",
+      "summary": "Visible text 'Learn more' corresponds to instruction 'More information' - semantic mapping: 'Learn more' = 'More information'",
       "reasoning": ""
     },
     {
       "role": "gemma_checker",
       "title": "Gemma command checker",
       "model": "qwen3.5:2b",
-      "status": "approved",
+      "status": "repaired",
       "step": 2,
       "tool": "browserClickByText",
       "ok": true,
-      "durationMs": 5349,
-      "tokens": 2225,
+      "durationMs": 7569,
+      "tokens": 1701,
       "input": {
         "status": "ready",
         "command": {
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
+            "currentUrl": "https://example.com/",
             "text": "Learn more",
             "ref": "e6"
           },
-          "notes": "The instruction 'click on More information' maps to the visible link 'Learn more' in the snapshot.",
-          "reason": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'.",
-          "messageToChecker": "Clicking 'Learn more' fulfills the instruction to click on the More information link.",
-          "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+          "notes": "Visible text 'Learn more' corresponds to instruction 'More information' - semantic mapping: 'Learn more' = 'More information'",
+          "reason": "The instruction 'click More information' matches the visible link 'Learn more' on the page",
+          "messageToChecker": "Clicking 'Learn more' will trigger the navigation to the information page",
+          "messageToUser": "Clicking 'Learn more' will open the information page",
           "confidence": 0.95
         }
       },
       "output": {
-        "status": "approved",
+        "status": "repaired",
         "approved": true,
         "command": {
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
+            "currentUrl": "https://example.com/",
             "text": "Learn more",
             "ref": "e6"
           },
-          "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+          "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
         },
-        "reason": "The visible link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain.",
-        "repairInstruction": "",
-        "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+        "reason": "Instruction 'More information' matches visible link 'Learn more' on page - semantic equivalence confirmed",
+        "repairInstruction": "Replace 'More information' with 'Learn more' to match visible text",
+        "messageToUser": "Clicking 'Learn more' will open the information page",
         "confidence": 0.95
       },
-      "summary": "The visible link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain.",
+      "summary": "Instruction 'More information' matches visible link 'Learn more' on page - semantic equivalence confirmed",
       "reasoning": ""
     },
     {
@@ -613,19 +724,19 @@
         "intent": "click_or_open",
         "tool": "browserClickByText",
         "args": {
+          "currentUrl": "https://example.com/",
           "text": "Learn more",
-          "ref": "e6",
-          "currentUrl": "https://example.com/"
+          "ref": "e6"
         },
-        "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+        "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
       },
       "output": {
         "url": "https://www.iana.org/help/example-domains",
         "title": "Example Domains",
         "error": "",
-        "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-58-344Z.yml)"
+        "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-33-57-217Z.yml)\n### Events\n- New console entries: .playwright-mcp\\console-2026-05-23T08-33-36-654Z.log#L1"
       },
-      "summary": "Click succeeded using ref_as_target. ### Ran Playwright code ```js await page.getByRole('link', { name: 'Learn more' }).click(); ``` ### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-58-344Z.yml)",
+      "summary": "Example Domains — https://www.iana.org/help/example-domains",
       "reasoning": ""
     },
     {
@@ -640,19 +751,19 @@
       "tokens": null,
       "input": {
         "step": {
-          "instruction": "click on More information",
+          "instruction": "click More information",
           "expectedAction": "click",
-          "successCriteria": "document.querySelector(\"#more-information\") !== null"
+          "successCriteria": "lastObservation contains 'More information'"
         },
         "command": {
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
+            "currentUrl": "https://example.com/",
             "text": "Learn more",
-            "ref": "e6",
-            "currentUrl": "https://example.com/"
+            "ref": "e6"
           },
-          "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+          "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
         },
         "executionStatus": "executed"
       },
@@ -668,16 +779,16 @@
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
+            "currentUrl": "https://example.com/",
             "text": "Learn more",
-            "ref": "e6",
-            "currentUrl": "https://example.com/"
+            "ref": "e6"
           },
-          "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+          "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
         },
         "step": {
-          "instruction": "click on More information",
+          "instruction": "click More information",
           "expectedAction": "click",
-          "successCriteria": "document.querySelector(\"#more-information\") !== null"
+          "successCriteria": "lastObservation contains 'More information'"
         }
       },
       "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
@@ -701,7 +812,7 @@
             "step": {
               "instruction": "open/navigate to https://example.com",
               "expectedAction": "navigate",
-              "successCriteria": "currentUrl === \"https://example.com\""
+              "successCriteria": "currentUrl is https://example.com"
             },
             "ok": true,
             "repaired": false,
@@ -721,9 +832,9 @@
           {
             "stepNumber": 2,
             "step": {
-              "instruction": "click on More information",
+              "instruction": "click More information",
               "expectedAction": "click",
-              "successCriteria": "document.querySelector(\"#more-information\") !== null"
+              "successCriteria": "lastObservation contains 'More information'"
             },
             "ok": true,
             "repaired": false,
@@ -735,24 +846,24 @@
               "intent": "click_or_open",
               "tool": "browserClickByText",
               "args": {
+                "currentUrl": "https://example.com/",
                 "text": "Learn more",
-                "ref": "e6",
-                "currentUrl": "https://example.com/"
+                "ref": "e6"
               },
-              "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+              "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
             }
           }
         ]
       },
       "output": {
         "success": true,
-        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
         "needsUser": false,
         "nextSafeAction": "Continue with the next browser instruction.",
         "missingSteps": [],
         "reason": ""
       },
-      "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+      "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
       "reasoning": ""
     }
   ],
@@ -773,7 +884,7 @@
       },
       {
         "index": 1,
-        "instruction": "click on More information",
+        "instruction": "click More information",
         "ok": true,
         "status": "passed",
         "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
@@ -928,8 +1039,8 @@
         "step": null,
         "tool": "",
         "ok": true,
-        "durationMs": 5769,
-        "tokens": 636,
+        "durationMs": 3728,
+        "tokens": 631,
         "input": "Open https://example.com and click More information.",
         "output": {
           "status": "ready",
@@ -938,12 +1049,12 @@
             {
               "instruction": "open/navigate to https://example.com",
               "expectedAction": "navigate",
-              "successCriteria": "currentUrl === \"https://example.com\""
+              "successCriteria": "currentUrl is https://example.com"
             },
             {
-              "instruction": "click on More information",
+              "instruction": "click More information",
               "expectedAction": "click",
-              "successCriteria": "document.querySelector(\"#more-information\") !== null"
+              "successCriteria": "lastObservation contains 'More information'"
             }
           ],
           "messageToUser": "",
@@ -964,7 +1075,7 @@
         "tokens": null,
         "input": "open/navigate to https://example.com",
         "output": "",
-        "summary": "currentUrl === \"https://example.com\"",
+        "summary": "currentUrl is https://example.com",
         "reasoning": ""
       },
       {
@@ -980,7 +1091,7 @@
         "input": {
           "instruction": "open/navigate to https://example.com",
           "expectedAction": "navigate",
-          "successCriteria": "currentUrl === \"https://example.com\""
+          "successCriteria": "currentUrl is https://example.com"
         },
         "output": {
           "status": "ready",
@@ -1066,9 +1177,9 @@
           "url": "https://example.com/",
           "title": "Example Domain",
           "error": "",
-          "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-19-940Z.yml)"
+          "summary": "### Ran Playwright code\n```js\nawait page.goto('https://example.com');\n```\n### Page\n- Page URL: https://example.com/\n- Page Title: Example Domain\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-33-36-647Z.yml)"
         },
-        "summary": "### Ran Playwright code ```js await page.goto('https://example.com'); ``` ### Page - Page URL: https://example.com/ - Page Title: Example Domain ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-19-940Z.yml)",
+        "summary": "Example Domain — https://example.com/",
         "reasoning": ""
       },
       {
@@ -1085,7 +1196,7 @@
           "step": {
             "instruction": "open/navigate to https://example.com",
             "expectedAction": "navigate",
-            "successCriteria": "currentUrl === \"https://example.com\""
+            "successCriteria": "currentUrl is https://example.com"
           },
           "command": {
             "intent": "navigate",
@@ -1116,7 +1227,7 @@
           "step": {
             "instruction": "open/navigate to https://example.com",
             "expectedAction": "navigate",
-            "successCriteria": "currentUrl === \"https://example.com\""
+            "successCriteria": "currentUrl is https://example.com"
           }
         },
         "summary": "Low-risk step passed. Example Domain — https://example.com/",
@@ -1132,9 +1243,9 @@
         "ok": null,
         "durationMs": null,
         "tokens": null,
-        "input": "click on More information",
+        "input": "click More information",
         "output": "",
-        "summary": "document.querySelector(\"#more-information\") !== null",
+        "summary": "lastObservation contains 'More information'",
         "reasoning": ""
       },
       {
@@ -1145,12 +1256,12 @@
         "step": 2,
         "tool": "browserClickByText",
         "ok": true,
-        "durationMs": 28035,
-        "tokens": 2413,
+        "durationMs": 4596,
+        "tokens": 1478,
         "input": {
-          "instruction": "click on More information",
+          "instruction": "click More information",
           "expectedAction": "click",
-          "successCriteria": "document.querySelector(\"#more-information\") !== null"
+          "successCriteria": "lastObservation contains 'More information'"
         },
         "output": {
           "status": "ready",
@@ -1158,63 +1269,66 @@
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
+              "currentUrl": "https://example.com/",
               "text": "Learn more",
               "ref": "e6"
             },
-            "notes": "The instruction 'click on More information' maps to the visible link 'Learn more' in the snapshot.",
-            "reason": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'.",
-            "messageToChecker": "Clicking 'Learn more' fulfills the instruction to click on the More information link.",
-            "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+            "notes": "Visible text 'Learn more' corresponds to instruction 'More information' - semantic mapping: 'Learn more' = 'More information'",
+            "reason": "The instruction 'click More information' matches the visible link 'Learn more' on the page",
+            "messageToChecker": "Clicking 'Learn more' will trigger the navigation to the information page",
+            "messageToUser": "Clicking 'Learn more' will open the information page",
             "confidence": 0.95
           }
         },
-        "summary": "[object Object]",
+        "summary": "Visible text 'Learn more' corresponds to instruction 'More information' - semantic mapping: 'Learn more' = 'More information'",
         "reasoning": ""
       },
       {
         "role": "gemma_checker",
         "title": "Gemma command checker",
         "model": "qwen3.5:2b",
-        "status": "approved",
+        "status": "repaired",
         "step": 2,
         "tool": "browserClickByText",
         "ok": true,
-        "durationMs": 5349,
-        "tokens": 2225,
+        "durationMs": 7569,
+        "tokens": 1701,
         "input": {
           "status": "ready",
           "command": {
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
+              "currentUrl": "https://example.com/",
               "text": "Learn more",
               "ref": "e6"
             },
-            "notes": "The instruction 'click on More information' maps to the visible link 'Learn more' in the snapshot.",
-            "reason": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'.",
-            "messageToChecker": "Clicking 'Learn more' fulfills the instruction to click on the More information link.",
-            "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+            "notes": "Visible text 'Learn more' corresponds to instruction 'More information' - semantic mapping: 'Learn more' = 'More information'",
+            "reason": "The instruction 'click More information' matches the visible link 'Learn more' on the page",
+            "messageToChecker": "Clicking 'Learn more' will trigger the navigation to the information page",
+            "messageToUser": "Clicking 'Learn more' will open the information page",
             "confidence": 0.95
           }
         },
         "output": {
-          "status": "approved",
+          "status": "repaired",
           "approved": true,
           "command": {
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
+              "currentUrl": "https://example.com/",
               "text": "Learn more",
               "ref": "e6"
             },
-            "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+            "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
           },
-          "reason": "The visible link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain.",
-          "repairInstruction": "",
-          "messageToUser": "Clicking 'Learn more' will open the detailed information page.",
+          "reason": "Instruction 'More information' matches visible link 'Learn more' on page - semantic equivalence confirmed",
+          "repairInstruction": "Replace 'More information' with 'Learn more' to match visible text",
+          "messageToUser": "Clicking 'Learn more' will open the information page",
           "confidence": 0.95
         },
-        "summary": "The visible link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain.",
+        "summary": "Instruction 'More information' matches visible link 'Learn more' on page - semantic equivalence confirmed",
         "reasoning": ""
       },
       {
@@ -1231,19 +1345,19 @@
           "intent": "click_or_open",
           "tool": "browserClickByText",
           "args": {
+            "currentUrl": "https://example.com/",
             "text": "Learn more",
-            "ref": "e6",
-            "currentUrl": "https://example.com/"
+            "ref": "e6"
           },
-          "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+          "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
         },
         "output": {
           "url": "https://www.iana.org/help/example-domains",
           "title": "Example Domains",
           "error": "",
-          "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-58-344Z.yml)"
+          "summary": "Click succeeded using ref_as_target.\n### Ran Playwright code\n```js\nawait page.getByRole('link', { name: 'Learn more' }).click();\n```\n### Page\n- Page URL: https://www.iana.org/help/example-domains\n- Page Title: Example Domains\n### Snapshot\n- [Snapshot](.playwright-mcp\\page-2026-05-23T08-33-57-217Z.yml)\n### Events\n- New console entries: .playwright-mcp\\console-2026-05-23T08-33-36-654Z.log#L1"
         },
-        "summary": "Click succeeded using ref_as_target. ### Ran Playwright code ```js await page.getByRole('link', { name: 'Learn more' }).click(); ``` ### Page - Page URL: https://www.iana.org/help/example-domains - Page Title: Example Domains ### Snapshot - [Snapshot](.playwright-mcp\\page-2026-05-23T08-00-58-344Z.yml)",
+        "summary": "Example Domains — https://www.iana.org/help/example-domains",
         "reasoning": ""
       },
       {
@@ -1258,19 +1372,19 @@
         "tokens": null,
         "input": {
           "step": {
-            "instruction": "click on More information",
+            "instruction": "click More information",
             "expectedAction": "click",
-            "successCriteria": "document.querySelector(\"#more-information\") !== null"
+            "successCriteria": "lastObservation contains 'More information'"
           },
           "command": {
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
+              "currentUrl": "https://example.com/",
               "text": "Learn more",
-              "ref": "e6",
-              "currentUrl": "https://example.com/"
+              "ref": "e6"
             },
-            "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+            "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
           },
           "executionStatus": "executed"
         },
@@ -1286,16 +1400,16 @@
             "intent": "click_or_open",
             "tool": "browserClickByText",
             "args": {
+              "currentUrl": "https://example.com/",
               "text": "Learn more",
-              "ref": "e6",
-              "currentUrl": "https://example.com/"
+              "ref": "e6"
             },
-            "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+            "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
           },
           "step": {
-            "instruction": "click on More information",
+            "instruction": "click More information",
             "expectedAction": "click",
-            "successCriteria": "document.querySelector(\"#more-information\") !== null"
+            "successCriteria": "lastObservation contains 'More information'"
           }
         },
         "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
@@ -1319,7 +1433,7 @@
               "step": {
                 "instruction": "open/navigate to https://example.com",
                 "expectedAction": "navigate",
-                "successCriteria": "currentUrl === \"https://example.com\""
+                "successCriteria": "currentUrl is https://example.com"
               },
               "ok": true,
               "repaired": false,
@@ -1339,9 +1453,9 @@
             {
               "stepNumber": 2,
               "step": {
-                "instruction": "click on More information",
+                "instruction": "click More information",
                 "expectedAction": "click",
-                "successCriteria": "document.querySelector(\"#more-information\") !== null"
+                "successCriteria": "lastObservation contains 'More information'"
               },
               "ok": true,
               "repaired": false,
@@ -1353,24 +1467,24 @@
                 "intent": "click_or_open",
                 "tool": "browserClickByText",
                 "args": {
+                  "currentUrl": "https://example.com/",
                   "text": "Learn more",
-                  "ref": "e6",
-                  "currentUrl": "https://example.com/"
+                  "ref": "e6"
                 },
-                "notes": "The link 'Learn more' in the snapshot corresponds to the instruction 'More information'. Clicking this fulfills the user's intent to view more information about the domain."
+                "notes": "Visible text 'Learn more' semantically matches instruction 'More information' - semantic mapping confirmed"
               }
             }
           ]
         },
         "output": {
           "success": true,
-          "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+          "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
           "needsUser": false,
           "nextSafeAction": "Continue with the next browser instruction.",
           "missingSteps": [],
           "reason": ""
         },
-        "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains",
+        "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains",
         "reasoning": ""
       }
     ],
@@ -1393,11 +1507,11 @@
         "interactiveElements": [],
         "stats": {}
       },
-      "summary": "Low-risk step passed. Example Domains — https://www.iana.org/help/example-domains"
+      "summary": "Done. Final page: Example Domains — https://www.iana.org/help/example-domains"
     }
   },
   "state": {
-    "sessionId": "debug-browser-1779523212187",
+    "sessionId": "debug-browser-1779525210513",
     "mode": "browser",
     "currentUrl": "https://www.iana.org/help/example-domains",
     "currentTitle": "Example Domains",
@@ -1452,6 +1566,6 @@
     "learnedAliases": [],
     "lastToolResults": [],
     "failureCount": 0,
-    "updatedAt": "2026-05-23T08:00:58.414Z"
+    "updatedAt": "2026-05-23T08:33:57.227Z"
   }
 }
