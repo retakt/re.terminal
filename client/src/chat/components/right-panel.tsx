@@ -516,7 +516,7 @@ function ReasoningSection({ isActive = true }: { isActive?: boolean }) {
 
   useEffect(() => {
     if (!isActive) return;
-    const refresh = () => setLogs([...reasoningLogsRef.current].filter((log) => !log.runId).reverse());
+    const refresh = () => setLogs([...reasoningLogsRef.current].reverse());
     refresh();
     const interval = setInterval(refresh, 350);
     return () => clearInterval(interval);
