@@ -40,6 +40,97 @@ function envInt(name, fallback) {
   return Number.isFinite(raw) ? raw : fallback;
 }
 
+function envFlag(name, fallback = false) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  return ["1", "true", "yes", "on"].includes(String(raw).trim().toLowerCase());
+}
+
+function isReportOnlyStep(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = String(step.instruction || "").toLowerCase();
+  return action === "report" || /\b(report|tell me|summarize|final state|final url|final title)\b/.test(text);
+}
+
+function isLowRiskAutoCheckCommand(command = {}, step = {}) {
+  const tool = String(command?.tool || "");
+  const text = String(step?.instruction || "");
+  if (/\b(submit|pay|payment|delete|remove|approve|reject|password|otp|login|sign in|checkout)\b/i.test(text)) return false;
+  return ["browserNavigate", "browserObserve", "browserStatus", "browserShowActions"].includes(tool);
+}
+
+function syntheticApprovedChecker(stepPlan = {}) {
+  return {
+    status: "approved",
+    approved: true,
+    command: stepPlan.command || null,
+    reason: "Low-risk browser command auto-approved to avoid redundant checker call.",
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: Number(stepPlan.confidence || 0.9),
+  };
+}
+
+function syntheticPassedResult({ execution = {}, step = {}, command = {} } = {}) {
+  const observation = observationFromExecution(execution);
+  const where = [observation.title, observation.url].filter(Boolean).join(" — ");
+  return {
+    status: "passed",
+    success: execution?.ok === true,
+    summary: execution?.ok === true
+      ? `Low-risk step passed. ${where}`.trim()
+      : execution?.error || "Low-risk step failed.",
+    evidence: where || execution?.actionResult?.text || "",
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: execution?.ok === true ? 0.95 : 0.4,
+    command,
+    step,
+  };
+}
+
+function syntheticStepPlanForLowRisk(step = {}, currentUrl = "") {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const instruction = String(step.instruction || "");
+
+  if (action === "navigate" || /\b(open|navigate|visit|go to)\b/i.test(instruction)) {
+    const url = instruction.match(/https?:\/\/[^\s"'<>),.]+/i)?.[0] || "";
+    if (url) {
+      return {
+        status: "ready",
+        command: {
+          intent: "navigate",
+          tool: "browserNavigate",
+          args: { url },
+          notes: "Synthetic low-risk navigation command from orchestrator step.",
+        },
+        reason: "Navigation step can be executed directly without another model call.",
+        messageToChecker: "",
+        messageToUser: "",
+        confidence: 1,
+      };
+    }
+  }
+
+  if (action === "observe" || /\b(verify|confirm|observe|inspect|check|look)\b/i.test(instruction)) {
+    return {
+      status: "ready",
+      command: {
+        intent: "observe",
+        tool: "browserObserve",
+        args: { currentUrl, focus: "page" },
+        notes: "Synthetic low-risk observation command from orchestrator step.",
+      },
+      reason: "Observation step can be executed directly without another model call.",
+      messageToChecker: "",
+      messageToUser: "",
+      confidence: 1,
+    };
+  }
+
+  return null;
+}
+
 function stageLog(stage = "", data = {}) {
   if (!["1", "true", "yes", "on"].includes(String(process.env.BROWSER_AGENT_TRACE_STDOUT || "").toLowerCase())) return;
   const safe = {};
@@ -449,69 +540,148 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     const beforeImages = snapshotImagesForModel(before?.snapshot);
 
-    const stepAgentCall = await safeRole("gemma_step_agent", () => callBrowserAgentRoleJson("planner", {
-      system: stepAgentSystemPrompt(),
-      schemaName: "gemma_step_agent",
-      images: beforeImages,
-      context: {
-        originalInstruction: instruction,
-        fullPlan: { ...orchestratorPlan, steps },
+    if (envFlag("BROWSER_AGENT_REPORT_STEP_FAST_PATH", true) && isReportOnlyStep(step)) {
+      const observation = before?.observation || observationFromExecution(null, before);
+      currentUrl = observation.url || currentUrl;
+      currentTitle = observation.title || currentTitle;
+      finalObservation = observation;
+
+      const summary = [observation.title, observation.url, observation.textPreview]
+        .filter(Boolean)
+        .join(" — ")
+        .slice(0, 1200);
+
+      trace.push(traceEntry({
+        role: "report_step_observe",
+        title: "Report step observer",
+        step: stepNumber,
+        status: "passed",
+        input: step,
+        output: {
+          url: observation.url || "",
+          title: observation.title || "",
+          textPreview: safeText(observation.textPreview || observation.text || "", 900),
+        },
+        summary,
+        tool: "browserObserve",
+        ok: true,
+      }));
+
+      stepResults.push({
         stepNumber,
         step,
-        currentUrl,
-        currentTitle,
-        currentState: compactState(currentState),
-        snapshot: compactSnapshotForModel(before?.snapshot),
-      },
-    }));
+        ok: true,
+        repaired: false,
+        status: "passed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: { intent: "observe", tool: "browserObserve", args: { currentUrl } },
+      });
 
-    const stepPlan = stepAgentCall.call?.data || {};
-    trace.push(traceEntry({
-      role: "gemma_step_agent",
-      title: "Gemma step agent",
-      step: stepNumber,
-      status: stepPlan.status || (stepAgentCall.ok ? "ready" : "failed"),
-      input: step,
-      output: stepPlan,
-      summary: stepPlan.reason || stepPlan.messageToChecker || "",
-      tool: stepPlan.command?.tool || "",
-      ok: stepAgentCall.ok,
-      usage: usageOf(stepAgentCall),
-      reasoning: thinkingOf(stepAgentCall),
-    }));
+      continue;
+    }
 
-    const checkerCall = await safeRole("gemma_checker", () => callBrowserAgentRoleJson("reviewer", {
-      system: checkerSystemPrompt(),
-      schemaName: "gemma_checker",
-      images: beforeImages,
-      context: {
-        originalInstruction: instruction,
-        fullPlan: { ...orchestratorPlan, steps },
-        stepNumber,
-        step,
-        currentUrl,
-        currentTitle,
-        snapshot: compactSnapshotForModel(before?.snapshot),
-        proposedCommand: stepPlan.command || null,
-      },
-    }));
+    let stepAgentCall = null;
+    let stepPlan = envFlag("BROWSER_AGENT_SYNTHETIC_LOW_RISK_STEPS", true)
+      ? syntheticStepPlanForLowRisk(step, currentUrl)
+      : null;
 
-    const checker = checkerCall.call?.data || {};
-    trace.push(traceEntry({
-      role: "gemma_checker",
-      title: "Gemma command checker",
-      step: stepNumber,
-      status: checker.status || (checkerCall.ok ? "checked" : "failed"),
-      input: stepPlan,
-      output: checker,
-      summary: checker.reason || checker.repairInstruction || checker.messageToUser || "",
-      tool: checker.command?.tool || stepPlan.command?.tool || "",
-      ok: checkerCall.ok && checker.approved !== false,
-      usage: usageOf(checkerCall),
-      reasoning: thinkingOf(checkerCall),
-    }));
+    if (stepPlan) {
+      trace.push(traceEntry({
+        role: "gemma_step_agent",
+        title: "Gemma step agent",
+        step: stepNumber,
+        status: "synthetic_ready",
+        input: step,
+        output: stepPlan,
+        summary: stepPlan.reason || "",
+        tool: stepPlan.command?.tool || "",
+        ok: true,
+      }));
+    } else {
+      stepAgentCall = await safeRole(`gemma_step_agent_step_${stepNumber}`, () => callBrowserAgentRoleJson("planner", {
+        system: stepAgentSystemPrompt(),
+        schemaName: "gemma_step_agent",
+        images: beforeImages,
+        context: {
+          originalInstruction: instruction,
+          fullPlan: { ...orchestratorPlan, steps },
+          stepNumber,
+          step,
+          currentUrl,
+          currentTitle,
+          currentState: compactState(currentState),
+          snapshot: compactSnapshotForModel(before?.snapshot),
+        },
+      }));
 
-    if (!checkerCall.ok || checker.approved === false || ["rejected", "needs_user"].includes(String(checker.status || ""))) {
+      stepPlan = stepAgentCall.call?.data || {};
+      trace.push(traceEntry({
+        role: "gemma_step_agent",
+        title: "Gemma step agent",
+        step: stepNumber,
+        status: stepPlan.status || (stepAgentCall.ok ? "ready" : "failed"),
+        input: step,
+        output: stepPlan,
+        summary: stepPlan.reason || stepPlan.messageToChecker || "",
+        tool: stepPlan.command?.tool || "",
+        ok: stepAgentCall.ok,
+        usage: usageOf(stepAgentCall),
+        reasoning: thinkingOf(stepAgentCall),
+      }));
+    }
+
+    let checkerCall = null;
+    let checker = null;
+
+    if (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_CHECKER", true) && isLowRiskAutoCheckCommand(stepPlan.command, step)) {
+      checker = syntheticApprovedChecker(stepPlan);
+      trace.push(traceEntry({
+        role: "gemma_checker",
+        title: "Gemma command checker",
+        step: stepNumber,
+        status: "auto_approved",
+        input: stepPlan,
+        output: checker,
+        summary: checker.reason,
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: true,
+      }));
+    } else {
+      checkerCall = await safeRole("gemma_checker", () => callBrowserAgentRoleJson("reviewer", {
+        system: checkerSystemPrompt(),
+        schemaName: "gemma_checker",
+        images: beforeImages,
+        context: {
+          originalInstruction: instruction,
+          fullPlan: { ...orchestratorPlan, steps },
+          stepNumber,
+          step,
+          currentUrl,
+          currentTitle,
+          snapshot: compactSnapshotForModel(before?.snapshot),
+          proposedCommand: stepPlan.command || null,
+        },
+      }));
+
+      checker = checkerCall.call?.data || {};
+      trace.push(traceEntry({
+        role: "gemma_checker",
+        title: "Gemma command checker",
+        step: stepNumber,
+        status: checker.status || (checkerCall.ok ? "checked" : "failed"),
+        input: stepPlan,
+        output: checker,
+        summary: checker.reason || checker.repairInstruction || checker.messageToUser || "",
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: checkerCall.ok && checker.approved !== false,
+        usage: usageOf(checkerCall),
+        reasoning: thinkingOf(checkerCall),
+      }));
+    }
+
+    if (checkerCall && (!checkerCall.ok || checker.approved === false || ["rejected", "needs_user"].includes(String(checker.status || "")))) {
       stoppedReason = checker.reason || checker.messageToUser || checkerCall.error || "Step was not approved.";
       stepResults.push({ stepNumber, step, ok: false, status: "not_approved", summary: stoppedReason });
       break;
@@ -548,46 +718,67 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ok: execution.ok === true,
     }));
 
-    const resultImages = snapshotImagesForModel(execution.beforeSnapshot || before?.snapshot, execution.afterSnapshot);
+    let resultCheckCall = null;
+    let resultCheck = null;
 
-    let resultCheckCall = await safeRole("gemma_result_checker", () => callBrowserAgentRoleJson("resultReviewer", {
-      system: resultCheckerSystemPrompt(),
-      schemaName: "gemma_result_checker",
-      images: resultImages,
-      context: {
-        originalInstruction: instruction,
-        fullPlan: { ...orchestratorPlan, steps },
-        stepNumber,
-        step,
-        command: normalized.command,
-        browserExecution: {
-          ok: execution.ok,
-          status: execution.status,
-          error: execution.error || "",
-          observation: observationFromExecution(execution),
+    if (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_RESULT_CHECKER", true) && isLowRiskAutoCheckCommand(normalized.command, step)) {
+      resultCheck = syntheticPassedResult({ execution, step, command: normalized.command });
+      trace.push(traceEntry({
+        role: "gemma_result_checker",
+        title: "Gemma result checker",
+        step: stepNumber,
+        status: "auto_passed",
+        input: {
+          step,
+          command: normalized.command,
+          executionStatus: execution.status,
         },
-        beforeSnapshot: compactSnapshotForModel(execution.beforeSnapshot || before?.snapshot),
-        afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
-      },
-    }));
+        output: resultCheck,
+        summary: resultCheck.summary || resultCheck.evidence || "",
+        ok: resultCheck.success === true,
+      }));
+    } else {
+      const resultImages = snapshotImagesForModel(execution.beforeSnapshot || before?.snapshot, execution.afterSnapshot);
 
-    let resultCheck = resultCheckCall.call?.data || {};
-    trace.push(traceEntry({
-      role: "gemma_result_checker",
-      title: "Gemma result checker",
-      step: stepNumber,
-      status: resultCheck.status || (resultCheckCall.ok ? "checked" : "failed"),
-      input: {
-        step,
-        command: normalized.command,
-        executionStatus: execution.status,
-      },
-      output: resultCheck,
-      summary: resultCheck.summary || resultCheck.evidence || resultCheck.repairInstruction || "",
-      ok: resultCheck.success === true,
-      usage: usageOf(resultCheckCall),
-      reasoning: thinkingOf(resultCheckCall),
-    }));
+      resultCheckCall = await safeRole("gemma_result_checker", () => callBrowserAgentRoleJson("resultReviewer", {
+        system: resultCheckerSystemPrompt(),
+        schemaName: "gemma_result_checker",
+        images: resultImages,
+        context: {
+          originalInstruction: instruction,
+          fullPlan: { ...orchestratorPlan, steps },
+          stepNumber,
+          step,
+          command: normalized.command,
+          browserExecution: {
+            ok: execution.ok,
+            status: execution.status,
+            error: execution.error || "",
+            observation: observationFromExecution(execution),
+          },
+          beforeSnapshot: compactSnapshotForModel(execution.beforeSnapshot || before?.snapshot),
+          afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
+        },
+      }));
+
+      resultCheck = resultCheckCall.call?.data || {};
+      trace.push(traceEntry({
+        role: "gemma_result_checker",
+        title: "Gemma result checker",
+        step: stepNumber,
+        status: resultCheck.status || (resultCheckCall.ok ? "checked" : "failed"),
+        input: {
+          step,
+          command: normalized.command,
+          executionStatus: execution.status,
+        },
+        output: resultCheck,
+        summary: resultCheck.summary || resultCheck.evidence || resultCheck.repairInstruction || "",
+        ok: resultCheck.success === true,
+        usage: usageOf(resultCheckCall),
+        reasoning: thinkingOf(resultCheckCall),
+      }));
+    }
 
     let repaired = false;
     for (let repairAttempt = 0; repairAttempt < maxRepairAttempts; repairAttempt += 1) {
