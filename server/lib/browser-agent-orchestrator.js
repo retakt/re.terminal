@@ -40,6 +40,16 @@ function envInt(name, fallback) {
   return Number.isFinite(raw) ? raw : fallback;
 }
 
+function stageLog(stage = "", data = {}) {
+  if (!["1", "true", "yes", "on"].includes(String(process.env.BROWSER_AGENT_TRACE_STDOUT || "").toLowerCase())) return;
+  const safe = {};
+  for (const [key, value] of Object.entries(data || {})) {
+    if (typeof value === "string") safe[key] = value.slice(0, 600);
+    else safe[key] = value;
+  }
+  console.log("[browser-orchestrator]", stage, JSON.stringify(safe));
+}
+
 function compactState(state = {}) {
   const observation = state.lastValidObservation || state.lastObservation || null;
   return {
@@ -96,9 +106,23 @@ function traceEntry({
 }
 
 async function safeRole(label, fn) {
+  const started = Date.now();
+  stageLog(`${label}:start`);
   try {
-    return { ok: true, call: await fn(), label };
+    const call = await fn();
+    stageLog(`${label}:done`, {
+      ms: Date.now() - started,
+      model: call?.usage?.model || "",
+      tokens: call?.usage?.totalTokens || 0,
+      preview: call?.rawContent || call?.data || "",
+    });
+    return { ok: true, call, label };
   } catch (err) {
+    stageLog(`${label}:error`, {
+      ms: Date.now() - started,
+      error: err instanceof Error ? err.message : String(err),
+      preview: err?.contentPreview || "",
+    });
     return {
       ok: false,
       call: null,

@@ -16,12 +16,16 @@ function loadEnvFile(file) {
 
 loadEnvFile("server/.env");
 
-process.env.BROWSER_AGENT_ORCHESTRATOR_ENABLED = "true";
-process.env.BROWSER_AGENT_LEGACY_RUNTIME = "false";
-process.env.BROWSER_AGENT_MAIN_HANDOFF_ENABLED = "false";
-process.env.BROWSER_AGENT_REPAIR_ATTEMPTS = "0";
-process.env.BROWSER_AGENT_TIMEOUT_MS = "90000";
-process.env.EXTERNAL_MCP_CALL_TIMEOUT_MS = "15000";
+function setDefaultEnv(key, value) {
+  if (process.env[key] === undefined || process.env[key] === "") process.env[key] = value;
+}
+
+setDefaultEnv("BROWSER_AGENT_ORCHESTRATOR_ENABLED", "true");
+setDefaultEnv("BROWSER_AGENT_LEGACY_RUNTIME", "false");
+setDefaultEnv("BROWSER_AGENT_MAIN_HANDOFF_ENABLED", "false");
+setDefaultEnv("BROWSER_AGENT_REPAIR_ATTEMPTS", "0");
+setDefaultEnv("BROWSER_AGENT_TIMEOUT_MS", "45000");
+setDefaultEnv("EXTERNAL_MCP_CALL_TIMEOUT_MS", "15000");
 
 const {
   browserAgentRun,
