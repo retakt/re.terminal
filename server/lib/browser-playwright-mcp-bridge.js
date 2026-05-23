@@ -1451,7 +1451,6 @@ export async function dismissPlaywrightBlockingUi(args = {}, state = {}) {
 }
 
 
-
 export async function activatePlaywrightControlByText(args = {}, state = {}) {
   const currentUrl = currentUrlFromInput(args, state);
   const targetText = safeText(args.targetText || args.text || "", 240);
@@ -2066,378 +2065,274 @@ async function tryDomClick(command = {}) {
   };
 }
 
-async function tryPlaywrightClick(command = {}, args = {}, state = {}) {
-  const commandArgs = command.args || {};
-  const text = targetTextFromCommand(command);
-  const selector = playwrightSelectorFromCommand(command);
-  const ref = playwrightRefFromCommand(command);
-  const refOnly = commandArgs.refOnly === true || commandArgs.requireRef === true;
-
-  if (!text && !ref && !selector) return { ok: false, error: "Click needs visible text, selector, or Playwright snapshot ref." };
-
-  if (refOnly && !ref) {
-    return {
-      ok: false,
-      error: "Ref-only click requires a concrete Playwright snapshot ref. Loose text click blocked.",
-      text: "Ref-only click blocked because no concrete Playwright ref was provided.",
-    };
+function browserActionUrlCoreV2(value = "") {
+  try {
+    const url = new URL(String(value || ""));
+    url.hash = "";
+    return url.href.replace(/\/$/, "");
+  } catch {
+    return String(value || "").replace(/#.*$/, "").replace(/\/$/, "");
   }
-
-  const selectorOnly = commandArgs.selectorOnly === true || commandArgs.requireSelector === true;
-
-  if (selectorOnly && !selector) {
-    return {
-      ok: false,
-      error: "Selector-only click requires a concrete selector. Loose text click blocked.",
-      text: "Selector-only click blocked because no concrete selector was provided.",
-    };
-  }
-
-  const attempts = [];
-  if (selector && text) attempts.push({ label: "selector_target", args: { target: selector, element: text } });
-  if (selector) attempts.push({ label: "selector_only", args: { target: selector } });
-
-  if (!selectorOnly) {
-    if (text && ref) attempts.push({ label: "target_element_ref", args: { target: text, element: text, ref } });
-    if (text && ref) attempts.push({ label: "element_ref", args: { element: text, ref } });
-    if (text && ref) attempts.push({ label: "target_ref", args: { target: text, ref } });
-    if (ref) attempts.push({ label: "ref_as_target", args: { target: ref } });
-    if (text) attempts.push({ label: "target_text", args: { target: text } });
-    if (text) attempts.push({ label: "element_text", args: { element: text } });
-  }
-
-  const failures = [];
-
-  for (const attempt of attempts) {
-    const result = await callPlaywrightTool(["browser_click", "click"], attempt.args).catch((err) => ({
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-      text: err instanceof Error ? err.message : String(err),
-    }));
-
-    if (!clickResultFailed(result)) {
-      return {
-        ...result,
-        ok: true,
-        text: ["Click succeeded using " + attempt.label + ".", result.text].filter(Boolean).join("\n"),
-      };
-    }
-
-    failures.push(attempt.label + ": " + safeText(result.error || result.text || "", 500));
-  }
-
-  if (selectorOnly) {
-    if (refOnly) {
-    return {
-      ok: false,
-      error: "Ref-only click failed for all Playwright MCP ref payloads.",
-      text: failures.join("\\n"),
-    };
-  }
-
-  const domClick = await tryDomClick(command);
-    if (domClick.ok === true) {
-      return {
-        ...domClick,
-        text: ["Selector-only DOM click fallback executed.", domClick.text].filter(Boolean).join("\n"),
-      };
-    }
-
-    failures.push("selector_only_dom_click: " + safeText(domClick.error || domClick.text || "", 500));
-
-    return {
-      ok: false,
-      error: "Selector-only click failed for Playwright MCP and DOM selector fallback.",
-      text: failures.join("\n"),
-    };
-  }
-
-  const domClick = await tryDomClick(command);
-  if (domClick.ok === true) {
-    return domClick;
-  }
-
-  failures.push("dom_click_fallback: " + safeText(domClick.error || domClick.text || "", 500));
-
-  const href = hrefNearSnapshotTarget(args.beforeSnapshot, { text, ref });
-  if (href) {
-    const nav = await callPlaywrightTool(["browser_navigate", "navigate"], { url: href }).catch((err) => ({
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-      text: err instanceof Error ? err.message : String(err),
-    }));
-
-    if (!clickResultFailed(nav)) {
-      return {
-        ...nav,
-        ok: true,
-        text: [
-          "Direct click failed, but snapshot showed link URL. Navigated to " + href + " as click fallback.",
-          nav.text,
-        ].filter(Boolean).join("\n"),
-      };
-    }
-
-    failures.push("href_fallback: " + safeText(nav.error || nav.text || "", 500));
-  }
-
-  return {
-    ok: false,
-    error: "Click failed for all Playwright MCP payloads.",
-    text: failures.join("\n"),
-  };
 }
 
-function fieldDisplayName(field = {}) {
-  return safeText(
-    field.label ||
-    field.name ||
-    field.id ||
-    field.placeholder ||
-    field.selector ||
-    field.ref ||
-    "field",
-    180
-  );
+function sameBrowserActionUrlV2(a = "", b = "") {
+  const left = browserActionUrlCoreV2(a);
+  const right = browserActionUrlCoreV2(b);
+  return Boolean(left && right && left === right);
 }
 
-function fieldIsSecret(field = {}) {
-  const haystack = [
-    field.label,
-    field.name,
-    field.id,
-    field.placeholder,
-    field.selector,
-    field.type,
-  ].map((item) => String(item || "")).join(" ").toLowerCase();
-
-  return Boolean(field.secret) || /password|passcode|pin|otp|token|secret/.test(haystack);
-}
-
-function redactedFieldValue(field = {}, value = "") {
-  if (fieldIsSecret(field)) return "[redacted]";
-  return safeText(value, 120);
-}
-
-function uniqueAttemptList(attempts = []) {
-  const seen = new Set();
-  return attempts.filter((attempt) => {
-    const key = JSON.stringify(attempt.args || {});
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function playwrightFieldType(field = {}) {
-  const haystack = [
-    field.type,
-    field.role,
-    field.label,
-    field.name,
-    field.placeholder,
-  ].map((item) => String(item || "")).join(" ").toLowerCase();
-
-  if (/checkbox/.test(haystack)) return "checkbox";
-  if (/radio/.test(haystack)) return "radio";
-  if (/combo|select|dropdown/.test(haystack)) return "combobox";
-  return "textbox";
-}
-
-function fillFormFieldsFromCommand(fields = []) {
-  return fields
-    .map((field) => {
-      const target = safeText(field.ref || field.selector || field.target || "", 180);
-      const name = fieldDisplayName(field);
-      const value = String(field.value ?? "");
-
-      if (!target || !name) return null;
-
-      return {
-        target,
-        name,
-        type: playwrightFieldType(field),
-        value,
-      };
-    })
-    .filter(Boolean);
-}
-
-async function tryPlaywrightFillForm(fields = []) {
-  const mcpFields = fillFormFieldsFromCommand(fields);
-
-  if (!mcpFields.length) {
-    return {
-      ok: false,
-      error: "browser_fill_form needs snapshot targets.",
-      text: "",
-    };
-  }
-
-  const result = await callPlaywrightTool(["browser_fill_form", "fill_form"], {
-    fields: mcpFields,
+async function getPlaywrightCurrentLocationV2() {
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: "() => JSON.stringify({ ok: true, url: location.href, title: document.title })",
   }).catch((err) => ({
     ok: false,
+    text: "",
     error: err instanceof Error ? err.message : String(err),
-    text: err instanceof Error ? err.message : String(err),
   }));
 
-  if (clickResultFailed(result)) {
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+  return {
+    ok: parsed?.ok === true,
+    url: safeText(parsed?.url || "", 800),
+    title: safeText(parsed?.title || "", 300),
+    error: parsed?.ok === true ? "" : safeText(result.error || result.text || "No Playwright location.", 900),
+  };
+}
+
+async function ensurePlaywrightAtLiveActionUrlV2(command = {}, args = {}, state = {}) {
+  const tool = String(command?.tool || "");
+  if (tool === "browserNavigate") {
+    return { ok: true, skipped: true, reason: "navigation_command" };
+  }
+
+  const targetUrl = currentUrlFromInput(args, state);
+  if (!targetUrl) {
+    return { ok: true, skipped: true, reason: "no_target_url" };
+  }
+
+  const current = await getPlaywrightCurrentLocationV2();
+
+  if (current.ok === true && sameBrowserActionUrlV2(current.url, targetUrl)) {
     return {
-      ...result,
-      ok: false,
-      error: result.error || result.text || "browser_fill_form failed.",
-      text: result.text || result.error || "",
+      ok: true,
+      skipped: false,
+      navigated: false,
+      reason: "already_at_target_url",
+      currentUrl: current.url,
+      targetUrl,
+      title: current.title,
     };
   }
 
-  return {
-    ...result,
-    ok: true,
-    text: ["browser_fill_form succeeded.", result.text].filter(Boolean).join("\n"),
-  };
-}
-
-function typeAttemptsForField(field = {}) {
-  const label = fieldDisplayName(field);
-  const target = safeText(field.ref || field.selector || field.target || "", 180);
-  const placeholder = safeText(field.placeholder || "", 180);
-  const name = safeText(field.name || field.id || "", 180);
-  const value = String(field.value ?? "");
-
-  return uniqueAttemptList([
-    target ? { label: "target_ref", args: { element: label || target, target, text: value, slowly: true } } : null,
-    placeholder ? { label: "placeholder", args: { element: placeholder, target: placeholder, text: value, slowly: true } } : null,
-    name ? { label: "name_or_id", args: { element: name, target: name, text: value, slowly: true } } : null,
-    label ? { label: "label", args: { element: label, target: label, text: value, slowly: true } } : null,
-  ].filter(Boolean));
-}
-
-async function tryPlaywrightTypeField(field = {}) {
-  const label = fieldDisplayName(field);
-  const value = String(field.value ?? "");
-  if (!value && value !== "") return { ok: false, error: "Field value is missing.", text: "" };
-
-  const attempts = typeAttemptsForField(field);
-  const failures = [];
-
-  for (const attempt of attempts) {
-    // Focus first when possible. If focus/click fails, still try browser_type.
-    await callPlaywrightTool(["browser_click", "click"], {
-      element: attempt.args.element,
-      target: attempt.args.target,
-    }).catch(() => null);
-
-    const result = await callPlaywrightTool(["browser_type", "type"], attempt.args).catch((err) => ({
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-      text: err instanceof Error ? err.message : String(err),
-    }));
-
-    if (!clickResultFailed(result)) {
-      return {
-        ...result,
-        ok: true,
-        text: `Filled ${label} using ${attempt.label} with ${redactedFieldValue(field, value)}.`,
-      };
-    }
-
-    failures.push(`${attempt.label}: ${safeText(result.error || result.text || "", 500)}`);
-  }
-
-  return {
+  const nav = await callPlaywrightTool(["browser_navigate", "navigate"], { url: targetUrl }).catch((err) => ({
     ok: false,
-    error: `Could not type into ${label}.`,
-    text: failures.join("\n"),
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  return {
+    ok: nav.ok !== false,
+    skipped: false,
+    navigated: nav.ok !== false,
+    reason: nav.ok === false ? "navigate_failed" : "synced_to_target_url",
+    previousUrl: current.url || "",
+    targetUrl,
+    error: nav.error || "",
   };
 }
 
-async function tryDomFillFields(fields = []) {
-  const payload = fields.map((field) => ({
-    label: fieldDisplayName(field),
-    name: safeText(field.name || field.id || "", 180),
-    placeholder: safeText(field.placeholder || "", 180),
-    type: safeText(field.type || "", 80),
-    value: String(field.value ?? ""),
-    secret: fieldIsSecret(field),
-  }));
+async function tryDomAutoFillTestForm(command = {}, args = {}, state = {}) {
+  const commandArgs = command.args || {};
+  const formIntent = safeText(commandArgs.formIntent || args.instruction || "", 900);
 
   const script = `() => {
-    const fields = ${JSON.stringify(payload)};
+    const formIntent = ${JSON.stringify(formIntent)};
 
-    const norm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const norm = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+    const compact = (value) => norm(value).replace(/\\s+/g, "");
+
     const visible = (el) => {
+      if (!el || !el.isConnected) return false;
       const style = window.getComputedStyle(el);
       const rect = el.getBoundingClientRect();
-      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
     };
 
-    const textFor = (el) => {
+    const cssEscape = (value) => {
+      try { return CSS.escape(String(value || "")); }
+      catch { return String(value || "").replace(/["\\\\]/g, "\\\\$&"); }
+    };
+
+    const labelFor = (el) => {
       const parts = [];
-      const id = el.getAttribute("id");
+      const id = el.getAttribute("id") || "";
+
       if (id) {
-        document.querySelectorAll('label[for="' + CSS.escape(id) + '"]').forEach((label) => parts.push(label.textContent || ""));
+        document.querySelectorAll('label[for="' + cssEscape(id) + '"]').forEach((label) => {
+          parts.push(label.innerText || label.textContent || "");
+        });
       }
+
       const parentLabel = el.closest("label");
-      if (parentLabel) parts.push(parentLabel.textContent || "");
+      if (parentLabel) parts.push(parentLabel.innerText || parentLabel.textContent || "");
+
+      let prev = el.previousElementSibling;
+      let guard = 0;
+      while (prev && guard < 3) {
+        if (/label/i.test(prev.tagName || "")) parts.push(prev.innerText || prev.textContent || "");
+        prev = prev.previousElementSibling;
+        guard += 1;
+      }
+
       parts.push(
         el.getAttribute("aria-label") || "",
         el.getAttribute("placeholder") || "",
         el.getAttribute("name") || "",
         el.getAttribute("id") || "",
-        el.getAttribute("type") || ""
+        el.getAttribute("type") || "",
+        el.tagName || ""
       );
-      return parts.join(" ");
+
+      return parts.join(" ").replace(/\\s+/g, " ").trim();
     };
 
-    const candidates = Array.from(document.querySelectorAll("input, textarea, [contenteditable=true]")).filter(visible);
-    const filled = [];
-    const missing = [];
+    const inputType = (el) => String(el.getAttribute("type") || "text").toLowerCase();
 
-    function setNativeValue(el, value) {
-      if (el.isContentEditable) {
-        el.focus();
+    const shouldSkip = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const type = inputType(el);
+      if (!visible(el)) return true;
+      if (el.disabled || el.readOnly) return true;
+      if (tag === "input" && ["hidden", "submit", "button", "reset", "file", "image", "color", "range"].includes(type)) return true;
+      return false;
+    };
+
+    const personName = "Test User";
+    const slug = "test-user";
+
+    const valueFor = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const type = inputType(el);
+      const label = norm(labelFor(el));
+      const key = compact(label);
+
+      if (tag === "textarea") return "Harmless automated test submission";
+      if (tag === "select") return "";
+
+      if (type === "password") return slug + "-test-123";
+      if (type === "email" || /email/.test(key)) return slug + "@example.test";
+      if (type === "tel" || /phone|mobile|tel/.test(key)) return "5550100";
+      if (type === "url" || /website|url/.test(key)) return "https://example.test";
+      if (type === "number" || /age|count|quantity|number/.test(key)) return "42";
+      if (type === "date") return "2026-01-01";
+
+      if (/firstname|first name/.test(label)) return "Test";
+      if (/lastname|last name|surname/.test(label)) return "User";
+      if (/name|textinput|mytext|text/.test(key)) return personName;
+
+      return "Test value";
+    };
+
+    const setValue = (el, value) => {
+      el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      try { el.focus?.(); } catch {}
+
+      if (el.tagName.toLowerCase() === "select") {
+        const options = Array.from(el.options || []).filter((option) => !option.disabled);
+        const option = options.find((item) => item.value && !/open this select menu|choose|select/i.test(item.textContent || "")) ||
+          options.find((item) => item.value) ||
+          options[0] ||
+          null;
+        if (option) el.value = option.value;
+      } else if (el.isContentEditable) {
         el.textContent = value;
       } else {
         const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-        el.focus();
         if (setter) setter.call(el, value);
         else el.value = value;
       }
 
-      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+      try { el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value })); }
+      catch { el.dispatchEvent(new Event("input", { bubbles: true })); }
+
       el.dispatchEvent(new Event("change", { bubbles: true }));
       el.dispatchEvent(new Event("blur", { bubbles: true }));
-    }
+    };
 
-    for (const field of fields) {
-      const wanted = [field.label, field.name, field.placeholder].map(norm).filter(Boolean);
-      const isSecret = field.secret || /password|pass|pin|otp|secret/.test(norm(field.label + " " + field.name + " " + field.type));
-
-      let target = candidates.find((el) => {
-        const hay = norm(textFor(el));
-        return wanted.some((needle) => needle && hay.includes(needle));
-      });
-
-      if (!target && isSecret) {
-        target = candidates.find((el) => String(el.getAttribute("type") || "").toLowerCase() === "password");
+    const readValue = (el) => {
+      if (el.tagName.toLowerCase() === "select") {
+        const opt = el.selectedOptions && el.selectedOptions[0];
+        return opt ? (opt.textContent || opt.value || "") : (el.value || "");
       }
+      if (el.isContentEditable) return el.textContent || "";
+      return el.value || "";
+    };
 
-      if (!target) {
-        missing.push(field.label);
+    const controls = Array.from(document.querySelectorAll("input, textarea, select, [contenteditable=true]"))
+      .filter((el) => !shouldSkip(el));
+
+    const filled = [];
+    const fields = [];
+    const skipped = [];
+
+    for (const el of controls) {
+      const tag = el.tagName.toLowerCase();
+      const type = inputType(el);
+      const label = labelFor(el) || tag;
+      const value = valueFor(el);
+
+      if (tag === "input" && ["checkbox", "radio"].includes(type)) {
+        skipped.push({ label, tag, type, reason: "choice_control_left_as_is" });
         continue;
       }
 
-      setNativeValue(target, field.value);
-      filled.push({
-        label: field.label,
-        secret: field.secret,
-        value: field.secret ? "[redacted]" : field.value,
-      });
+      setValue(el, value);
+      const actual = readValue(el);
+
+      const ok = tag === "select" ? Boolean(actual) : actual === value;
+
+      if (ok) {
+        const field = {
+          label,
+          value,
+          type: tag === "textarea" ? "textarea" : type || tag,
+          secret: type === "password",
+          name: el.getAttribute("name") || "",
+          id: el.getAttribute("id") || "",
+        };
+        fields.push(field);
+        filled.push({
+          ...field,
+          value: type === "password" ? "[redacted]" : actual,
+        });
+      } else {
+        skipped.push({
+          label,
+          tag,
+          type,
+          reason: "value_not_confirmed",
+          actualLength: actual.length,
+        });
+      }
     }
 
-    return { ok: missing.length === 0, filled, missing };
+    return JSON.stringify({
+      ok: fields.length > 0,
+      fields,
+      filled,
+      skipped,
+      candidateCount: controls.length,
+      url: location.href,
+      title: document.title,
+    });
   }`;
 
   const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
@@ -2449,95 +2344,26 @@ async function tryDomFillFields(fields = []) {
   if (clickResultFailed(result)) {
     return {
       ok: false,
-      error: "DOM fill fallback failed.",
-      text: result.error || result.text || "",
+      error: result.error || result.text || "DOM auto-fill failed.",
+      text: result.text || result.error || "",
     };
   }
 
-  return {
-    ...result,
-    ok: true,
-    text: ["DOM fill fallback executed.", result.text].filter(Boolean).join("\n"),
-  };
-}
-
-function parseMcpJsonResult(text = "") {
-  const raw = String(text || "").trim();
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch {}
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start >= 0 && end > start) {
-    try { return JSON.parse(raw.slice(start, end + 1)); } catch {}
-  }
-  return null;
-}
-
-async function verifyFilledFields(fields = []) {
-  const payload = fields.map((field) => ({
-    label: fieldDisplayName(field),
-    name: safeText(field.name || field.id || "", 180),
-    placeholder: safeText(field.placeholder || "", 180),
-    type: safeText(field.type || "", 80),
-    value: String(field.value ?? ""),
-    secret: fieldIsSecret(field),
-  }));
-
-  const script = `() => {
-    const fields = ${JSON.stringify(payload)};
-    const norm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-    const visible = (el) => {
-      const style = window.getComputedStyle(el);
-      const rect = el.getBoundingClientRect();
-      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-    };
-    const textFor = (el) => {
-      const parts = [];
-      const id = el.getAttribute("id");
-      if (id) document.querySelectorAll('label[for="' + CSS.escape(id) + '"]').forEach((label) => parts.push(label.textContent || ""));
-      const parentLabel = el.closest("label");
-      if (parentLabel) parts.push(parentLabel.textContent || "");
-      parts.push(el.getAttribute("aria-label") || "", el.getAttribute("placeholder") || "", el.getAttribute("name") || "", el.getAttribute("id") || "", el.getAttribute("type") || "");
-      return parts.join(" ");
-    };
-    const candidates = Array.from(document.querySelectorAll("input, textarea, [contenteditable=true]")).filter(visible);
-    const filled = [];
-    const missing = [];
-    for (const field of fields) {
-      const wanted = [field.label, field.name, field.placeholder].map(norm).filter(Boolean);
-      const isSecret = field.secret || /password|pass|pin|otp|secret/.test(norm(field.label + " " + field.name + " " + field.type));
-      let target = candidates.find((el) => {
-        const hay = norm(textFor(el));
-        return wanted.some((needle) => needle && hay.includes(needle));
-      });
-      if (!target && isSecret) target = candidates.find((el) => String(el.getAttribute("type") || "").toLowerCase() === "password");
-      const actual = target ? (target.isContentEditable ? target.textContent || "" : target.value || "") : "";
-      if (target && actual === field.value) filled.push({ label: field.label, secret: field.secret });
-      else missing.push({ label: field.label, actualLength: actual.length });
-    }
-    return { ok: missing.length === 0, filled, missing };
-  }`;
-
-  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
-    ok: false,
-    error: err instanceof Error ? err.message : String(err),
-    text: err instanceof Error ? err.message : String(err),
-  }));
-
-  if (clickResultFailed(result)) {
-    return { ok: false, error: result.error || result.text || "Field verification failed.", text: result.text || "" };
-  }
-
-  const parsed = parseMcpJsonResult(result.text);
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
   return {
     ...result,
     ok: parsed?.ok === true,
-    verification: parsed || null,
-    text: parsed ? "Field verification " + (parsed.ok ? "passed" : "failed") + "." : result.text,
+    autoFill: parsed || null,
+    fields: Array.isArray(parsed?.fields) ? parsed.fields : [],
+    error: parsed?.ok === true ? "" : "DOM auto-fill found no fillable fields.",
+    text: parsed
+      ? "DOM auto-fill " + (parsed.ok ? "confirmed." : "failed.") + " " + safeText(JSON.stringify(parsed), 1600)
+      : result.text,
   };
 }
 
-function parseUiProbeJson(value = "") {
+
+function parsePlaywrightUiProbeRepairV1(value = "") {
   const raw = String(value || "").trim();
   const attempts = [raw];
 
@@ -2548,27 +2374,6 @@ function parseUiProbeJson(value = "") {
   for (const attempt of attempts) {
     try {
       const parsed = JSON.parse(attempt);
-      if (typeof parsed === "string") {
-        try { return JSON.parse(parsed); } catch {}
-      }
-      if (parsed && typeof parsed === "object") return parsed;
-    } catch {}
-  }
-
-  return null;
-}
-
-function parsePlaywrightProbeJson(value = "") {
-  const raw = String(value || "").trim();
-  const candidates = [raw];
-
-  const first = raw.indexOf("{");
-  const last = raw.lastIndexOf("}");
-  if (first >= 0 && last > first) candidates.push(raw.slice(first, last + 1));
-
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate);
       if (typeof parsed === "string") {
         try { return JSON.parse(parsed); } catch {}
       }
@@ -2667,7 +2472,8 @@ export async function probePlaywrightUiState(args = {}, state = {}) {
     error: err instanceof Error ? err.message : String(err),
   }));
 
-  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "") ||
+    parsePlaywrightUiProbeRepairV1(result.text || result.error || "");
 
   return {
     ok: Boolean(parsed?.ok),
@@ -2693,6 +2499,316 @@ export async function probePlaywrightUiState(args = {}, state = {}) {
 }
 
 
+async function tryPlaywrightClick(command = {}, args = {}, state = {}) {
+  const commandArgs = command.args || {};
+
+  const isSyntheticRef = (value = "") =>
+    /^lp_(?:link|button|input|form|el)_\d+$/i.test(String(value || "").trim());
+
+  const rawRef = safeText(commandArgs.ref || commandArgs.targetRef || "", 180);
+  const ref = rawRef && !isSyntheticRef(rawRef) ? rawRef : "";
+
+  const rawSelector = safeText(
+    commandArgs.selector || commandArgs.rawSelector || commandArgs.cssSelector || "",
+    500
+  );
+  const selector = rawSelector && !isSyntheticRef(rawSelector) ? rawSelector : "";
+
+  const text = safeText(
+    commandArgs.text ||
+    commandArgs.label ||
+    commandArgs.buttonText ||
+    command.target ||
+    "",
+    180
+  );
+
+  const refOnly = commandArgs.refOnly === true || commandArgs.requireRef === true;
+  const selectorOnly = commandArgs.selectorOnly === true || commandArgs.requireSelector === true;
+
+  if (!text && !ref && !selector) {
+    return {
+      ok: false,
+      error: "Click needs visible text, selector, or Playwright snapshot ref.",
+      text: "",
+    };
+  }
+
+  if (refOnly && !ref) {
+    return {
+      ok: false,
+      error: "Ref-only click requires a concrete Playwright snapshot ref. Loose text click blocked.",
+      text: "Ref-only click blocked because no concrete Playwright ref was provided.",
+    };
+  }
+
+  if (selectorOnly && !selector) {
+    return {
+      ok: false,
+      error: "Selector-only click requires a concrete selector. Loose text click blocked.",
+      text: "Selector-only click blocked because no concrete selector was provided.",
+    };
+  }
+
+  const attempts = [];
+
+  if (selector && text) attempts.push({ label: "selector_target", args: { target: selector, element: text } });
+  if (selector) attempts.push({ label: "selector_only", args: { target: selector } });
+
+  if (!selectorOnly) {
+    if (text && ref) attempts.push({ label: "target_element_ref", args: { target: text, element: text, ref } });
+    if (text && ref) attempts.push({ label: "element_ref", args: { element: text, ref } });
+    if (text && ref) attempts.push({ label: "target_ref", args: { target: text, ref } });
+    if (ref) attempts.push({ label: "ref_as_target", args: { target: ref } });
+    if (text) attempts.push({ label: "target_text", args: { target: text } });
+    if (text) attempts.push({ label: "element_text", args: { element: text } });
+  }
+
+  const failures = [];
+
+  for (const attempt of attempts) {
+    const result = await callPlaywrightTool(["browser_click", "click"], attempt.args).catch((err) => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      text: err instanceof Error ? err.message : String(err),
+    }));
+
+    if (!clickResultFailed(result)) {
+      return {
+        ...result,
+        ok: true,
+        text: ["Click succeeded using " + attempt.label + ".", result.text].filter(Boolean).join("\n"),
+      };
+    }
+
+    failures.push(attempt.label + ": " + safeText(result.error || result.text || "", 500));
+  }
+
+  const domPayload = {
+    selector,
+    text,
+  };
+
+  const domScript = `() => {
+    const payload = ${JSON.stringify(domPayload)};
+
+    const norm = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const labelFor = (el) => [
+      el.innerText || el.textContent || "",
+      el.getAttribute("aria-label") || "",
+      el.getAttribute("title") || "",
+      el.getAttribute("value") || "",
+      el.getAttribute("name") || "",
+      el.getAttribute("id") || "",
+      el.getAttribute("data-bs-target") || "",
+      el.getAttribute("aria-controls") || ""
+    ].filter(Boolean).join(" ");
+
+    let el = null;
+
+    if (payload.selector) {
+      try {
+        el = Array.from(document.querySelectorAll(payload.selector)).find(visible) || null;
+      } catch {}
+    }
+
+    if (!el && payload.text) {
+      const wanted = norm(payload.text);
+      const candidates = Array.from(document.querySelectorAll([
+        "button",
+        "[role='button']",
+        "input[type='button']",
+        "input[type='submit']",
+        "a[href]",
+        "summary"
+      ].join(","))).filter(visible);
+
+      el = candidates.find((candidate) => {
+        const label = norm(labelFor(candidate));
+        return label === wanted || label.includes(wanted) || wanted.includes(label);
+      }) || null;
+    }
+
+    if (!el) {
+      return JSON.stringify({
+        ok: false,
+        error: "No matching DOM element found.",
+        selector: payload.selector,
+        text: payload.text
+      });
+    }
+
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    try { el.focus?.(); } catch {}
+
+    const opts = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+      buttons: 1
+    };
+
+    for (const type of ["pointerover", "mouseover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      try {
+        const Ctor = type.startsWith("pointer") && window.PointerEvent ? PointerEvent : MouseEvent;
+        el.dispatchEvent(new Ctor(type, opts));
+      } catch {
+        try { el.dispatchEvent(new MouseEvent(type, opts)); } catch {}
+      }
+    }
+
+    try { el.click?.(); } catch {}
+
+    return JSON.stringify({
+      ok: true,
+      clickedText: labelFor(el).replace(/\\s+/g, " ").trim().slice(0, 300),
+      tag: el.tagName.toLowerCase(),
+      id: el.getAttribute("id") || "",
+      name: el.getAttribute("name") || "",
+      type: el.getAttribute("type") || ""
+    });
+  }`;
+
+  const domResult = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: domScript,
+  }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  if (!clickResultFailed(domResult)) {
+    const parsed = parseMcpWrappedJsonSafe(domResult.text || domResult.error || "");
+    if (parsed?.ok === true) {
+      return {
+        ...domResult,
+        ok: true,
+        text: "DOM click fallback executed. " + safeText(JSON.stringify(parsed), 900),
+      };
+    }
+
+    failures.push("dom_click_fallback: " + safeText(parsed?.error || domResult.text || domResult.error || "", 500));
+  } else {
+    failures.push("dom_click_fallback: " + safeText(domResult.error || domResult.text || "", 500));
+  }
+
+  return {
+    ok: false,
+    error: "Click failed for all Playwright MCP payloads.",
+    text: failures.join("\n"),
+  };
+}
+
+
+async function probeDomFormFilledEnoughBeforeSubmitV1(command = {}, args = {}, state = {}) {
+  const script = `() => {
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const inputType = (el) => String(el.getAttribute("type") || "text").toLowerCase();
+
+    const shouldSkip = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const type = inputType(el);
+      if (!visible(el)) return true;
+      if (el.disabled || el.readOnly) return true;
+      if (tag === "input" && ["hidden", "submit", "button", "reset", "file", "image", "color", "range", "checkbox", "radio"].includes(type)) return true;
+      return false;
+    };
+
+    const readValue = (el) => {
+      if (el.tagName.toLowerCase() === "select") return el.value || "";
+      if (el.isContentEditable) return el.textContent || "";
+      return el.value || "";
+    };
+
+    const controls = Array.from(document.querySelectorAll("input, textarea, select, [contenteditable=true]"))
+      .filter((el) => !shouldSkip(el));
+
+    const meaningful = controls.map((el) => ({
+      tag: el.tagName.toLowerCase(),
+      type: inputType(el),
+      name: el.getAttribute("name") || "",
+      id: el.getAttribute("id") || "",
+      valueLength: readValue(el).trim().length,
+    }));
+
+    const textLike = meaningful.filter((item) =>
+      item.tag === "textarea" ||
+      item.type === "password" ||
+      ["text", "email", "search", "tel", "url", "number"].includes(item.type)
+    );
+
+    const requiredKinds = {
+      hasText: textLike.some((item) => item.type === "text" || item.name.includes("text") || item.id.includes("text")),
+      hasPassword: textLike.some((item) => item.type === "password"),
+      hasTextarea: textLike.some((item) => item.tag === "textarea"),
+    };
+
+    const filledKinds = {
+      hasText: textLike.some((item) => (item.type === "text" || item.name.includes("text") || item.id.includes("text")) && item.valueLength > 0),
+      hasPassword: textLike.some((item) => item.type === "password" && item.valueLength > 0),
+      hasTextarea: textLike.some((item) => item.tag === "textarea" && item.valueLength > 0),
+    };
+
+    const missing = [];
+    if (requiredKinds.hasText && !filledKinds.hasText) missing.push("text");
+    if (requiredKinds.hasPassword && !filledKinds.hasPassword) missing.push("password");
+    if (requiredKinds.hasTextarea && !filledKinds.hasTextarea) missing.push("textarea");
+
+    return JSON.stringify({
+      ok: true,
+      filledEnough: textLike.length > 0 && missing.length === 0,
+      missing,
+      controls: meaningful,
+      url: location.href,
+      title: document.title,
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: script,
+  }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+
+  return {
+    ok: parsed?.ok === true,
+    filledEnough: parsed?.filledEnough === true,
+    missing: Array.isArray(parsed?.missing) ? parsed.missing : [],
+    controls: Array.isArray(parsed?.controls) ? parsed.controls : [],
+    url: safeText(parsed?.url || "", 500),
+    title: safeText(parsed?.title || "", 300),
+    error: parsed ? "" : safeText(result.error || result.text || "Could not probe form values.", 900),
+  };
+}
+
 
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";
@@ -2713,6 +2829,18 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
   }
 
   if (tool === "browserFillFields") {
+    if (commandArgs.autoFillTestData === true) {
+      const autoFill = await tryDomAutoFillTestForm(command, args, state);
+      return {
+        ok: autoFill.ok === true,
+        autoFill,
+        fields: autoFill.fields || [],
+        verify: { ok: autoFill.ok === true },
+        error: autoFill.ok === true ? "" : autoFill.error || "Auto-fill failed.",
+        text: autoFill.text || autoFill.error || "",
+      };
+    }
+
     const fields = fieldsFromCommand(command);
     if (!fields.length) return { ok: false, error: "Fill needs at least one field." };
 
@@ -2771,15 +2899,38 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
   }
 
   if (tool === "browserFillAndSubmit") {
-    const fill = await executeApprovedAction({ ...command, tool: "browserFillFields" }, args, state);
-    if (!fill.ok) return fill;
+    let fill = null;
+    let probe = null;
+
+    if (commandArgs.autoFillTestData === true) {
+      probe = await probeDomFormFilledEnoughBeforeSubmitV1(command, args, state);
+
+      if (probe.ok === true && probe.filledEnough === true) {
+        fill = {
+          ok: true,
+          skipped: true,
+          probe,
+          text: "Skipped re-fill before submit because current DOM form values are already present.",
+        };
+      }
+    }
+
+    if (!fill) {
+      fill = await executeApprovedAction({ ...command, tool: "browserFillFields" }, args, state);
+      if (!fill.ok) return fill;
+    }
 
     const submit = await executeApprovedAction({ ...command, tool: "browserSubmitForm" }, args, state);
+
     return {
       ok: Boolean(submit.ok),
       fill,
       submit,
-      text: [fill.text, submit.text].filter(Boolean).join("\n"),
+      probe,
+      text: [
+        fill.text,
+        submit.text,
+      ].filter(Boolean).join("\n"),
     };
   }
 
@@ -2797,6 +2948,11 @@ export async function executePlaywrightMcpBrowserCommand({
   beforeObservation = null,
   skipBeforeSnapshot = false,
 } = {}) {
+  // Keep Playwright standing beside Lightpanda:
+  // - navigate Playwright if it is on a different/blank page
+  // - do NOT reload when already on the same page, because that clears form state
+  const liveSyncV2 = await ensurePlaywrightAtLiveActionUrlV2(command, args, state);
+
   let before;
 
   if (beforeSnapshot) {
@@ -2843,7 +2999,14 @@ export async function executePlaywrightMcpBrowserCommand({
       error: "",
     };
   } else {
-    before = await capturePlaywrightMcpSnapshot({ ...args, label: "before" }, state);
+    // Important: do not navigate/reload before live actions.
+    // Reloading here clears form values before click/submit/fill.
+    const shouldNavigateBeforeSnapshot = command?.tool === "browserNavigate";
+    before = await capturePlaywrightMcpSnapshot({
+      ...args,
+      label: "before",
+      navigate: shouldNavigateBeforeSnapshot,
+    }, state);
   }
 
   const action = await executeApprovedAction(command, { ...args, beforeSnapshot: before.snapshot || beforeSnapshot || null }, state);
@@ -2865,6 +3028,7 @@ export async function executePlaywrightMcpBrowserCommand({
     engine: "playwright_mcp",
     tool: command.tool || "unknown",
     actionResult: action,
+    liveSync: liveSyncV2,
     beforeSnapshot: before.snapshot,
     afterSnapshot: after.snapshot,
     observation: after.observation,

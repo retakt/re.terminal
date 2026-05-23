@@ -17,6 +17,7 @@ import {
 import {
   compactBrowserStateForModel,
   getBrowserState,
+  warmLightpandaStandby,
 } from "./browser-state-provider.js";
 
 import {
@@ -84,6 +85,24 @@ function normalizeHttpUrl(value = "") {
   if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(raw)) return "";
   if (/^(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[/:?#][^\s]*)?$/i.test(raw)) return `https://${raw}`;
   return "";
+}
+
+
+function scheduleLightpandaStandby({ currentUrl = "", url = "", focus = "page", reason = "" } = {}) {
+  if (!envFlag("BROWSER_AGENT_LIGHTPANDA_STANDBY", true)) return;
+
+  const standbyUrl = normalizeHttpUrl(currentUrl || url || "");
+  if (!standbyUrl) return;
+
+  void warmLightpandaStandby({
+    url: standbyUrl,
+    currentUrl: standbyUrl,
+    navigate: true,
+    focus,
+    mode: "browser",
+    waitMs: process.env.BROWSER_AGENT_LIGHTPANDA_STANDBY_WAIT_MS || "450",
+    reason,
+  }).catch(() => null);
 }
 
 function extractUrlFromText(value = "") {
@@ -2637,28 +2656,121 @@ function normalizeCommand(value = {}, currentUrl = "") {
     error: "",
   };
 }
+
+function fillFieldIdentityV1(field = {}) {
+  return [
+    field.label,
+    field.name,
+    field.id,
+    field.placeholder,
+    field.selector,
+    field.ref,
+    field.type,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).join("|") ||
+    String(field.value || "").slice(0, 80);
+}
+
+function mergeBrowserFillCommandHistoryV1(previousCommand = null, nextCommand = null) {
+  if (nextCommand?.args?.autoFillTestData === true) {
+    return {
+      ...(nextCommand || {}),
+      intent: "auto_fill_visible_form",
+      tool: "browserFillFields",
+      args: {
+        ...(nextCommand.args || {}),
+        autoFillTestData: true,
+      },
+      notes: nextCommand.notes || "Stored DOM-driven auto-fill command for safe re-fill before submit.",
+    };
+  }
+
+  if (previousCommand?.args?.autoFillTestData === true && !Array.isArray(nextCommand?.args?.fields)) {
+    return previousCommand;
+  }
+
+  const previousFields = Array.isArray(previousCommand?.args?.fields) ? previousCommand.args.fields : [];
+  const nextFields = Array.isArray(nextCommand?.args?.fields) ? nextCommand.args.fields : [];
+
+  if (!nextFields.length) return previousCommand;
+  if (!previousFields.length) return nextCommand;
+
+  const seen = new Map();
+
+  for (const field of [...previousFields, ...nextFields]) {
+    const key = fillFieldIdentityV1(field);
+    if (!key) continue;
+    seen.set(key, {
+      ...(seen.get(key) || {}),
+      ...field,
+    });
+  }
+
+  return {
+    ...(nextCommand || previousCommand || {}),
+    intent: "fill",
+    tool: "browserFillFields",
+    args: {
+      ...(previousCommand?.args || {}),
+      ...(nextCommand?.args || {}),
+      fields: Array.from(seen.values()),
+    },
+    notes: "Accumulated verified form fields for safe re-fill before submit.",
+  };
+}
+
 function commandHasFields(command = {}) {
-  return Array.isArray(command.args?.fields) && command.args.fields.length > 0;
+  return (Array.isArray(command.args?.fields) && command.args.fields.length > 0) ||
+    command.args?.autoFillTestData === true;
 }
 
 function isSubmitLikeClickCommand(command = {}) {
-  if (!command || command.tool !== "browserClickByText") return false;
+  if (!command) return false;
+
+  const tool = String(command.tool || "");
+  if (tool === "browserSubmitForm" || tool === "browserFillAndSubmit") return true;
+  if (tool !== "browserClickByText") return false;
+
   const text = safeText(command.args?.text || command.args?.label || command.args?.buttonText || "", 120).toLowerCase();
   return /login|log in|sign in|submit|continue|next/.test(text);
 }
 
 function commandWithFreshFillBeforeSubmit(clickCommand = {}, lastFillCommand = null) {
   if (!lastFillCommand || !commandHasFields(lastFillCommand) || !isSubmitLikeClickCommand(clickCommand)) return clickCommand;
+
+  const lastArgs = lastFillCommand.args || {};
+  const clickArgs = clickCommand.args || {};
+
+  if (lastArgs.autoFillTestData === true) {
+    return {
+      ...clickCommand,
+      intent: "fill_and_submit",
+      tool: "browserFillAndSubmit",
+      args: {
+        ...clickArgs,
+        autoFillTestData: true,
+        formIntent: lastArgs.formIntent || clickArgs.formIntent || "",
+        text: clickArgs.text || clickArgs.label || clickArgs.buttonText || "Submit",
+      },
+      notes: "Re-ran DOM-driven auto-fill immediately before submit.",
+    };
+  }
+
+  const previousFields = Array.isArray(lastArgs.fields) ? lastArgs.fields : [];
+  const commandFields = Array.isArray(clickArgs.fields) ? clickArgs.fields : [];
+  const fields = typeof mergeSubmitFillFieldsV2 === "function"
+    ? mergeSubmitFillFieldsV2(previousFields, commandFields)
+    : previousFields;
+
   return {
     ...clickCommand,
     intent: "fill_and_submit",
     tool: "browserFillAndSubmit",
     args: {
-      ...(clickCommand.args || {}),
-      fields: lastFillCommand.args.fields,
-      text: clickCommand.args?.text || clickCommand.args?.label || clickCommand.args?.buttonText || "Login",
+      ...clickArgs,
+      fields,
+      text: clickArgs.text || clickArgs.label || clickArgs.buttonText || "Submit",
     },
-    notes: "Re-filled verified fields immediately before submit.",
+    notes: `Re-filled ${fields.length} verified form field(s) immediately before submit.`,
   };
 }
 
@@ -2668,6 +2780,108 @@ function redactedBrowserFieldValue(field = {}) {
   const value = String(field.value ?? "");
   return value.length > 120 ? value.slice(0, 117) + "..." : value;
 }
+
+
+function isVagueAutonomousFormFillStepV3(step = {}, originalInstruction = "") {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const instruction = String(step.instruction || "");
+  const text = [
+    originalInstruction,
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  if (action !== "fill" && !/\bfill\b/.test(instruction.toLowerCase())) return false;
+
+  // Explicit single-field fills are handled by the normal deterministic parser.
+  if (/\bfill\s+the\s+(text input|password input|textarea|text area|email|name|search)\s+with\b/i.test(instruction)) {
+    return false;
+  }
+
+  return /\b(whatever fields|appropriate fields|appropriate with reasonable|reasonable test data|visible form|fake test submission|test submission|complete the form|fill the form)\b/.test(text);
+}
+
+function deterministicAutoFillCommandFromStepV3(step = {}, currentUrl = "", originalInstruction = "") {
+  if (!isVagueAutonomousFormFillStepV3(step, originalInstruction)) return null;
+
+  return {
+    intent: "auto_fill_visible_form",
+    tool: "browserFillFields",
+    args: {
+      currentUrl,
+      autoFillTestData: true,
+      formIntent: safeText(originalInstruction || step.instruction || "", 700),
+    },
+    notes: "DOM-driven auto-fill: Playwright inspects the real visible form controls and fills safe test data only into actual fields.",
+  };
+}
+
+function deterministicFormFillFieldFromStepV1(step = {}) {
+  const instruction = String(step.instruction || "");
+  const text = instruction.toLowerCase();
+
+  if (!/\b(fill|type|enter)\b/.test(text)) return null;
+
+  const match = instruction.match(/\b(?:fill|type|enter)\b\s+(?:the\s+)?(.+?)\s+(?:with|as|to)\s+(.+)$/i);
+  if (!match) return null;
+
+  const rawLabel = safeText(match[1] || "", 180)
+    .replace(/\bfield\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const value = String(match[2] || "").trim();
+  if (!rawLabel || !value) return null;
+
+  const labelText = rawLabel.toLowerCase();
+
+  let label = rawLabel;
+  let type = "text";
+
+  if (/\bpassword\b/.test(labelText)) {
+    label = "Password";
+    type = "password";
+  } else if (/\btextarea|text area\b/.test(labelText)) {
+    label = "Textarea";
+    type = "textarea";
+  } else if (/\btext input|text\b/.test(labelText)) {
+    label = "Text input";
+    type = "text";
+  }
+
+  return {
+    label,
+    value,
+    type,
+    secret: type === "password",
+  };
+}
+
+function deterministicFormFillCommandFromStepV1(step = {}, currentUrl = "", originalInstruction = "") {
+  const autoFill = deterministicAutoFillCommandFromStepV3(step, currentUrl, originalInstruction);
+  if (autoFill) return autoFill;
+
+  const field = deterministicFormFillFieldFromStepV1(step);
+  if (!field) return null;
+
+  // Never treat vague natural-language phrases as field labels.
+  const vagueLabel = String(field.label || "").toLowerCase();
+  if (/whatever fields|appropriate fields|visible form|reasonable test data|fill the form|complete the form/.test(vagueLabel)) {
+    return null;
+  }
+
+  return {
+    intent: "fill",
+    tool: "browserFillFields",
+    args: {
+      currentUrl,
+      fields: [field],
+    },
+    notes: "Deterministic Playwright form fill: bypassed LLM when the step is a simple single-field fill instruction.",
+  };
+}
+
 
 function browserCommandFieldsForTrace(command = {}) {
   const fields = Array.isArray(command.args?.fields) ? command.args.fields : [];
@@ -2824,6 +3038,106 @@ function observationFromExecution(execution = null, fallback = {}) {
   };
 }
 
+
+function browserStateFormSignalV1(state = {}) {
+  const inputs = Array.isArray(state?.inputs) ? state.inputs.length : 0;
+  const forms = Array.isArray(state?.forms) ? state.forms.length : 0;
+  const buttons = Array.isArray(state?.buttons) ? state.buttons.length : 0;
+  const candidates = Array.isArray(state?.candidates) ? state.candidates.length : 0;
+  const interactive = Array.isArray(state?.interactiveElements) ? state.interactiveElements.length : 0;
+
+  const candidateFormLike = Array.isArray(state?.candidates)
+    ? state.candidates.filter((item) => /\b(input|textbox|password|textarea|select|combobox|button|submit)\b/i.test([
+        item.kind,
+        item.role,
+        item.text,
+        item.name,
+        item.id,
+        item.selector,
+        item.placeholder,
+      ].map((value) => String(value || "")).join(" "))).length
+    : 0;
+
+  return {
+    inputs,
+    forms,
+    buttons,
+    candidates,
+    interactive,
+    candidateFormLike,
+    hasUsefulForm: inputs > 0 || forms > 0 || candidateFormLike > 0,
+    hasWeakOrEmptyDom: inputs === 0 && forms === 0 && buttons === 0 && candidateFormLike === 0,
+  };
+}
+
+function browserStateUrlCoreV1(value = "") {
+  try {
+    const url = new URL(String(value || ""));
+    url.hash = "";
+    return url.href.replace(/\/$/, "");
+  } catch {
+    return String(value || "").replace(/[#?].*$/, "").replace(/\/$/, "");
+  }
+}
+
+function sameBrowserStatePageV1(a = {}, b = {}) {
+  const aUrl = browserStateUrlCoreV1(a?.url || a?.requestedUrl || "");
+  const bUrl = browserStateUrlCoreV1(b?.url || b?.requestedUrl || "");
+  return Boolean(aUrl && bUrl && aUrl === bUrl);
+}
+
+function isFormDependentStepV1(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return action === "fill" ||
+    action === "submit" ||
+    /\b(fill|type|enter|input|password|textarea|select menu|dropdown|choose|submit|form submitted|entered values|field values)\b/.test(text);
+}
+
+function stickyFormStateFallbackNeededV1(beforeState = {}, stickyState = {}, step = {}) {
+  if (!isFormDependentStepV1(step)) return false;
+  if (!stickyState?.ok) return false;
+  if (!sameBrowserStatePageV1(beforeState, stickyState)) return false;
+
+  const currentSignal = browserStateFormSignalV1(beforeState);
+  const stickySignal = browserStateFormSignalV1(stickyState);
+
+  return currentSignal.hasWeakOrEmptyDom && stickySignal.hasUsefulForm;
+}
+
+function mergeStickyFormStateV1(beforeState = {}, stickyState = {}) {
+  return {
+    ...beforeState,
+    ok: beforeState?.ok === true || stickyState?.ok === true,
+    status: beforeState?.status || stickyState?.status || "observed",
+    url: beforeState?.url || stickyState?.url || "",
+    title: beforeState?.title || stickyState?.title || "",
+    text: beforeState?.text || stickyState?.text || "",
+    textPreview: beforeState?.textPreview || stickyState?.textPreview || "",
+    markdown: beforeState?.markdown || stickyState?.markdown || "",
+    inputs: Array.isArray(beforeState?.inputs) && beforeState.inputs.length ? beforeState.inputs : (Array.isArray(stickyState?.inputs) ? stickyState.inputs : []),
+    forms: Array.isArray(beforeState?.forms) && beforeState.forms.length ? beforeState.forms : (Array.isArray(stickyState?.forms) ? stickyState.forms : []),
+    buttons: Array.isArray(beforeState?.buttons) && beforeState.buttons.length ? beforeState.buttons : (Array.isArray(stickyState?.buttons) ? stickyState.buttons : []),
+    interactiveElements: Array.isArray(beforeState?.interactiveElements) && beforeState.interactiveElements.length ? beforeState.interactiveElements : (Array.isArray(stickyState?.interactiveElements) ? stickyState.interactiveElements : []),
+    candidates: Array.isArray(beforeState?.candidates) && beforeState.candidates.length ? beforeState.candidates : (Array.isArray(stickyState?.candidates) ? stickyState.candidates : []),
+    formsStickyFallback: true,
+    stats: {
+      ...(stickyState?.stats || {}),
+      ...(beforeState?.stats || {}),
+      stickyFormFallback: true,
+      stickyInputs: Array.isArray(stickyState?.inputs) ? stickyState.inputs.length : 0,
+      stickyForms: Array.isArray(stickyState?.forms) ? stickyState.forms.length : 0,
+      stickyButtons: Array.isArray(stickyState?.buttons) ? stickyState.buttons.length : 0,
+    },
+  };
+}
+
+
 function tokenUsageFromTrace(trace = []) {
   const totalTokens = trace.reduce((sum, entry) => sum + Number(entry.tokens || 0), 0);
   return {
@@ -2909,6 +3223,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   let finalObservation = null;
   let stoppedReason = "";
   let lastSuccessfulFillCommand = null;
+  let lastUsefulFormState = null;
   const readOnlyBrowserPlan = isReadOnlyBrowserPlan(steps, instruction);
 
   for (let index = 0; index < steps.length; index += 1) {
@@ -2941,6 +3256,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       const stepResult = activeWatcherHardV4.stepResult;
       currentUrl = stepResult?.url || currentUrl;
       currentTitle = stepResult?.title || currentTitle;
+      scheduleLightpandaStandby({ currentUrl, focus: "page", reason: "current_page_update" });
       finalObservation = activeWatcherHardV4.finalObservation || finalObservation;
       stepResults.push(stepResult);
 
@@ -2992,6 +3308,44 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       };
     }
 
+    if (stickyFormStateFallbackNeededV1(beforeState, lastUsefulFormState, step)) {
+      const originalSignal = browserStateFormSignalV1(beforeState);
+      const stickySignal = browserStateFormSignalV1(lastUsefulFormState);
+      beforeState = mergeStickyFormStateV1(beforeState, lastUsefulFormState);
+
+      trace.push(traceEntry({
+        role: "lightpanda_state_provider",
+        title: "Lightpanda sticky form state",
+        step: stepNumber,
+        status: "restored_form_dom",
+        input: {
+          currentUrl,
+          readUrl: lightpandaReadUrl,
+          originalSignal,
+          stickySignal,
+        },
+        output: {
+          url: beforeState.url || "",
+          title: beforeState.title || "",
+          inputs: Array.isArray(beforeState.inputs) ? beforeState.inputs.slice(0, 8).map((input) => ({
+            ref: input.ref || "",
+            label: input.label || input.text || input.placeholder || input.name || input.id || "",
+            type: input.type || "",
+            selector: input.selector || "",
+          })) : [],
+          forms: Array.isArray(beforeState.forms) ? beforeState.forms.length : 0,
+          buttons: Array.isArray(beforeState.buttons) ? beforeState.buttons.slice(0, 6).map((button) => button.text || button.selector || "") : [],
+        },
+        summary: "Reused last good Lightpanda form DOM state because the fresh read returned no fields.",
+        tool: "browserObserve",
+        ok: true,
+      }));
+    }
+
+    if (browserStateFormSignalV1(beforeState).hasUsefulForm) {
+      lastUsefulFormState = beforeState;
+    }
+
     trace.push(traceEntry({
       role: "lightpanda_state_provider",
       title: "Lightpanda state provider",
@@ -3028,6 +3382,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       const observation = observationFromPageState(beforeState);
       currentUrl = observation?.url || lightpandaReadUrl || currentUrl;
       currentTitle = observation?.title || currentTitle;
+      scheduleLightpandaStandby({ currentUrl, focus: "page", reason: "current_page_update" });
       finalObservation = observation || finalObservation;
 
       const summary = detailedStepReportSummaryFromObservation(observation || {}, step, instruction);
@@ -3067,6 +3422,77 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       continue;
     }
 
+    const deterministicFillCommandV1 = deterministicFormFillCommandFromStepV1(step, currentUrl, instruction);
+
+    if (
+      envFlag("BROWSER_AGENT_DETERMINISTIC_PLAYWRIGHT_FILL", true) &&
+      deterministicFillCommandV1 &&
+      currentUrl
+    ) {
+      const beforeObservation = observationFromPageState(beforeState);
+      const execution = await executePlaywrightMcpBrowserCommand({
+        command: deterministicFillCommandV1,
+        args: {
+          ...args,
+          currentUrl,
+        },
+        state: currentState,
+        beforeObservation,
+        skipBeforeSnapshot: false,
+      });
+
+      const executionOk = execution.ok === true;
+      const observation = observationFromExecution(execution, execution) || execution.observation || beforeObservation || {};
+      currentUrl = observation?.url || currentUrl;
+      currentTitle = observation?.title || currentTitle;
+      finalObservation = observation || finalObservation;
+
+      const summary = executionOk
+        ? browserExecutionTraceSummary(deterministicFillCommandV1, execution)
+        : execution.error || "Deterministic Playwright form fill failed.";
+
+      trace.push(traceEntry({
+        role: "playwright_executor",
+        title: "Playwright deterministic form fill",
+        step: stepNumber,
+        status: executionOk ? "executed" : "failed",
+        input: {
+          step,
+          command: deterministicFillCommandV1,
+        },
+        output: {
+          ok: executionOk,
+          error: execution.error || "",
+          actionResult: execution.actionResult || null,
+        },
+        summary,
+        tool: "browserFillFields",
+        ok: executionOk,
+      }));
+
+      const stepResult = {
+        stepNumber,
+        step,
+        ok: executionOk,
+        repaired: false,
+        status: executionOk ? "passed" : "failed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: deterministicFillCommandV1,
+      };
+
+      stepResults.push(stepResult);
+
+      if (executionOk) {
+        lastSuccessfulFillCommand = mergeBrowserFillCommandHistoryV1(lastSuccessfulFillCommand, deterministicFillCommandV1);
+        continue;
+      }
+
+      stoppedReason = summary;
+      break;
+    }
+
     if (
       envFlag("BROWSER_AGENT_LIGHTPANDA_OBSERVE_FAST_PATH", true) &&
       isObserveOnlyStep(step) &&
@@ -3075,6 +3501,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       const observation = observationFromPageState(beforeState);
       currentUrl = observation?.url || currentUrl;
       currentTitle = observation?.title || currentTitle;
+      scheduleLightpandaStandby({ currentUrl, focus: "page", reason: "current_page_update" });
       finalObservation = observation || finalObservation;
 
       const summary = detailedStepReportSummaryFromObservation(observation || {}, step, instruction);
@@ -3403,6 +3830,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       const observation = observationFromPageState(beforeState) || before?.observation || observationFromExecution(null, before);
       currentUrl = observation.url || currentUrl;
       currentTitle = observation.title || currentTitle;
+      scheduleLightpandaStandby({ currentUrl, focus: "page", reason: "current_page_update" });
       finalObservation = observation;
 
       const summary = detailedStepReportSummaryFromObservation(observation, step, instruction);
@@ -4176,6 +4604,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     const observation = observationFromExecution(execution);
     currentUrl = observation.url || currentUrl;
     currentTitle = observation.title || currentTitle;
+    scheduleLightpandaStandby({ currentUrl, focus: "page", reason: "current_page_update" });
     finalObservation = observation;
 
     const stepOk = execution.ok === true && resultCheck.success === true;

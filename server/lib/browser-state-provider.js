@@ -33,6 +33,116 @@ function requestedUrlFromArgs(args = {}) {
   );
 }
 
+
+const LIGHTPANDA_STANDBY_CACHE = new Map();
+const LIGHTPANDA_STANDBY_INFLIGHT = new Map();
+
+function lightpandaStandbyEnabled() {
+  const raw = process.env.BROWSER_AGENT_LIGHTPANDA_STANDBY;
+  if (raw === undefined || raw === null || raw === "") return true;
+  return ["1", "true", "yes", "on"].includes(String(raw).trim().toLowerCase());
+}
+
+function lightpandaStandbyTtlMs() {
+  const raw = Number(process.env.BROWSER_AGENT_LIGHTPANDA_STANDBY_TTL_MS || 8000);
+  return Number.isFinite(raw) ? Math.max(1000, raw) : 8000;
+}
+
+function lightpandaStandbyKey(args = {}) {
+  const url = requestedUrlFromArgs(args);
+  if (!url) return "";
+  const focus = safeText(args.focus || "page", 80);
+  const mode = safeText(args.mode || args.stateMode || "browser", 80);
+  return [url, focus, mode].join("::");
+}
+
+export function getLightpandaStandbyState(args = {}) {
+  const key = lightpandaStandbyKey(args);
+  if (!key) return null;
+
+  const entry = LIGHTPANDA_STANDBY_CACHE.get(key);
+  if (!entry) return null;
+
+  if (Date.now() - Number(entry.ts || 0) > lightpandaStandbyTtlMs()) {
+    LIGHTPANDA_STANDBY_CACHE.delete(key);
+    return null;
+  }
+
+  return entry.state || null;
+}
+
+export function warmLightpandaStandby(args = {}) {
+  if (!lightpandaStandbyEnabled()) return Promise.resolve(null);
+
+  const requestedUrl = requestedUrlFromArgs(args);
+  if (!requestedUrl) return Promise.resolve(null);
+
+  const key = lightpandaStandbyKey({
+    ...args,
+    url: requestedUrl,
+    currentUrl: requestedUrl,
+  });
+
+  if (!key) return Promise.resolve(null);
+
+  const cached = getLightpandaStandbyState({
+    ...args,
+    url: requestedUrl,
+    currentUrl: requestedUrl,
+  });
+
+  if (cached?.ok) return Promise.resolve(cached);
+
+  const inflight = LIGHTPANDA_STANDBY_INFLIGHT.get(key);
+  if (inflight) return inflight;
+
+  const promise = (async () => {
+    const state = await getBrowserState({
+      ...args,
+      url: requestedUrl,
+      currentUrl: requestedUrl,
+      navigate: true,
+      mode: args.mode || "browser",
+      focus: args.focus || "page",
+      waitMs: args.waitMs || process.env.BROWSER_AGENT_LIGHTPANDA_STANDBY_WAIT_MS || "450",
+      includeScrape: args.includeScrape === true,
+    });
+
+    LIGHTPANDA_STANDBY_CACHE.set(key, {
+      ts: Date.now(),
+      state: {
+        ...state,
+        standby: true,
+        standbyUrl: requestedUrl,
+      },
+    });
+
+    return state;
+  })().catch((err) => {
+    const state = {
+      ok: false,
+      standby: true,
+      standbyUrl: requestedUrl,
+      source: "lightpanda_read_only",
+      engine: "lightpanda_cdp",
+      error: err instanceof Error ? err.message : String(err),
+    };
+
+    LIGHTPANDA_STANDBY_CACHE.set(key, {
+      ts: Date.now(),
+      state,
+    });
+
+    return state;
+  }).finally(() => {
+    LIGHTPANDA_STANDBY_INFLIGHT.delete(key);
+  });
+
+  LIGHTPANDA_STANDBY_INFLIGHT.set(key, promise);
+  return promise;
+}
+
+
 function sliceArray(value, limit = 40) {
   return Array.isArray(value) ? value.slice(0, limit) : [];
 }
