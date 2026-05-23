@@ -110,6 +110,37 @@ function hasMutatingBrowserIntent(text = "") {
     .test(String(text || ""));
 }
 
+function isObserveOnlyStep(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = String(step.instruction || "").toLowerCase();
+
+  if (hasMutatingBrowserIntent(text)) return false;
+  if ([
+    "observe",
+    "inspect",
+    "read",
+    "check",
+    "scrape",
+    "extract",
+    "summarize",
+    "unknown",
+  ].includes(action)) {
+    if (/\b(click|press|tap|fill|type|submit)\b/.test(text)) return false;
+    if (/\b(observe|inspect|check|look|read|review|analyze page|what is on|what's on|scrape|extract|summarize|title|link count|form count|first\s+\d+\s+link|first\s+five\s+link|link texts?|forms?|links?)\b/.test(text)) return true;
+  }
+
+  return /\b(observe|inspect|check|look|read|review|analyze page|what is on|what's on|scrape|extract|summarize|title|link count|form count|first\s+\d+\s+link|first\s+five\s+link|link texts?)\b/.test(text);
+}
+
+function isScrapeLikeStep(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = String(step.instruction || "").toLowerCase();
+  if (hasMutatingBrowserIntent(text)) return false;
+  return action === "scrape" ||
+    action === "extract" ||
+    /\b(scrape|extract|table|tables|cards|repeated groups|link count|form count|first\s+\d+\s+link|first\s+five\s+link|link texts?)\b/.test(text);
+}
+
 function isReadOnlyBrowserPlan(steps = [], originalInstruction = "") {
   if (hasMutatingBrowserIntent(originalInstruction) && !/\bdo not click|don't click|dont click|no click|without clicking\b/i.test(originalInstruction)) {
     return false;
@@ -170,15 +201,38 @@ function normalizedTargetText(value = "") {
   return raw.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function cleanClickTargetText(value = "") {
+  return safeText(value, 160)
+    .replace(/^on\s+/i, "")
+    .replace(/^a\s+/i, "")
+    .replace(/^an\s+/i, "")
+    .replace(/^the\s+/i, "")
+    .replace(/\s+(?:link|button|tab|menuitem|anchor)$/i, "")
+    .replace(/\b(after clicking|after click|report|then).*$/i, "")
+    .replace(/[.,;:!?]+$/g, "")
+    .trim();
+}
+
 function extractClickTargetText(step = {}, originalInstruction = "") {
-  const text = `${step.instruction || ""}\n${originalInstruction || ""}`;
+  const stepText = String(step.instruction || "");
 
+  const quotedStep = stepText.match(/["'“”]([^"'“”]+)["'“”]/)?.[1];
+  if (quotedStep) return cleanClickTargetText(quotedStep);
+
+  const stepMatch = stepText.match(/\b(?:click|press|tap)\s+(?:on\s+)?(?:the\s+)?(.+?)(?:[.!?]|\s+after\b|\s+then\b|$)/i);
+  if (stepMatch?.[1]) {
+    const cleaned = cleanClickTargetText(stepMatch[1]);
+    if (cleaned && !/^https?:\/\//i.test(cleaned)) return cleaned;
+  }
+
+  const text = String(originalInstruction || "");
   const quoted = text.match(/["'“”]([^"'“”]+)["'“”]/)?.[1];
-  if (quoted) return safeText(quoted, 160);
+  if (quoted) return cleanClickTargetText(quoted);
 
-  const match = text.match(/\b(?:click|press|tap|open)\s+(?:the\s+)?(.+?)(?:\s+(?:link|button|tab|menuitem))?(?:[.!?]|\s+after\b|\s+then\b|$)/i);
+  const match = text.match(/\b(?:click|press|tap)\s+(?:on\s+)?(?:the\s+)?(.+?)(?:[.!?]|\s+after\b|\s+then\b|$)/i);
   if (match?.[1]) {
-    return safeText(match[1].replace(/^on\s+/i, "").replace(/\b(after clicking|report|then).*$/i, ""), 160);
+    const cleaned = cleanClickTargetText(match[1]);
+    if (cleaned && !/^https?:\/\//i.test(cleaned)) return cleaned;
   }
 
   return "";
@@ -200,23 +254,40 @@ function isClickStep(step = {}) {
   return action === "click" || /\b(click|press|tap)\b/.test(text);
 }
 
+function tokenSetFromNormalized(value = "") {
+  return new Set(String(value || "").split(/\s+/).filter(Boolean));
+}
+
 function lightpandaClickScore(candidate = {}, targetText = "", totalCandidates = 0) {
   const wanted = normalizedTargetText(targetText);
-  const label = normalizedTargetText(candidate.text || candidate.label || candidate.name || candidate.href || "");
+  const rawLabel = candidate.text || candidate.label || candidate.name || "";
+  const label = normalizedTargetText(rawLabel);
   const href = normalizedTargetText(candidate.href || "");
 
-  if (wanted && label === wanted) return 1;
-  if (wanted && label && (label.includes(wanted) || wanted.includes(label))) return 0.92;
+  if (!wanted || !label) return 0;
+
+  if (label === wanted) return 1;
+
+  const wantedTokens = tokenSetFromNormalized(wanted);
+  const labelTokens = tokenSetFromNormalized(label);
+
+  // For short targets like "new", never substring-match "news".
+  if (wanted.length <= 3 || wantedTokens.size === 1) {
+    const only = Array.from(wantedTokens)[0] || wanted;
+    if (labelTokens.has(only)) return 0.96;
+    return 0;
+  }
+
+  if (label.includes(wanted) || wanted.includes(label)) return 0.92;
 
   if (
-    wanted &&
     /\bmore information\b/i.test(targetText) &&
-    /\blearn more\b/i.test(candidate.text || candidate.label || "")
+    /\blearn more\b/i.test(rawLabel)
   ) {
     return 0.88;
   }
 
-  if (wanted && href && wanted.split(/\s+/).some((part) => part.length >= 4 && href.includes(part))) {
+  if (href && Array.from(wantedTokens).some((part) => part.length >= 4 && href.includes(part))) {
     return 0.74;
   }
 
@@ -740,7 +811,7 @@ function agentTraceLabel(role = "", title = "") {
     gemma_step_agent: "Step Agent",
     gemma_step_agent_repair: "Step Agent Repair",
     gemma_checker: "Checker",
-    playwright_controller: "Browser",
+    playwright_controller: "Playwright Executor",
     gemma_result_checker: "Watcher",
     gemma_result_checker_repair: "Watcher Repair",
     report_step_observe: "Reporter",
@@ -755,7 +826,7 @@ function agentTraceKind(role = "") {
   if (role === "main_orchestrator") return "orchestrator";
   if (role.includes("step_agent")) return "step_agent";
   if (role.includes("checker") && !role.includes("result")) return "checker";
-  if (role === "playwright_controller") return "browser";
+  if (role === "playwright_controller") return "playwright_executor";
   if (role.includes("result_checker")) return "watcher";
   if (role === "final_verifier") return "main_response";
   if (role === "report_step_observe") return "reporter";
@@ -977,10 +1048,10 @@ function browserExecutionTraceSummary(command = {}, execution = {}) {
   if (!details) return execution.error || page;
   if (details.kind === "fill") {
     const fields = (details.fields || []).map((field) => field.label + (field.target ? " [" + field.target + "]" : "") + (field.valuePreview ? "=" + field.valuePreview : "")).join(", ");
-    return ["action=fill via=" + details.strategy + (fields ? " fields: " + fields : ""), page, execution.error || ""].filter(Boolean).join(" — ");
+    return ["playwright:fill via=" + details.strategy + (fields ? " fields: " + fields : ""), page, execution.error || ""].filter(Boolean).join(" — ");
   }
-  if (details.kind === "click") return ["action=click target=" + (details.target || "") + (details.ref ? " [" + details.ref + "]" : ""), page, execution.error || ""].filter(Boolean).join(" — ");
-  if (details.kind === "navigate") return ["action=navigate " + (details.url || ""), page, execution.error || ""].filter(Boolean).join(" — ");
+  if (details.kind === "click") return ["playwright:click target=" + (details.target || "") + (details.ref ? " [" + details.ref + "]" : ""), page, execution.error || ""].filter(Boolean).join(" — ");
+  if (details.kind === "navigate") return ["playwright:navigate " + (details.url || ""), page, execution.error || ""].filter(Boolean).join(" — ");
   return execution.error || page;
 }
 
@@ -1102,6 +1173,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     const lightpandaReadUrl = currentUrl || (shouldLightpandaReadStepTarget ? stepTargetUrl : "");
 
+    const scrapeLikeStep = isScrapeLikeStep(step);
+
     let beforeState = null;
     try {
       beforeState = await getBrowserState({
@@ -1109,6 +1182,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         state: currentState,
         ...(currentUrl ? { currentUrl } : lightpandaReadUrl ? { url: lightpandaReadUrl } : { currentUrl }),
         navigate: Boolean(!currentUrl && lightpandaReadUrl),
+        includeScrape: Boolean(args.includeScrape || scrapeLikeStep),
+        stateMode: scrapeLikeStep ? "scrape" : args.stateMode,
         waitMs: args.waitMs || "700",
       });
     } catch (err) {
@@ -1141,13 +1216,15 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         readOnly: true,
       },
       output: compactBrowserStateForModel(beforeState, {
-        textLimit: 900,
-        markdownLimit: 900,
-        linkLimit: 12,
+        textLimit: scrapeLikeStep ? 1400 : 900,
+        markdownLimit: scrapeLikeStep ? 1400 : 900,
+        linkLimit: scrapeLikeStep ? 20 : 12,
         buttonLimit: 12,
         inputLimit: 12,
         formLimit: 4,
-        candidateLimit: 24,
+        candidateLimit: scrapeLikeStep ? 40 : 24,
+        tableLimit: scrapeLikeStep ? 6 : 2,
+        groupLimit: scrapeLikeStep ? 4 : 1,
       }),
       summary: pageStateTraceSummary(beforeState),
       tool: "browserObserve",
@@ -1178,7 +1255,9 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           url: currentUrl,
           title: currentTitle,
           textPreview: safeText(observation?.textPreview || observation?.text || "", 900),
-          links: Array.isArray(observation?.links) ? observation.links.slice(0, 5).map((link) => link.text || link.href || "") : [],
+          links: Array.isArray(observation?.links) ? observation.links.slice(0, scrapeLikeStep ? 10 : 5).map((link) => link.text || link.href || "") : [],
+          tables: Array.isArray(beforeState?.tables) ? beforeState.tables.slice(0, 3) : [],
+          repeatedGroups: Array.isArray(beforeState?.repeatedGroups) ? beforeState.repeatedGroups.slice(0, 2) : [],
           stats: observation?.stats || {},
         },
         summary,
@@ -1196,6 +1275,55 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         url: currentUrl,
         title: currentTitle,
         command: { intent: "read_navigation", tool: "browserObserve", args: { currentUrl } },
+      });
+
+      continue;
+    }
+
+    if (
+      envFlag("BROWSER_AGENT_LIGHTPANDA_OBSERVE_FAST_PATH", true) &&
+      isObserveOnlyStep(step) &&
+      beforeState?.ok === true
+    ) {
+      const observation = observationFromPageState(beforeState);
+      currentUrl = observation?.url || currentUrl;
+      currentTitle = observation?.title || currentTitle;
+      finalObservation = observation || finalObservation;
+
+      const summary = detailedReportSummaryFromObservation(observation || {}, step, instruction);
+
+      trace.push(traceEntry({
+        role: "report_step_observe",
+        title: "Lightpanda observe fast path",
+        step: stepNumber,
+        status: "passed",
+        input: step,
+        output: {
+          url: observation?.url || "",
+          title: observation?.title || "",
+          textPreview: safeText(observation?.textPreview || observation?.text || "", 900),
+          links: Array.isArray(observation?.links) ? observation.links.slice(0, 5).map((link) => link.text || link.href || "") : [],
+          stats: observation?.stats || {},
+        },
+        summary,
+        tool: scrapeLikeStep ? "lightpandaScrape" : "lightpandaObserve",
+        ok: true,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: true,
+        repaired: false,
+        status: "passed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: scrapeLikeStep ? "scrape" : "observe",
+          tool: scrapeLikeStep ? "lightpandaScrape" : "lightpandaObserve",
+          args: { currentUrl },
+        },
       });
 
       continue;
