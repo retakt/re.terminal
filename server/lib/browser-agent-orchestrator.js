@@ -927,7 +927,7 @@ function fastSnapshotCheckerForStep({ stepPlan = {}, step = {}, before = null } 
 function isSnapshotResultAutoPassCommand(command = {}, step = {}, execution = {}) {
   const tool = String(command?.tool || "");
   if (isSensitiveStep(step)) return false;
-  if (isButtonIntentStep(step) && tool === "browserNavigate") return false;
+  if (isButtonIntentStep(step)) return false;
   if (execution?.ok !== true) return false;
   if (execution?.error) return false;
   if (/###\\s*Error|invalid_type|expected .* received/i.test(String(execution?.actionResult?.text || ""))) return false;
