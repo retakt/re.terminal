@@ -314,6 +314,7 @@ function compactBrowserAgentPayload(payload = {}) {
     nextSafeAction: compactString(payload.nextSafeAction, 260),
     runtimeTiming: payload.runtimeTiming || null,
     tokenUsage: pipelineTokenUsage,
+    agentReasoning: payload.pipeline?.agentReasoning || null,
     runtime: payload.runtime || null,
     diagnostics: payload.diagnostics ? {
       diagnosis: compactString(payload.diagnostics.diagnosis, 400),

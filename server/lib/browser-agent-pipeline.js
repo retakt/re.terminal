@@ -216,6 +216,58 @@ function usageFromRoleCall(roleCall) {
   return roleCall?.call?.usage || roleCall?.usage || null;
 }
 
+function thinkingFromRoleCall(roleCall, limit = 1200) {
+  return safeText(roleCall?.call?.thinking || "", limit);
+}
+
+function agentReasoningFromCalls(calls = {}) {
+  return {
+    mainIntent: thinkingFromRoleCall(calls.mainIntentResult),
+    planner: thinkingFromRoleCall(calls.plannerResult),
+    reviewer: thinkingFromRoleCall(calls.reviewerResult),
+    executor: thinkingFromRoleCall(calls.executorResult),
+    resultReviewer: thinkingFromRoleCall(calls.resultReviewerResult),
+    mainHandoff: thinkingFromRoleCall(calls.mainResult),
+  };
+}
+
+function isReadOnlyCommand(command = {}) {
+  return ["browserObserve", "browserScrape", "browserShowActions"].includes(String(command.tool || ""));
+}
+
+function fastObservationExecution({ command = {}, beforeReviewSnapshot = null } = {}) {
+  if (!beforeReviewSnapshot?.snapshot) return null;
+  const observation = beforeReviewSnapshot.observation || {
+    ok: true,
+    url: beforeReviewSnapshot.snapshot.url || "",
+    title: beforeReviewSnapshot.snapshot.title || "",
+    textPreview: beforeReviewSnapshot.snapshot.text || beforeReviewSnapshot.snapshot.dom?.textPreview || "",
+    engine: "playwright_mcp",
+    links: [],
+    buttons: [],
+    inputs: [],
+    forms: [],
+    interactiveElements: [],
+    stats: {},
+  };
+
+  return {
+    ok: true,
+    status: "executed",
+    engine: "playwright_mcp",
+    tool: command.tool || "browserObserve",
+    actionResult: {
+      ok: true,
+      tool: "snapshot_reuse",
+      text: "Reused the existing Playwright MCP snapshot for read-only observation.",
+    },
+    beforeSnapshot: beforeReviewSnapshot.snapshot,
+    afterSnapshot: beforeReviewSnapshot.snapshot,
+    observation,
+    error: "",
+  };
+}
+
 function combinePipelineTokenUsage(calls = {}) {
   const stages = {
     planner: usageFromRoleCall(calls.plannerResult),
@@ -489,34 +541,49 @@ export async function runBrowserAgentPipeline(args = {}) {
       executor = syntheticExecutorFromReviewer(reviewer);
     }
 
-    browserExecution = await executePlaywrightMcpBrowserCommand({
-      command: reviewer.approvedCommand,
-      args,
-      state,
-      beforeSnapshot: beforeReviewSnapshot?.snapshot || null,
-    });
+    browserExecution = isReadOnlyCommand(reviewer.approvedCommand)
+      ? fastObservationExecution({ command: reviewer.approvedCommand, beforeReviewSnapshot })
+      : await executePlaywrightMcpBrowserCommand({
+          command: reviewer.approvedCommand,
+          args,
+          state,
+          beforeSnapshot: beforeReviewSnapshot?.snapshot || null,
+        });
 
-    const resultImages = snapshotImagesForModel(
-      browserExecution?.beforeSnapshot || beforeReviewSnapshot?.snapshot,
-      browserExecution?.afterSnapshot,
-    );
+    const skipResultReviewer = envFlag("BROWSER_AGENT_FAST_OBSERVE", true) && isReadOnlyCommand(reviewer.approvedCommand);
 
-    resultReviewerResult = await safeRoleCall("result_reviewer", () => callBrowserAgentResultReviewer({
-      instruction,
-      currentState: redactValue(compactState(state)),
-      reviewer,
-      executor,
-      beforeSnapshot: compactSnapshotForModel(browserExecution?.beforeSnapshot || beforeReviewSnapshot?.snapshot),
-      afterSnapshot: compactSnapshotForModel(browserExecution?.afterSnapshot),
-      browserExecution: redactValue({
-        ...browserExecution,
-        beforeSnapshot: undefined,
-        afterSnapshot: undefined,
-      }),
-      schemas: browserPipelineSchemaSummary(),
-    }, resultReviewerSystemPrompt(), { images: resultImages }));
+    if (skipResultReviewer) {
+      resultReviewer = normalizeResultReview({
+        status: "normalized",
+        success: true,
+        normalizedResult: browserExecution?.observation?.textPreview || browserExecution?.actionResult?.text || "Observed the current page.",
+        messageToPlanner: "Read-only observation completed using the existing Playwright MCP snapshot.",
+        messageToMain: browserExecution?.observation?.textPreview || "Observed the current page.",
+        reason: "fast_observe_snapshot_reuse",
+      });
+    } else {
+      const resultImages = snapshotImagesForModel(
+        browserExecution?.beforeSnapshot || beforeReviewSnapshot?.snapshot,
+        browserExecution?.afterSnapshot,
+      );
 
-    resultReviewer = normalizeResultReview(resultReviewerResult.call?.data, resultReviewerResult.error || "Result reviewer failed.");
+      resultReviewerResult = await safeRoleCall("result_reviewer", () => callBrowserAgentResultReviewer({
+        instruction,
+        currentState: redactValue(compactState(state)),
+        reviewer,
+        executor,
+        beforeSnapshot: compactSnapshotForModel(browserExecution?.beforeSnapshot || beforeReviewSnapshot?.snapshot),
+        afterSnapshot: compactSnapshotForModel(browserExecution?.afterSnapshot),
+        browserExecution: redactValue({
+          ...browserExecution,
+          beforeSnapshot: undefined,
+          afterSnapshot: undefined,
+        }),
+        schemas: browserPipelineSchemaSummary(),
+      }, resultReviewerSystemPrompt(), { images: resultImages }));
+
+      resultReviewer = normalizeResultReview(resultReviewerResult.call?.data, resultReviewerResult.error || "Result reviewer failed.");
+    }
   }
 
   const pipeline = {
@@ -552,10 +619,10 @@ export async function runBrowserAgentPipeline(args = {}) {
       : null,
     resultReviewer,
     calls: {
-      planner: { ok: plannerResult.ok, error: plannerResult.error || "", usage: usageFromRoleCall(plannerResult) },
-      reviewer: { ok: reviewerResult.ok, error: reviewerResult.error || "", usage: usageFromRoleCall(reviewerResult) },
-      executor: executorResult ? { ok: executorResult.ok, error: executorResult.error || "", usage: usageFromRoleCall(executorResult) } : null,
-      resultReviewer: resultReviewerResult ? { ok: resultReviewerResult.ok, error: resultReviewerResult.error || "", usage: usageFromRoleCall(resultReviewerResult) } : null,
+      planner: { ok: plannerResult.ok, error: plannerResult.error || "", usage: usageFromRoleCall(plannerResult), thinking: thinkingFromRoleCall(plannerResult) },
+      reviewer: { ok: reviewerResult.ok, error: reviewerResult.error || "", usage: usageFromRoleCall(reviewerResult), thinking: thinkingFromRoleCall(reviewerResult) },
+      executor: executorResult ? { ok: executorResult.ok, error: executorResult.error || "", usage: usageFromRoleCall(executorResult), thinking: thinkingFromRoleCall(executorResult) } : null,
+      resultReviewer: resultReviewerResult ? { ok: resultReviewerResult.ok, error: resultReviewerResult.error || "", usage: usageFromRoleCall(resultReviewerResult), thinking: thinkingFromRoleCall(resultReviewerResult) } : null,
     },
   };
 
@@ -578,8 +645,16 @@ export async function runBrowserAgentPipeline(args = {}) {
   }
 
   pipeline.calls.mainHandoff = mainResult
-    ? { ok: mainResult.ok, error: mainResult.error || "", usage: usageFromRoleCall(mainResult) }
+    ? { ok: mainResult.ok, error: mainResult.error || "", usage: usageFromRoleCall(mainResult), thinking: thinkingFromRoleCall(mainResult) }
     : null;
+
+  pipeline.agentReasoning = agentReasoningFromCalls({
+    plannerResult,
+    reviewerResult,
+    executorResult,
+    resultReviewerResult,
+    mainResult,
+  });
 
   const timing = {
     totalMs: roundMs(nowMs() - startedAt),
