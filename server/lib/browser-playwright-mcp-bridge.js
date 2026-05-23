@@ -16,6 +16,45 @@ function safeText(value = "", limit = 4000) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
+
+function parseMcpWrappedJsonSafe(value = "") {
+  const raw = String(value || "").trim();
+  const candidates = [];
+
+  if (raw) candidates.push(raw);
+
+  const resultString = raw.match(/###\s*Result\s+("(?:(?:\\.)|[^"\\])*")/s)?.[1];
+  if (resultString) {
+    try {
+      candidates.push(JSON.parse(resultString));
+    } catch {}
+  }
+
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    candidates.push(raw.slice(first, last + 1));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+
+      if (typeof parsed === "string") {
+        try {
+          return JSON.parse(parsed);
+        } catch {}
+      }
+
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 function isLikelyUrl(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return false;
@@ -279,6 +318,1343 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
   };
 }
 
+function scoutControlScript(targetText = "", intent = "") {
+  const payload = {
+    targetText: safeText(targetText, 240),
+    intent: safeText(intent, 120),
+  };
+
+  return `() => {
+    const payload = ${JSON.stringify(payload)};
+    const targetRaw = String(payload.targetText || "").trim();
+    const intent = String(payload.intent || "").toLowerCase();
+
+    const norm = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const coreTarget = (value) => norm(value)
+      .replace(/\b(click|press|tap|select|choose|open|launch)\b/g, " ")
+      .replace(/\b(button|link|control|element|field|item|option)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const wanted = norm(targetRaw);
+    const wantedCore = coreTarget(targetRaw);
+
+    const textScoreFor = (label) => {
+      const labelNorm = norm(label);
+      const labelCore = coreTarget(label);
+
+      const pairs = [
+        [labelNorm, wanted, "full"],
+        [labelNorm, wantedCore, "target_core"],
+        [labelCore, wantedCore, "both_core"],
+        [labelCore, wanted, "label_core"],
+      ].filter(([left, right]) => left && right);
+
+      for (const [left, right, mode] of pairs) {
+        if (left === right) return { score: 120, match: "exact_" + mode };
+        if (left.includes(right)) return { score: 104, match: "label_contains_" + mode };
+        if (right.includes(left) && left.length >= 4) return { score: 90, match: "target_contains_" + mode };
+      }
+
+      return { score: 0, match: "none" };
+    };
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom >= 0 &&
+        rect.right >= 0;
+    };
+
+    const inCodeLikeContainer = (el) => Boolean(el.closest([
+      "pre",
+      "code",
+      "kbd",
+      "samp",
+      "[data-highlighted]",
+      ".highlight",
+      ".code",
+      ".codehilite",
+      ".hljs"
+    ].join(",")));
+
+    const labelFor = (el) => [
+      el.innerText || el.textContent || "",
+      el.getAttribute("aria-label") || "",
+      el.getAttribute("title") || "",
+      el.getAttribute("value") || "",
+      el.getAttribute("name") || "",
+      el.getAttribute("id") || "",
+      el.getAttribute("data-bs-target") || "",
+      el.getAttribute("data-target") || "",
+      el.getAttribute("aria-controls") || ""
+    ].filter(Boolean).join(" ");
+
+    const attr = (el, name) => el.getAttribute(name) || "";
+
+    const cssEscape = (value) => {
+      try { return CSS.escape(String(value || "")); }
+      catch { return String(value || "").replace(/["\\\\]/g, "\\\\$&"); }
+    };
+
+    const cssQuoted = (value) => String(value || "").replace(/["\\\\]/g, "\\\\$&");
+
+    const selectorFor = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const id = attr(el, "id");
+      if (id) return "#" + cssEscape(id);
+
+      const stableAttrs = [
+        "data-testid",
+        "data-test",
+        "data-cy",
+        "data-bs-target",
+        "data-target",
+        "aria-controls",
+        "aria-label",
+        "name",
+        "type",
+        "role"
+      ];
+
+      for (const name of stableAttrs) {
+        const value = attr(el, name);
+        if (!value) continue;
+        const selector = tag + "[" + name + "=\\"" + cssQuoted(value) + "\\"]";
+        try {
+          if (document.querySelectorAll(selector).length === 1) return selector;
+        } catch {}
+      }
+
+      const textSelectorBase = tag;
+      try {
+        const sameTag = Array.from(document.querySelectorAll(textSelectorBase)).filter((candidate) => candidate === el || visible(candidate));
+        const index = sameTag.indexOf(el) + 1;
+        if (index > 0) return textSelectorBase + ":nth-of-type(" + index + ")";
+      } catch {}
+
+      return tag;
+    };
+
+    const controlSelector = [
+      "button",
+      "[role='button']",
+      "input[type='button']",
+      "input[type='submit']",
+      "input[type='reset']",
+      "summary",
+      "select",
+      "[data-bs-toggle]",
+      "[data-toggle]",
+      "[data-bs-target]",
+      "[data-target]",
+      "[aria-controls]",
+      "a[href]"
+    ].join(",");
+
+    const isPlainNavigationLink = (el) => {
+      if (!el || el.tagName.toLowerCase() !== "a") return false;
+      const href = attr(el, "href");
+      if (!href) return false;
+
+      const role = norm(attr(el, "role"));
+      const hasControlAttr = Boolean(
+        attr(el, "data-bs-toggle") ||
+        attr(el, "data-toggle") ||
+        attr(el, "data-bs-target") ||
+        attr(el, "data-target") ||
+        attr(el, "aria-controls") ||
+        role === "button"
+      );
+
+      return !hasControlAttr;
+    };
+
+    const nearestHeading = (el) => {
+      let node = el;
+      for (let depth = 0; node && depth < 5; depth += 1, node = node.parentElement) {
+        const heading = node.querySelector?.("h1,h2,h3,h4,h5,h6");
+        if (heading && visible(heading)) return (heading.innerText || heading.textContent || "").trim().slice(0, 160);
+      }
+
+      const headings = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6")).filter(visible);
+      const rect = el.getBoundingClientRect();
+      let best = null;
+      for (const heading of headings) {
+        const hRect = heading.getBoundingClientRect();
+        if (hRect.top <= rect.top) best = heading;
+      }
+      return best ? (best.innerText || best.textContent || "").trim().slice(0, 160) : "";
+    };
+
+    const controls = Array.from(document.querySelectorAll(controlSelector))
+      .filter(visible)
+      .filter((el) => !inCodeLikeContainer(el))
+      .filter((el) => !isPlainNavigationLink(el));
+
+    const scored = controls.map((el) => {
+      const tag = el.tagName.toLowerCase();
+      const role = norm(attr(el, "role"));
+      const labelRaw = labelFor(el);
+      const label = norm(labelRaw);
+      const dataToggle = norm(attr(el, "data-bs-toggle") || attr(el, "data-toggle"));
+      const dataTarget = norm(attr(el, "data-bs-target") || attr(el, "data-target"));
+      const ariaControls = norm(attr(el, "aria-controls"));
+      const disabled = el.disabled === true || attr(el, "aria-disabled") === "true";
+
+      const textMatchResult = textScoreFor(labelRaw);
+      const textScore = textMatchResult.score;
+      const textMatch = textMatchResult.match;
+
+      let score = textScore;
+      if (tag === "button") score += 28;
+      if (role === "button") score += 22;
+      if (tag === "input") score += 18;
+      if (dataTarget || ariaControls) score += 20;
+      if (dataToggle && dataToggle !== "tooltip") score += 18;
+      if (/modal|dialog|popup/.test(intent + " " + wanted) && /modal|dialog/.test(dataToggle + " " + dataTarget + " " + ariaControls)) score += 16;
+      if (/collapse|accordion/.test(intent + " " + wanted) && /collapse/.test(dataToggle + " " + dataTarget + " " + ariaControls)) score += 16;
+      if (tag === "a") score -= 12;
+      if (dataToggle === "tooltip") score -= 60;
+      if (disabled) score -= 100;
+
+      const rect = el.getBoundingClientRect();
+
+      return {
+        el,
+        score,
+        textScore,
+        textMatch,
+        tag,
+        role: attr(el, "role"),
+        text: labelRaw.trim().replace(/\\s+/g, " ").slice(0, 260),
+        selector: selectorFor(el),
+        href: attr(el, "href"),
+        type: attr(el, "type"),
+        dataToggle: attr(el, "data-bs-toggle") || attr(el, "data-toggle"),
+        dataTarget: attr(el, "data-bs-target") || attr(el, "data-target"),
+        ariaControls: attr(el, "aria-controls"),
+        disabled,
+        heading: nearestHeading(el),
+        rect: {
+          top: Math.round(rect.top),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        }
+      };
+    })
+    .filter((item) => item.textScore >= 82)
+    .filter((item) => item.score >= 90)
+    .sort((a, b) => b.score - a.score);
+
+    const best = scored[0] || null;
+
+    if (!best) {
+      return {
+        ok: false,
+        targetText: targetRaw,
+        targetCore: wantedCore,
+        reason: "No reliable visible actionable control matched the requested target.",
+        candidates: controls.slice(0, 20).map((el) => ({
+          tag: el.tagName.toLowerCase(),
+          text: labelFor(el).trim().replace(/\\s+/g, " ").slice(0, 140),
+          role: attr(el, "role"),
+          href: attr(el, "href"),
+          dataToggle: attr(el, "data-bs-toggle") || attr(el, "data-toggle"),
+          dataTarget: attr(el, "data-bs-target") || attr(el, "data-target"),
+          ariaControls: attr(el, "aria-controls")
+        }))
+      };
+    }
+
+    best.el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    try { best.el.focus?.(); } catch {}
+
+    return {
+      ok: true,
+      targetText: targetRaw,
+      selected: {
+        score: best.score,
+        textMatch: best.textMatch,
+        tag: best.tag,
+        text: best.text,
+        selector: best.selector,
+        role: best.role,
+        href: best.href,
+        type: best.type,
+        dataToggle: best.dataToggle,
+        dataTarget: best.dataTarget,
+        ariaControls: best.ariaControls,
+        heading: best.heading,
+        rect: best.rect
+      },
+      rejectedCount: Math.max(0, controls.length - 1)
+    };
+  }`;
+}
+
+export async function scoutPlaywrightControlTarget(args = {}, state = {}) {
+  const currentUrl = currentUrlFromInput(args, state);
+  const targetText = safeText(args.targetText || args.text || "", 240);
+  const intent = safeText(args.intent || "", 120);
+
+  const parseScoutJson = (value = "") => {
+    const raw = String(value || "").trim();
+    const candidates = [raw];
+
+    const first = raw.indexOf("{");
+    const last = raw.lastIndexOf("}");
+    if (first >= 0 && last > first) candidates.push(raw.slice(first, last + 1));
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate);
+      } catch {}
+    }
+
+    return null;
+  };
+
+  const normalizeScoutResult = (result = {}, fallbackError = "") => {
+    const parsed = parseScoutJson(result.text || "") || parseScoutJson(result.error || "") || null;
+    const selected = parsed?.selected || null;
+
+    return {
+      ok: Boolean(parsed?.ok === true && selected?.selector),
+      status: parsed?.ok === true && selected?.selector ? "found" : "not_found",
+      engine: "playwright_mcp",
+      targetText,
+      targetCore: safeText(parsed?.targetCore || "", 240),
+      intent,
+      selector: safeText(selected?.selector || "", 500),
+      text: safeText(selected?.text || "", 240),
+      score: Number(selected?.score || 0),
+      selected: selected || null,
+      candidates: Array.isArray(parsed?.candidates) ? parsed.candidates : [],
+      error: parsed?.reason || fallbackError || result.error || "",
+      rawText: safeText(result.text || result.error || "", 2000),
+    };
+  };
+
+  if (currentUrl && args.navigate !== false) {
+    await callPlaywrightTool(["browser_navigate", "navigate"], { url: currentUrl }).catch(() => null);
+  }
+
+  const fastPathPayload = { targetText, intent };
+  const fastPathScript = `() => {
+    const payload = ${JSON.stringify(fastPathPayload)};
+    const targetRaw = String(payload.targetText || "").trim();
+
+    const norm = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const core = (value) => norm(value)
+      .replace(/\\b(click|press|tap|select|choose|open)\\b/g, " ")
+      .replace(/\\b(button|link|control|element|field|item|option)\\b/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const wanted = norm(targetRaw);
+    const wantedCore = core(targetRaw);
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const labelFor = (el) => [
+      el.innerText || el.textContent || "",
+      el.getAttribute("aria-label") || "",
+      el.getAttribute("title") || "",
+      el.getAttribute("value") || "",
+      el.getAttribute("name") || "",
+      el.getAttribute("id") || ""
+    ].filter(Boolean).join(" ").replace(/\\s+/g, " ").trim();
+
+    const inCode = (el) => Boolean(el.closest("pre,code,kbd,samp,.highlight,.hljs,.code,.codehilite"));
+
+    const isPlainNavigationLink = (el) => {
+      if (!el || el.tagName.toLowerCase() !== "a") return false;
+      if (!el.getAttribute("href")) return false;
+      return !(
+        el.getAttribute("role") === "button" ||
+        el.getAttribute("data-bs-toggle") ||
+        el.getAttribute("data-toggle") ||
+        el.getAttribute("data-bs-target") ||
+        el.getAttribute("data-target") ||
+        el.getAttribute("aria-controls")
+      );
+    };
+
+    const q = (value) => String(value || "").replace(/["\\\\]/g, "\\\\$&");
+    const esc = (value) => {
+      try { return CSS.escape(String(value || "")); }
+      catch { return q(value); }
+    };
+
+    const selectorFor = (el) => {
+      const tag = el.tagName.toLowerCase();
+      if (el.id) return "#" + esc(el.id);
+
+      for (const attr of ["data-bs-target", "data-target", "aria-controls", "aria-label", "name", "type", "role"]) {
+        const value = el.getAttribute(attr);
+        if (!value) continue;
+        const selector = tag + "[" + attr + "=\\"" + q(value) + "\\"]";
+        try {
+          if (document.querySelectorAll(selector).length === 1) return selector;
+        } catch {}
+      }
+
+      const parent = el.parentElement;
+      if (!parent) return tag;
+      const siblings = Array.from(parent.children).filter((child) => child.tagName === el.tagName);
+      return tag + ":nth-of-type(" + Math.max(siblings.indexOf(el) + 1, 1) + ")";
+    };
+
+    const controls = Array.from(document.querySelectorAll([
+      "button",
+      "[role='button']",
+      "input[type='button']",
+      "input[type='submit']",
+      "input[type='reset']",
+      "[data-bs-toggle]",
+      "[data-toggle]",
+      "[data-bs-target]",
+      "[data-target]",
+      "[aria-controls]",
+      "a[href]"
+    ].join(",")))
+      .filter(visible)
+      .filter((el) => !inCode(el))
+      .filter((el) => !isPlainNavigationLink(el));
+
+    const scored = controls.map((el) => {
+      const label = labelFor(el);
+      const labelNorm = norm(label);
+      const labelCore = core(label);
+
+      let score = 0;
+      let textMatch = "none";
+
+      if (labelNorm === wanted || labelCore === wantedCore) {
+        score = 200;
+        textMatch = "exact";
+      } else if (wantedCore && labelNorm.includes(wantedCore)) {
+        score = 170;
+        textMatch = "label_contains_target_core";
+      } else if (wantedCore && labelCore.includes(wantedCore)) {
+        score = 165;
+        textMatch = "core_contains_core";
+      } else if (wantedCore && wantedCore.includes(labelCore) && labelCore.length >= 4) {
+        score = 145;
+        textMatch = "target_contains_label_core";
+      }
+
+      const tag = el.tagName.toLowerCase();
+      const dataToggle = el.getAttribute("data-bs-toggle") || el.getAttribute("data-toggle") || "";
+      const dataTarget = el.getAttribute("data-bs-target") || el.getAttribute("data-target") || "";
+      const ariaControls = el.getAttribute("aria-controls") || "";
+
+      if (tag === "button") score += 40;
+      if (el.getAttribute("role") === "button") score += 30;
+      if (dataTarget || ariaControls) score += 25;
+      if (dataToggle && dataToggle !== "tooltip") score += 20;
+      if (dataToggle === "tooltip") score -= 80;
+      if (tag === "a") score -= 15;
+
+      return {
+        el,
+        score,
+        textMatch,
+        tag,
+        text: label,
+        selector: selectorFor(el),
+        role: el.getAttribute("role") || "",
+        href: el.getAttribute("href") || "",
+        type: el.getAttribute("type") || "",
+        dataToggle,
+        dataTarget,
+        ariaControls
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    const best = scored.find((item) => item.score >= 145) || null;
+
+    if (!best) {
+      return JSON.stringify({
+        ok: false,
+        targetText: targetRaw,
+        targetCore: wantedCore,
+        reason: "Exact visible-control fast path found no matching control.",
+        candidates: scored.slice(0, 12).map((item) => ({
+          score: item.score,
+          textMatch: item.textMatch,
+          tag: item.tag,
+          text: item.text,
+          selector: item.selector,
+          role: item.role,
+          href: item.href,
+          dataToggle: item.dataToggle,
+          dataTarget: item.dataTarget,
+          ariaControls: item.ariaControls
+        }))
+      });
+    }
+
+    best.el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    try { best.el.focus?.(); } catch {}
+
+    return JSON.stringify({
+      ok: true,
+      targetText: targetRaw,
+      targetCore: wantedCore,
+      selected: {
+        score: best.score,
+        textMatch: best.textMatch,
+        tag: best.tag,
+        text: best.text,
+        selector: best.selector,
+        role: best.role,
+        href: best.href,
+        type: best.type,
+        dataToggle: best.dataToggle,
+        dataTarget: best.dataTarget,
+        ariaControls: best.ariaControls,
+        fastPath: "exact_visible_control"
+      }
+    });
+  }`;
+
+  const fastPath = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: fastPathScript,
+  }).catch((err) => ({
+    ok: false,
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const fastPathResult = normalizeScoutResult(fastPath);
+  if (fastPathResult.ok === true) {
+    return {
+      ...fastPathResult,
+      status: "found",
+      fastPathUsed: true,
+    };
+  }
+
+  const primary = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: scoutControlScript(targetText, intent),
+  }).catch((err) => ({
+    ok: false,
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  let normalized = normalizeScoutResult(primary);
+
+  if (normalized.ok === true) {
+    return normalized;
+  }
+
+  const payload = { targetText, intent };
+  const fallbackScript = `() => {
+    const payload = ${JSON.stringify(payload)};
+    const targetRaw = String(payload.targetText || "").trim();
+
+    const norm = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const core = (value) => norm(value)
+      .replace(/\\b(click|press|tap|select|choose|open)\\b/g, " ")
+      .replace(/\\b(button|link|control|element|field|item|option)\\b/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const wanted = norm(targetRaw);
+    const wantedCore = core(targetRaw);
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const labelFor = (el) => [
+      el.innerText || el.textContent || "",
+      el.getAttribute("aria-label") || "",
+      el.getAttribute("title") || "",
+      el.getAttribute("value") || "",
+      el.getAttribute("name") || "",
+      el.getAttribute("id") || "",
+      el.getAttribute("data-bs-target") || "",
+      el.getAttribute("data-target") || "",
+      el.getAttribute("aria-controls") || ""
+    ].filter(Boolean).join(" ").replace(/\\s+/g, " ").trim();
+
+    const inCode = (el) => Boolean(el.closest("pre,code,kbd,samp,.highlight,.hljs,.code,.codehilite"));
+
+    const isPlainNavigationLink = (el) => {
+      if (!el || el.tagName.toLowerCase() !== "a") return false;
+      const href = el.getAttribute("href") || "";
+      if (!href) return false;
+
+      const role = norm(el.getAttribute("role") || "");
+      const hasControl = Boolean(
+        el.getAttribute("data-bs-toggle") ||
+        el.getAttribute("data-toggle") ||
+        el.getAttribute("data-bs-target") ||
+        el.getAttribute("data-target") ||
+        el.getAttribute("aria-controls") ||
+        role === "button"
+      );
+
+      return !hasControl;
+    };
+
+    const cssEscape = (value) => {
+      try { return CSS.escape(String(value || "")); }
+      catch { return String(value || "").replace(/["\\\\]/g, "\\\\$&"); }
+    };
+
+    const q = (value) => String(value || "").replace(/["\\\\]/g, "\\\\$&");
+
+    const selectorFor = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const id = el.getAttribute("id");
+      if (id) return "#" + cssEscape(id);
+
+      const attrs = [
+        "data-bs-target",
+        "data-target",
+        "aria-controls",
+        "data-bs-toggle",
+        "data-toggle",
+        "aria-label",
+        "name",
+        "type",
+        "role"
+      ];
+
+      for (const attr of attrs) {
+        const value = el.getAttribute(attr);
+        if (!value) continue;
+        const selector = tag + "[" + attr + "=\\"" + q(value) + "\\"]";
+        try {
+          if (document.querySelectorAll(selector).length === 1) return selector;
+        } catch {}
+      }
+
+      const parent = el.parentElement;
+      if (!parent) return tag;
+      const sameTag = Array.from(parent.children).filter((child) => child.tagName === el.tagName);
+      const index = sameTag.indexOf(el) + 1;
+      return tag + ":nth-of-type(" + Math.max(index, 1) + ")";
+    };
+
+    const controlSelector = [
+      "button",
+      "[role='button']",
+      "input[type='button']",
+      "input[type='submit']",
+      "input[type='reset']",
+      "summary",
+      "[data-bs-toggle]",
+      "[data-toggle]",
+      "[data-bs-target]",
+      "[data-target]",
+      "[aria-controls]",
+      "a[href]"
+    ].join(",");
+
+    const scoreText = (label) => {
+      const labelNorm = norm(label);
+      const labelCore = core(label);
+
+      const pairs = [
+        [labelNorm, wanted, "exact_full"],
+        [labelNorm, wantedCore, "target_core"],
+        [labelCore, wantedCore, "both_core"],
+        [labelCore, wanted, "label_core"]
+      ].filter(([left, right]) => left && right);
+
+      for (const [left, right, mode] of pairs) {
+        if (left === right) return { score: 130, match: mode };
+        if (left.includes(right)) return { score: 112, match: "contains_" + mode };
+        if (right.includes(left) && left.length >= 4) return { score: 96, match: "reverse_" + mode };
+      }
+
+      return { score: 0, match: "none" };
+    };
+
+    const controls = Array.from(document.querySelectorAll(controlSelector))
+      .filter(visible)
+      .filter((el) => !inCode(el))
+      .filter((el) => !isPlainNavigationLink(el));
+
+    const scored = controls.map((el) => {
+      const label = labelFor(el);
+      const tag = el.tagName.toLowerCase();
+      const role = el.getAttribute("role") || "";
+      const dataToggle = el.getAttribute("data-bs-toggle") || el.getAttribute("data-toggle") || "";
+      const dataTarget = el.getAttribute("data-bs-target") || el.getAttribute("data-target") || "";
+      const ariaControls = el.getAttribute("aria-controls") || "";
+      const text = scoreText(label);
+
+      let score = text.score;
+      if (tag === "button") score += 30;
+      if (norm(role) === "button") score += 22;
+      if (dataTarget || ariaControls) score += 22;
+      if (dataToggle && norm(dataToggle) !== "tooltip") score += 18;
+      if (norm(dataToggle) === "tooltip") score -= 60;
+      if (tag === "a") score -= 10;
+
+      const rect = el.getBoundingClientRect();
+
+      return {
+        el,
+        score,
+        textScore: text.score,
+        textMatch: text.match,
+        tag,
+        text: label.slice(0, 240),
+        selector: selectorFor(el),
+        role,
+        href: el.getAttribute("href") || "",
+        type: el.getAttribute("type") || "",
+        dataToggle,
+        dataTarget,
+        ariaControls,
+        rect: {
+          top: Math.round(rect.top),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        }
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    const best = scored.find((item) => item.textScore >= 96 && item.score >= 110) || null;
+
+    if (!best) {
+      return JSON.stringify({
+        ok: false,
+        targetText: targetRaw,
+        targetCore: wantedCore,
+        reason: "Fallback scout found no reliable visible control.",
+        candidates: scored.slice(0, 12).map((item) => ({
+          score: item.score,
+          textScore: item.textScore,
+          textMatch: item.textMatch,
+          tag: item.tag,
+          text: item.text,
+          selector: item.selector,
+          role: item.role,
+          href: item.href,
+          dataToggle: item.dataToggle,
+          dataTarget: item.dataTarget,
+          ariaControls: item.ariaControls
+        }))
+      });
+    }
+
+    best.el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    try { best.el.focus?.(); } catch {}
+
+    return JSON.stringify({
+      ok: true,
+      targetText: targetRaw,
+      targetCore: wantedCore,
+      selected: {
+        score: best.score,
+        textScore: best.textScore,
+        textMatch: best.textMatch,
+        tag: best.tag,
+        text: best.text,
+        selector: best.selector,
+        role: best.role,
+        href: best.href,
+        type: best.type,
+        dataToggle: best.dataToggle,
+        dataTarget: best.dataTarget,
+        ariaControls: best.ariaControls,
+        rect: best.rect
+      }
+    });
+  }`;
+
+  const fallback = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: fallbackScript,
+  }).catch((err) => ({
+    ok: false,
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const fallbackResult = normalizeScoutResult(fallback, normalized.error);
+
+  if (fallbackResult.ok === true) {
+    return {
+      ...fallbackResult,
+      status: "found",
+      fallbackUsed: true,
+      primaryError: normalized.error || "",
+      primaryCandidates: normalized.candidates || [],
+    };
+  }
+
+  return {
+    ...normalized,
+    candidates: fallbackResult.candidates?.length ? fallbackResult.candidates : normalized.candidates,
+    error: fallbackResult.error || normalized.error,
+    rawText: [normalized.rawText, fallbackResult.rawText].filter(Boolean).join("\\n--- fallback ---\\n").slice(0, 2000),
+  };
+}
+
+export async function dismissPlaywrightBlockingUi(args = {}, state = {}) {
+  const currentUrl = currentUrlFromInput(args, state);
+
+  const script = `async () => {
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const textOf = (el) => String(el?.innerText || el?.textContent || "")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const activeRoots = () => Array.from(document.querySelectorAll([
+      ".modal.show",
+      ".modal.fade.show",
+      ".offcanvas.show",
+      "[aria-modal='true']",
+      "[role='dialog']",
+      "[role='alertdialog']",
+      "dialog[open]",
+      ".dropdown-menu.show",
+      ".popover.show",
+      "[data-state='open']"
+    ].join(","))).filter(visible);
+
+    const activeBackdrops = () => Array.from(document.querySelectorAll(".modal-backdrop.show,.modal-backdrop"))
+      .filter(visible);
+
+    const state = () => {
+      const roots = activeRoots();
+      const backs = activeBackdrops();
+      return {
+        open: roots.length > 0 || backs.length > 0,
+        roots: roots.map((el) => ({
+          tag: el.tagName.toLowerCase(),
+          id: el.getAttribute("id") || "",
+          role: el.getAttribute("role") || "",
+          ariaModal: el.getAttribute("aria-modal") || "",
+          className: String(el.className || ""),
+          text: textOf(el).slice(0, 500)
+        })),
+        backdrops: backs.map((el) => ({
+          tag: el.tagName.toLowerCase(),
+          className: String(el.className || "")
+        }))
+      };
+    };
+
+    const waitClosed = async (timeoutMs = 1600) => {
+      const start = Date.now();
+      let last = state();
+
+      while (Date.now() - start < timeoutMs) {
+        last = state();
+        if (!last.open) return { closed: true, state: last };
+        await delay(100);
+      }
+
+      return { closed: false, state: last };
+    };
+
+    const userLikeClick = (el) => {
+      if (!el || !visible(el)) return false;
+
+      try {
+        el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      } catch {}
+
+      const rect = el.getBoundingClientRect();
+      const x = Math.max(1, Math.floor(rect.left + rect.width / 2));
+      const y = Math.max(1, Math.floor(rect.top + rect.height / 2));
+
+      const opts = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 1
+      };
+
+      try { el.focus?.(); } catch {}
+
+      for (const type of ["pointerover", "mouseover", "pointerenter", "mouseenter", "pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        try {
+          const Ctor = type.startsWith("pointer") && window.PointerEvent ? PointerEvent : MouseEvent;
+          el.dispatchEvent(new Ctor(type, opts));
+        } catch {
+          try { el.dispatchEvent(new MouseEvent(type, opts)); } catch {}
+        }
+      }
+
+      try { el.click?.(); } catch {}
+
+      return true;
+    };
+
+    const before = state();
+    if (!before.open) {
+      return JSON.stringify({ ok: true, dismissed: false, method: "already_clear", before, after: before });
+    }
+
+    const root = activeRoots()[0] || document.body;
+
+    // 1. Prefer real close/dismiss controls inside the active overlay.
+    const controls = Array.from(root.querySelectorAll([
+      "[data-bs-dismiss]",
+      "[data-dismiss]",
+      ".btn-close",
+      "button[aria-label='Close']",
+      "button[aria-label='close']",
+      "[aria-label='Close']",
+      "[aria-label='close']",
+      "button",
+      "[role='button']"
+    ].join(","))).filter(visible).map((el) => {
+      const label = [
+        textOf(el),
+        el.getAttribute("aria-label") || "",
+        el.getAttribute("title") || "",
+        el.getAttribute("class") || "",
+        el.getAttribute("data-bs-dismiss") || "",
+        el.getAttribute("data-dismiss") || ""
+      ].join(" ").toLowerCase();
+
+      let score = 0;
+      if (el.getAttribute("data-bs-dismiss") || el.getAttribute("data-dismiss")) score += 140;
+      if (el.classList.contains("btn-close")) score += 130;
+      if (/\\b(close|dismiss|cancel|x)\\b/.test(label)) score += 110;
+      if (el.tagName.toLowerCase() === "button") score += 25;
+      if (/\\bsave\\b/.test(label)) score -= 90;
+
+      return {
+        el,
+        score,
+        label,
+        text: textOf(el),
+        ariaLabel: el.getAttribute("aria-label") || "",
+        className: String(el.className || ""),
+        dataDismiss: el.getAttribute("data-bs-dismiss") || el.getAttribute("data-dismiss") || ""
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    const clicked = [];
+
+    for (const item of controls.filter((entry) => entry.score >= 100).slice(0, 4)) {
+      userLikeClick(item.el);
+      clicked.push({
+        score: item.score,
+        text: item.text,
+        ariaLabel: item.ariaLabel,
+        className: item.className,
+        dataDismiss: item.dataDismiss
+      });
+
+      const closed = await waitClosed(1700);
+      if (closed.closed) {
+        return JSON.stringify({
+          ok: true,
+          dismissed: true,
+          method: "close_control",
+          clicked,
+          before,
+          after: closed.state
+        });
+      }
+    }
+
+    // 2. Native dialog close.
+    if (root instanceof HTMLDialogElement && root.open) {
+      try { root.close(); } catch {}
+      const closed = await waitClosed(800);
+      if (closed.closed) {
+        return JSON.stringify({ ok: true, dismissed: true, method: "html_dialog_close", clicked, before, after: closed.state });
+      }
+    }
+
+    // 3. Bootstrap / library API hide if available.
+    try {
+      const bootstrapApi = window.bootstrap || window.Bootstrap || null;
+      const Modal = bootstrapApi?.Modal;
+      const Offcanvas = bootstrapApi?.Offcanvas;
+
+      if (Modal && root.classList?.contains("modal")) {
+        const instance =
+          Modal.getInstance?.(root) ||
+          Modal.getOrCreateInstance?.(root) ||
+          new Modal(root);
+
+        instance?.hide?.();
+
+        const closed = await waitClosed(1800);
+        if (closed.closed) {
+          return JSON.stringify({ ok: true, dismissed: true, method: "bootstrap_modal_hide", clicked, before, after: closed.state });
+        }
+      }
+
+      if (Offcanvas && root.classList?.contains("offcanvas")) {
+        const instance =
+          Offcanvas.getInstance?.(root) ||
+          Offcanvas.getOrCreateInstance?.(root) ||
+          new Offcanvas(root);
+
+        instance?.hide?.();
+
+        const closed = await waitClosed(1200);
+        if (closed.closed) {
+          return JSON.stringify({ ok: true, dismissed: true, method: "bootstrap_offcanvas_hide", clicked, before, after: closed.state });
+        }
+      }
+    } catch {}
+
+    // 4. Escape.
+    for (const target of [document.activeElement, root, document, window]) {
+      try {
+        target?.dispatchEvent?.(new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          keyCode: 27,
+          which: 27,
+          bubbles: true,
+          cancelable: true,
+          composed: true
+        }));
+      } catch {}
+    }
+
+    let closed = await waitClosed(1000);
+    if (closed.closed) {
+      return JSON.stringify({ ok: true, dismissed: true, method: "escape", clicked, before, after: closed.state });
+    }
+
+    // 5. Backdrop / outside click.
+    const backdrop = activeBackdrops()[0];
+    if (backdrop) {
+      userLikeClick(backdrop);
+      closed = await waitClosed(1000);
+      if (closed.closed) {
+        return JSON.stringify({ ok: true, dismissed: true, method: "backdrop_click", clicked, before, after: closed.state });
+      }
+    }
+
+    // 6. Last resort: if this is a visual blocking UI and user explicitly asked to close,
+    // clear common modal state so the task can continue. This is safer than clicking random page controls.
+    try {
+      root.classList?.remove("show", "open", "is-open", "active");
+      root.setAttribute?.("aria-hidden", "true");
+      root.removeAttribute?.("aria-modal");
+      if (root instanceof HTMLDialogElement && root.open) root.close();
+
+      if (root.classList?.contains("modal")) {
+        root.style.display = "none";
+      }
+
+      for (const el of activeBackdrops()) {
+        try { el.remove(); } catch {}
+      }
+
+      document.body.classList.remove("modal-open");
+      document.body.style.removeProperty("overflow");
+      document.body.style.removeProperty("padding-right");
+
+      closed = await waitClosed(300);
+      if (closed.closed) {
+        return JSON.stringify({ ok: true, dismissed: true, method: "forced_dom_clear", clicked, before, after: closed.state });
+      }
+    } catch {}
+
+    const after = state();
+
+    return JSON.stringify({
+      ok: false,
+      dismissed: false,
+      method: "failed",
+      clicked,
+      before,
+      after,
+      reason: "Blocking UI remained open after close controls, library hide, Escape, backdrop click, and DOM clear fallback."
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: script,
+  }).catch((err) => ({
+    ok: false,
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+
+  return {
+    ok: Boolean(parsed?.ok),
+    dismissed: Boolean(parsed?.dismissed),
+    method: safeText(parsed?.method || "", 120),
+    clicked: Array.isArray(parsed?.clicked) ? parsed.clicked : [],
+    before: parsed?.before || null,
+    after: parsed?.after || null,
+    error: parsed?.reason || result.error || "",
+    rawText: safeText(result.text || result.error || "", 2600),
+    url: currentUrl,
+  };
+}
+
+
+
+export async function activatePlaywrightControlByText(args = {}, state = {}) {
+  const currentUrl = currentUrlFromInput(args, state);
+  const targetText = safeText(args.targetText || args.text || "", 240);
+  const intent = safeText(args.intent || "", 180);
+
+  const script = `async () => {
+    const payload = ${JSON.stringify({ targetText, intent })};
+
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const norm = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const core = (value) => norm(value)
+      .replace(/\\b(click|press|tap|select|choose|open|launch)\\b/g, " ")
+      .replace(/\\b(button|link|control|element|field|item|option)\\b/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const inCode = (el) => Boolean(el.closest("pre,code,kbd,samp,.highlight,.hljs,.code,.codehilite"));
+
+    const labelFor = (el) => [
+      el.innerText || el.textContent || "",
+      el.getAttribute("aria-label") || "",
+      el.getAttribute("title") || "",
+      el.getAttribute("value") || "",
+      el.getAttribute("name") || "",
+      el.getAttribute("id") || "",
+      el.getAttribute("data-bs-target") || "",
+      el.getAttribute("data-target") || "",
+      el.getAttribute("aria-controls") || ""
+    ].filter(Boolean).join(" ").replace(/\\s+/g, " ").trim();
+
+    const isPlainNavLink = (el) => {
+      if (!el || el.tagName.toLowerCase() !== "a") return false;
+      if (!el.getAttribute("href")) return false;
+      return !(
+        el.getAttribute("role") === "button" ||
+        el.getAttribute("data-bs-toggle") ||
+        el.getAttribute("data-toggle") ||
+        el.getAttribute("data-bs-target") ||
+        el.getAttribute("data-target") ||
+        el.getAttribute("aria-controls")
+      );
+    };
+
+    const wanted = norm(payload.targetText);
+    const wantedCore = core(payload.targetText);
+
+    const controlSelector = [
+      "button",
+      "[role='button']",
+      "input[type='button']",
+      "input[type='submit']",
+      "input[type='reset']",
+      "summary",
+      "[data-bs-toggle]",
+      "[data-toggle]",
+      "[data-bs-target]",
+      "[data-target]",
+      "[aria-controls]",
+      "a[href]"
+    ].join(",");
+
+    const controls = Array.from(document.querySelectorAll(controlSelector))
+      .filter(visible)
+      .filter((el) => !inCode(el))
+      .filter((el) => !isPlainNavLink(el));
+
+    const scored = controls.map((el) => {
+      const tag = el.tagName.toLowerCase();
+      const label = labelFor(el);
+      const labelNorm = norm(label);
+      const labelCore = core(label);
+      const dataToggle = el.getAttribute("data-bs-toggle") || el.getAttribute("data-toggle") || "";
+      const dataTarget = el.getAttribute("data-bs-target") || el.getAttribute("data-target") || "";
+      const ariaControls = el.getAttribute("aria-controls") || "";
+
+      let score = 0;
+      let match = "none";
+
+      if (labelNorm === wanted) {
+        score += 160;
+        match = "exact";
+      } else if (wantedCore && labelNorm.includes(wantedCore)) {
+        score += 135;
+        match = "contains_target_core";
+      } else if (wantedCore && labelCore.includes(wantedCore)) {
+        score += 130;
+        match = "core_contains_core";
+      } else if (wantedCore && wantedCore.includes(labelCore) && labelCore.length >= 4) {
+        score += 112;
+        match = "target_contains_label_core";
+      }
+
+      if (tag === "button") score += 45;
+      if (el.getAttribute("role") === "button") score += 35;
+      if (dataTarget || ariaControls) score += 30;
+      if (dataToggle && dataToggle !== "tooltip") score += 25;
+      if (dataToggle === "tooltip") score -= 80;
+      if (tag === "a") score -= 25;
+
+      return {
+        el,
+        score,
+        match,
+        tag,
+        text: label.slice(0, 240),
+        dataToggle,
+        dataTarget,
+        ariaControls,
+        role: el.getAttribute("role") || "",
+        href: el.getAttribute("href") || ""
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    const best = scored.find((item) => item.score >= 120) || null;
+
+    if (!best) {
+      return JSON.stringify({
+        ok: false,
+        targetText: payload.targetText,
+        reason: "No reliable visible control found for deterministic activation.",
+        candidates: scored.slice(0, 10).map((item) => ({
+          score: item.score,
+          match: item.match,
+          tag: item.tag,
+          text: item.text,
+          role: item.role,
+          href: item.href,
+          dataToggle: item.dataToggle,
+          dataTarget: item.dataTarget,
+          ariaControls: item.ariaControls
+        }))
+      });
+    }
+
+    best.el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    best.el.focus?.();
+    best.el.click();
+    await delay(450);
+
+    const modalOpen = Boolean(
+      Array.from(document.querySelectorAll(".modal.show,.modal.fade.show,[aria-modal='true'],[role='dialog'],[role='alertdialog'],dialog[open]"))
+        .filter(visible).length ||
+      Array.from(document.querySelectorAll(".modal-backdrop.show,.modal-backdrop"))
+        .filter(visible).length
+    );
+
+    return JSON.stringify({
+      ok: true,
+      targetText: payload.targetText,
+      activated: {
+        score: best.score,
+        match: best.match,
+        tag: best.tag,
+        text: best.text,
+        dataToggle: best.dataToggle,
+        dataTarget: best.dataTarget,
+        ariaControls: best.ariaControls
+      },
+      uiState: {
+        modalOpen
+      }
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: script,
+  }).catch((err) => ({
+    ok: false,
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+
+  return {
+    ok: Boolean(parsed?.ok),
+    targetText,
+    activated: parsed?.activated || null,
+    uiState: parsed?.uiState || null,
+    candidates: Array.isArray(parsed?.candidates) ? parsed.candidates : [],
+    error: parsed?.reason || result.error || "",
+    rawText: safeText(result.text || result.error || "", 2000),
+    url: currentUrl,
+  };
+}
+
+
 function fieldsFromCommand(command = {}) {
   return Array.isArray(command.args?.fields) ? command.args.fields : Array.isArray(command.fields) ? command.fields : [];
 }
@@ -503,18 +1879,40 @@ async function tryPlaywrightClick(command = {}, args = {}, state = {}) {
   const text = targetTextFromCommand(command);
   const selector = playwrightSelectorFromCommand(command);
   const ref = playwrightRefFromCommand(command);
+  const refOnly = commandArgs.refOnly === true || commandArgs.requireRef === true;
 
   if (!text && !ref && !selector) return { ok: false, error: "Click needs visible text, selector, or Playwright snapshot ref." };
+
+  if (refOnly && !ref) {
+    return {
+      ok: false,
+      error: "Ref-only click requires a concrete Playwright snapshot ref. Loose text click blocked.",
+      text: "Ref-only click blocked because no concrete Playwright ref was provided.",
+    };
+  }
+
+  const selectorOnly = commandArgs.selectorOnly === true || commandArgs.requireSelector === true;
+
+  if (selectorOnly && !selector) {
+    return {
+      ok: false,
+      error: "Selector-only click requires a concrete selector. Loose text click blocked.",
+      text: "Selector-only click blocked because no concrete selector was provided.",
+    };
+  }
 
   const attempts = [];
   if (selector && text) attempts.push({ label: "selector_target", args: { target: selector, element: text } });
   if (selector) attempts.push({ label: "selector_only", args: { target: selector } });
-  if (text && ref) attempts.push({ label: "target_element_ref", args: { target: text, element: text, ref } });
-  if (text && ref) attempts.push({ label: "element_ref", args: { element: text, ref } });
-  if (text && ref) attempts.push({ label: "target_ref", args: { target: text, ref } });
-  if (ref) attempts.push({ label: "ref_as_target", args: { target: ref } });
-  if (text) attempts.push({ label: "target_text", args: { target: text } });
-  if (text) attempts.push({ label: "element_text", args: { element: text } });
+
+  if (!selectorOnly) {
+    if (text && ref) attempts.push({ label: "target_element_ref", args: { target: text, element: text, ref } });
+    if (text && ref) attempts.push({ label: "element_ref", args: { element: text, ref } });
+    if (text && ref) attempts.push({ label: "target_ref", args: { target: text, ref } });
+    if (ref) attempts.push({ label: "ref_as_target", args: { target: ref } });
+    if (text) attempts.push({ label: "target_text", args: { target: text } });
+    if (text) attempts.push({ label: "element_text", args: { element: text } });
+  }
 
   const failures = [];
 
@@ -534,6 +1932,32 @@ async function tryPlaywrightClick(command = {}, args = {}, state = {}) {
     }
 
     failures.push(attempt.label + ": " + safeText(result.error || result.text || "", 500));
+  }
+
+  if (selectorOnly) {
+    if (refOnly) {
+    return {
+      ok: false,
+      error: "Ref-only click failed for all Playwright MCP ref payloads.",
+      text: failures.join("\\n"),
+    };
+  }
+
+  const domClick = await tryDomClick(command);
+    if (domClick.ok === true) {
+      return {
+        ...domClick,
+        text: ["Selector-only DOM click fallback executed.", domClick.text].filter(Boolean).join("\n"),
+      };
+    }
+
+    failures.push("selector_only_dom_click: " + safeText(domClick.error || domClick.text || "", 500));
+
+    return {
+      ok: false,
+      error: "Selector-only click failed for Playwright MCP and DOM selector fallback.",
+      text: failures.join("\n"),
+    };
   }
 
   const domClick = await tryDomClick(command);
@@ -920,6 +2344,163 @@ async function verifyFilledFields(fields = []) {
     text: parsed ? "Field verification " + (parsed.ok ? "passed" : "failed") + "." : result.text,
   };
 }
+
+function parseUiProbeJson(value = "") {
+  const raw = String(value || "").trim();
+  const attempts = [raw];
+
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first >= 0 && last > first) attempts.push(raw.slice(first, last + 1));
+
+  for (const attempt of attempts) {
+    try {
+      const parsed = JSON.parse(attempt);
+      if (typeof parsed === "string") {
+        try { return JSON.parse(parsed); } catch {}
+      }
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {}
+  }
+
+  return null;
+}
+
+function parsePlaywrightProbeJson(value = "") {
+  const raw = String(value || "").trim();
+  const candidates = [raw];
+
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first >= 0 && last > first) candidates.push(raw.slice(first, last + 1));
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed === "string") {
+        try { return JSON.parse(parsed); } catch {}
+      }
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {}
+  }
+
+  return null;
+}
+
+export async function probePlaywrightUiState(args = {}, state = {}) {
+  const currentUrl = currentUrlFromInput(args, state);
+
+  if (currentUrl && args.navigate === true) {
+    await callPlaywrightTool(["browser_navigate", "navigate"], { url: currentUrl }).catch(() => null);
+  }
+
+  const script = `() => {
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const textOf = (el) => String(el?.innerText || el?.textContent || "")
+      .replace(/\\s+/g, " ")
+      .trim()
+      .slice(0, 700);
+
+    const dialogs = Array.from(document.querySelectorAll([
+      ".modal.show",
+      ".modal.fade.show",
+      "[aria-modal='true']",
+      "[role='dialog']",
+      "[role='alertdialog']",
+      "dialog[open]"
+    ].join(","))).filter(visible);
+
+    const modalBackdrops = Array.from(document.querySelectorAll(".modal-backdrop.show,.modal-backdrop"))
+      .filter(visible);
+
+    const dropdowns = Array.from(document.querySelectorAll(".dropdown-menu.show,[role='menu']"))
+      .filter(visible);
+
+    const offcanvas = Array.from(document.querySelectorAll(".offcanvas.show,.drawer.open,[data-state='open']"))
+      .filter(visible);
+
+    const popovers = Array.from(document.querySelectorAll(".popover.show,[role='tooltip']"))
+      .filter(visible);
+
+    const collapses = Array.from(document.querySelectorAll(".collapse.show,.accordion-collapse.show"))
+      .filter(visible);
+
+    const expandedControls = Array.from(document.querySelectorAll("[aria-expanded='true']"))
+      .filter(visible);
+
+    const mapNode = (el) => ({
+      tag: el.tagName.toLowerCase(),
+      id: el.getAttribute("id") || "",
+      role: el.getAttribute("role") || "",
+      ariaModal: el.getAttribute("aria-modal") || "",
+      className: String(el.className || ""),
+      text: textOf(el)
+    });
+
+    return JSON.stringify({
+      ok: true,
+      url: location.href,
+      title: document.title,
+      modalOpen: dialogs.length > 0 || modalBackdrops.length > 0,
+      dialogOpen: dialogs.length > 0,
+      dropdownOpen: dropdowns.length > 0,
+      offcanvasOpen: offcanvas.length > 0,
+      popoverOpen: popovers.length > 0,
+      collapseOpen: collapses.length > 0 || expandedControls.length > 0,
+      blockingOpen: dialogs.length > 0 || modalBackdrops.length > 0 || dropdowns.length > 0 || offcanvas.length > 0 || popovers.length > 0,
+      dialogs: dialogs.map(mapNode),
+      modalBackdrops: modalBackdrops.map(mapNode),
+      dropdowns: dropdowns.map(mapNode),
+      offcanvas: offcanvas.map(mapNode),
+      popovers: popovers.map(mapNode),
+      collapses: collapses.map(mapNode),
+      expandedControls: expandedControls.map(mapNode)
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: script,
+  }).catch((err) => ({
+    ok: false,
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+
+  return {
+    ok: Boolean(parsed?.ok),
+    engine: "playwright_mcp",
+    url: safeText(parsed?.url || currentUrl || "", 500),
+    title: safeText(parsed?.title || "", 300),
+    modalOpen: Boolean(parsed?.modalOpen),
+    dialogOpen: Boolean(parsed?.dialogOpen),
+    dropdownOpen: Boolean(parsed?.dropdownOpen),
+    offcanvasOpen: Boolean(parsed?.offcanvasOpen),
+    popoverOpen: Boolean(parsed?.popoverOpen),
+    collapseOpen: Boolean(parsed?.collapseOpen),
+    blockingOpen: Boolean(parsed?.blockingOpen),
+    dialogs: Array.isArray(parsed?.dialogs) ? parsed.dialogs : [],
+    modalBackdrops: Array.isArray(parsed?.modalBackdrops) ? parsed.modalBackdrops : [],
+    dropdowns: Array.isArray(parsed?.dropdowns) ? parsed.dropdowns : [],
+    offcanvas: Array.isArray(parsed?.offcanvas) ? parsed.offcanvas : [],
+    popovers: Array.isArray(parsed?.popovers) ? parsed.popovers : [],
+    collapses: Array.isArray(parsed?.collapses) ? parsed.collapses : [],
+    expandedControls: Array.isArray(parsed?.expandedControls) ? parsed.expandedControls : [],
+    error: parsed ? "" : safeText(result.error || result.text || "UI probe returned no parseable JSON.", 900),
+  };
+}
+
+
 
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { browserAgentJsonSchemaFor } from "./browser-agent-json-schemas.js";
 
 const ALLOWED_TOOLS = new Set([
   "browserNavigate",
@@ -249,7 +250,7 @@ function customSystemPrompt(stage) {
 
 function stageDefaultTemperature(stage = "") {
   if (stage === "main") return 0.45;
-  if (stage === "reviewer" || stage === "resultReviewer") return 0.15;
+  if (stage === "reviewer" || stage === "resultReviewer") return 0;
   if (stage === "executor") return 0.1;
   if (stage === "reporter") return 0.25;
   return 0.25;
@@ -461,7 +462,10 @@ async function postOllamaChat({ config, model, messages, format, options, think 
     options,
   };
 
-  if (think === true) body.think = true;
+  // Always send explicit think=false for watcher/checker JSON calls.
+  // Some thinking-capable local models otherwise spend the entire token budget
+  // in message.thinking and return empty message.content.
+  body.think = think === true;
 
   const response = await fetch(`${config.baseUrl}/api/chat`, {
     method: "POST",
@@ -539,6 +543,10 @@ async function postOpenAiChat({ config, model, messages, format, options }) {
 }
 
 async function callOllamaChat({ stage, messages, format = "json" }) {
+  const schemaFormatForStage = browserAgentJsonSchemaFor(stage);
+  if (schemaFormatForStage && (format === "json" || !format)) {
+    format = schemaFormatForStage;
+  }
   const config = requireBrowserAgentRuntimeConfig();
   const stageConfig = runtimeForStage(config, stage);
   const startedAt = performance.now();
@@ -709,6 +717,65 @@ function normalizePlannerPlan(plan = {}) {
   };
 }
 
+function normalizeWatcherJsonShape(data = {}) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+
+  const hasWatcherShape =
+    typeof data.status === "string" &&
+    typeof data.success === "boolean" &&
+    typeof data.summary === "string";
+
+  if (hasWatcherShape) {
+    return {
+      status: data.status || (data.success ? "passed" : "needs_repair"),
+      success: Boolean(data.success),
+      summary: String(data.summary || ""),
+      evidence: String(data.evidence || data.reason || data.summary || ""),
+      repairInstruction: String(data.repairInstruction || data.repair_instruction || ""),
+      messageToUser: String(data.messageToUser || data.message_to_user || ""),
+      confidence: normalizeConfidence(data.confidence ?? 0.8),
+      ...data,
+    };
+  }
+
+  const passed =
+    data.passed === true ||
+    data.ok === true ||
+    data.result === "passed" ||
+    data.status === "passed";
+
+  const failed =
+    data.passed === false ||
+    data.ok === false ||
+    data.result === "failed" ||
+    data.status === "failed";
+
+  const success = Boolean(passed && !failed);
+  const summary = String(
+    data.summary ||
+    data.reason ||
+    data.evidence ||
+    data.message ||
+    (success ? "The browser action passed." : "The browser action needs repair.")
+  );
+
+  return {
+    status: success ? "passed" : (failed ? "failed" : "needs_repair"),
+    success,
+    summary,
+    evidence: String(data.evidence || data.reason || summary || ""),
+    repairInstruction: String(data.repairInstruction || data.repair_instruction || data.nextSafeAction || ""),
+    messageToUser: String(data.messageToUser || data.message_to_user || ""),
+    confidence: normalizeConfidence(data.confidence ?? (success ? 0.9 : 0.65)),
+    rawNormalizedFrom: data,
+  };
+}
+
+function shouldNormalizeWatcherJson(stage = "", schemaName = "") {
+  const key = `${stage} ${schemaName}`.toLowerCase();
+  return /watcher|resultreviewer|result_reviewer|resultchecker|result_checker|gemma_result_checker/.test(key);
+}
+
 function parseStrictJson(content = "", stage = "planner") {
   try {
     return extractJsonObject(content);
@@ -869,8 +936,11 @@ export async function callBrowserAgentRoleJson(stage = "planner", {
   images = [],
 } = {}) {
   const role = String(stage || "planner").trim() || "planner";
+  const roleSchemaFormat = browserAgentJsonSchemaFor(schemaName || role) || "json";
+
   const call = await callOllamaChat({
     stage: role,
+    format: roleSchemaFormat,
     messages: [
       { role: "system", content: String(system || "Return ONLY strict JSON. Do not use markdown.") },
       userMessageWithImages(context, images),
@@ -880,6 +950,9 @@ export async function callBrowserAgentRoleJson(stage = "planner", {
   let data;
   try {
     data = parseStrictJson(call.content, schemaName || role);
+    if (shouldNormalizeWatcherJson(role, schemaName)) {
+      data = normalizeWatcherJsonShape(data);
+    }
   } catch (err) {
     err.usage = call.usage;
     throw err;
