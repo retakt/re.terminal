@@ -156,6 +156,151 @@ function detailedReportSummaryFromObservation(observation = {}, step = {}, origi
   return parts.length ? parts.join(" — ") : pageSummaryFromObservation(observation);
 }
 
+function normalizedTargetText(value = "") {
+  const raw = safeText(value, 240);
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length >= 2 && words.length % 2 === 0) {
+    const half = words.length / 2;
+    const left = words.slice(0, half).join(" ");
+    const right = words.slice(half).join(" ");
+    if (left && left.toLowerCase() === right.toLowerCase()) {
+      return left.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    }
+  }
+  return raw.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function extractClickTargetText(step = {}, originalInstruction = "") {
+  const text = `${step.instruction || ""}\n${originalInstruction || ""}`;
+
+  const quoted = text.match(/["'“”]([^"'“”]+)["'“”]/)?.[1];
+  if (quoted) return safeText(quoted, 160);
+
+  const match = text.match(/\b(?:click|press|tap|open)\s+(?:the\s+)?(.+?)(?:\s+(?:link|button|tab|menuitem))?(?:[.!?]|\s+after\b|\s+then\b|$)/i);
+  if (match?.[1]) {
+    return safeText(match[1].replace(/^on\s+/i, "").replace(/\b(after clicking|report|then).*$/i, ""), 160);
+  }
+
+  return "";
+}
+
+function absoluteHrefFromState(href = "", baseUrl = "") {
+  const raw = String(href || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw, baseUrl || undefined).href;
+  } catch {
+    return normalizeHttpUrl(raw);
+  }
+}
+
+function isClickStep(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = String(step.instruction || "").toLowerCase();
+  return action === "click" || /\b(click|press|tap)\b/.test(text);
+}
+
+function lightpandaClickScore(candidate = {}, targetText = "", totalCandidates = 0) {
+  const wanted = normalizedTargetText(targetText);
+  const label = normalizedTargetText(candidate.text || candidate.label || candidate.name || candidate.href || "");
+  const href = normalizedTargetText(candidate.href || "");
+
+  if (wanted && label === wanted) return 1;
+  if (wanted && label && (label.includes(wanted) || wanted.includes(label))) return 0.92;
+
+  if (
+    wanted &&
+    /\bmore information\b/i.test(targetText) &&
+    /\blearn more\b/i.test(candidate.text || candidate.label || "")
+  ) {
+    return 0.88;
+  }
+
+  if (wanted && href && wanted.split(/\s+/).some((part) => part.length >= 4 && href.includes(part))) {
+    return 0.74;
+  }
+
+  if (totalCandidates === 1 && candidate.href && /\b(more|information|details|continue|open|link)\b/i.test(targetText)) {
+    return 0.72;
+  }
+
+  return 0;
+}
+
+function syntheticStepPlanFromLightpandaClick({ step = {}, beforeState = null, originalInstruction = "" } = {}) {
+  if (!beforeState || beforeState.ok !== true || !isClickStep(step)) return null;
+
+  const targetText = extractClickTargetText(step, originalInstruction);
+  if (!targetText) return null;
+
+  const links = Array.isArray(beforeState.links) ? beforeState.links : [];
+  const buttons = Array.isArray(beforeState.buttons) ? beforeState.buttons : [];
+  const interactive = Array.isArray(beforeState.interactiveElements) ? beforeState.interactiveElements : [];
+
+  const candidates = [
+    ...links.map((entry) => ({ ...entry, kind: "link", preferred: 0.04 })),
+    ...buttons.map((entry) => ({ ...entry, kind: "button", preferred: 0.02 })),
+    ...interactive.map((entry) => ({ ...entry, kind: entry.href ? "link" : "interactive", preferred: entry.href ? 0.03 : 0 })),
+  ];
+
+  const ranked = candidates
+    .map((entry) => ({
+      entry,
+      score: lightpandaClickScore(entry, targetText, candidates.length) + Number(entry.preferred || 0),
+    }))
+    .filter((item) => item.score >= 0.7)
+    .sort((a, b) => b.score - a.score);
+
+  const best = ranked[0]?.entry;
+  if (!best) return null;
+
+  const href = absoluteHrefFromState(best.href || "", beforeState.url || "");
+  const visibleText = safeText(best.text || best.label || best.name || targetText, 180);
+  const selector = safeText(best.selector || "", 320);
+  const ref = safeText(best.ref || "", 120);
+
+  if (href && best.kind === "link") {
+    return {
+      status: "ready",
+      syntheticSource: "lightpanda_click_planner",
+      command: {
+        intent: "click_link_via_href",
+        tool: "browserNavigate",
+        args: {
+          url: href,
+          sourceText: visibleText,
+          sourceRef: ref,
+          sourceSelector: selector,
+        },
+        notes: `Lightpanda resolved the click target "${targetText}" to link "${visibleText}" and href ${href}.`,
+      },
+      reason: `Lightpanda resolved click target "${targetText}" to link "${visibleText}".`,
+      messageToChecker: "",
+      messageToUser: "",
+      confidence: ranked[0].score,
+    };
+  }
+
+  return {
+    status: "ready",
+    syntheticSource: "lightpanda_click_planner",
+    command: {
+      intent: "click",
+      tool: "browserClickByText",
+      args: {
+        text: visibleText,
+        ref,
+        selector,
+      },
+      notes: `Lightpanda resolved the click target "${targetText}" to visible control "${visibleText}".`,
+    },
+    reason: `Lightpanda resolved click target "${targetText}" to visible control "${visibleText}".`,
+    messageToChecker: "",
+    messageToUser: "",
+    confidence: ranked[0].score,
+  };
+}
+
 function isLowRiskAutoCheckCommand(command = {}, step = {}) {
   const tool = String(command?.tool || "");
   const text = String(step?.instruction || "");
@@ -950,7 +1095,12 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }));
 
     const stepTargetUrl = targetUrlForStep(step, instruction);
-    const lightpandaReadUrl = currentUrl || (readOnlyBrowserPlan && stepTargetUrl ? stepTargetUrl : "");
+    const shouldLightpandaReadStepTarget =
+      !currentUrl &&
+      stepTargetUrl &&
+      (readOnlyBrowserPlan || isNavigationStep(step) || isClickStep(step));
+
+    const lightpandaReadUrl = currentUrl || (shouldLightpandaReadStepTarget ? stepTargetUrl : "");
 
     let beforeState = null;
     try {
@@ -1005,7 +1155,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }));
 
     if (
-      readOnlyBrowserPlan &&
+      (readOnlyBrowserPlan || envFlag("BROWSER_AGENT_LIGHTPANDA_NAVIGATION_PREREAD_PASS", true)) &&
       isNavigationStep(step) &&
       beforeState?.ok === true &&
       !currentUrl &&
@@ -1131,6 +1281,14 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ? syntheticStepPlanForLowRisk(step, currentUrl, instruction)
       : null;
 
+    if (!stepPlan && envFlag("BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER", true)) {
+      stepPlan = syntheticStepPlanFromLightpandaClick({
+        step,
+        beforeState,
+        originalInstruction: instruction,
+      });
+    }
+
     if (stepPlan) {
       trace.push(traceEntry({
         role: "gemma_step_agent",
@@ -1182,7 +1340,27 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     const snapshotChecker = fastSnapshotCheckerForStep({ stepPlan, step, before });
 
-    if (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_CHECKER", true) && isLowRiskAutoCheckCommand(stepPlan.command, step)) {
+    if (
+      envFlag("BROWSER_AGENT_LIGHTPANDA_CLICK_PLANNER_AUTO_APPROVE", true) &&
+      stepPlan?.syntheticSource === "lightpanda_click_planner" &&
+      isLowRiskAutoCheckCommand(stepPlan.command, step)
+    ) {
+      checker = syntheticApprovedChecker({
+        ...stepPlan,
+        reason: stepPlan.reason || "Lightpanda resolved a safe link target.",
+      });
+      trace.push(traceEntry({
+        role: "gemma_checker",
+        title: "Lightpanda command checker",
+        step: stepNumber,
+        status: "auto_approved",
+        input: stepPlan,
+        output: checker,
+        summary: stepPlan.reason || checker.reason,
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: true,
+      }));
+    } else if (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_CHECKER", true) && isLowRiskAutoCheckCommand(stepPlan.command, step)) {
       checker = syntheticApprovedChecker(stepPlan);
       trace.push(traceEntry({
         role: "gemma_checker",
