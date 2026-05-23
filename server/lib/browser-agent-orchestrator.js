@@ -1319,13 +1319,27 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   };
 
   const steps = normalizeSteps(orchestratorPlan, instruction).slice(0, maxSteps);
+  const orchestratorHasExecutableSteps = steps.some((step) => {
+    const action = String(step.expectedAction || "").toLowerCase();
+    const stepText = String(step.instruction || "").trim();
+    return Boolean(stepText) && action !== "needs_user";
+  });
+  const normalizedOrchestratorStatus =
+    orchestratorPlan.status === "needs_user" && orchestratorHasExecutableSteps
+      ? "ready"
+      : (orchestratorPlan.status || (orchestratorCall.ok ? "ready" : "failed"));
 
   trace.push(traceEntry({
     role: "main_orchestrator",
     title: "Main model intent orchestrator",
-    status: steps.length && orchestratorPlan.status === "needs_user" ? "ready" : (orchestratorPlan.status || (orchestratorCall.ok ? "ready" : "failed")),
+    status: normalizedOrchestratorStatus,
     input: instruction,
-    output: { ...orchestratorPlan, steps },
+    output: {
+      ...orchestratorPlan,
+      status: normalizedOrchestratorStatus,
+      originalStatus: orchestratorPlan.status || "",
+      steps,
+    },
     summary: orchestratorPlan.userIntent || "",
     ok: orchestratorCall.ok,
     usage: usageOf(orchestratorCall),
