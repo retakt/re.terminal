@@ -622,6 +622,84 @@ function normalizeCommand(value = {}, currentUrl = "") {
     error: "",
   };
 }
+function commandHasFields(command = {}) {
+  return Array.isArray(command.args?.fields) && command.args.fields.length > 0;
+}
+
+function isSubmitLikeClickCommand(command = {}) {
+  if (!command || command.tool !== "browserClickByText") return false;
+  const text = safeText(command.args?.text || command.args?.label || command.args?.buttonText || "", 120).toLowerCase();
+  return /login|log in|sign in|submit|continue|next/.test(text);
+}
+
+function commandWithFreshFillBeforeSubmit(clickCommand = {}, lastFillCommand = null) {
+  if (!lastFillCommand || !commandHasFields(lastFillCommand) || !isSubmitLikeClickCommand(clickCommand)) return clickCommand;
+  return {
+    ...clickCommand,
+    intent: "fill_and_submit",
+    tool: "browserFillAndSubmit",
+    args: {
+      ...(clickCommand.args || {}),
+      fields: lastFillCommand.args.fields,
+      text: clickCommand.args?.text || clickCommand.args?.label || clickCommand.args?.buttonText || "Login",
+    },
+    notes: "Re-filled verified fields immediately before submit.",
+  };
+}
+
+function redactedBrowserFieldValue(field = {}) {
+  const haystack = [field.label, field.name, field.id, field.placeholder, field.selector, field.type].map((item) => String(item || "")).join(" ").toLowerCase();
+  if (/password|passcode|pin|otp|token|secret/.test(haystack) || field.secret === true) return "[redacted]";
+  const value = String(field.value ?? "");
+  return value.length > 120 ? value.slice(0, 117) + "..." : value;
+}
+
+function browserCommandFieldsForTrace(command = {}) {
+  const fields = Array.isArray(command.args?.fields) ? command.args.fields : [];
+  return fields.map((field) => ({
+    label: safeText(field.label || field.name || field.id || field.placeholder || "field", 120),
+    target: safeText(field.ref || field.selector || field.target || "", 120),
+    type: safeText(field.type || "textbox", 80),
+    valuePreview: redactedBrowserFieldValue(field),
+  }));
+}
+
+function browserExecutionUiDetails(command = {}, execution = {}) {
+  const action = execution.actionResult || {};
+  const tool = command.tool || "";
+  if (tool === "browserFillFields" || tool === "browserFillAndSubmit") {
+    const formFillOk = action.formFill?.ok === true;
+    const domFallbackOk = action.domFallback?.ok === true;
+    const typeOk = Array.isArray(action.results) && action.results.length > 0 && action.results.every((result) => result?.ok === true);
+    const verifyOk = action.verify?.ok === true;
+    return { kind: "fill", strategy: verifyOk ? "verified_fill" : domFallbackOk ? "dom_fill_fallback" : typeOk ? "browser_type" : formFillOk ? "browser_fill_form" : "fill_failed", formFillOk, typeOk, domFallbackOk, verifyOk, fields: browserCommandFieldsForTrace(command) };
+  }
+  if (tool === "browserClickByText" || tool === "browserSubmitForm") return { kind: "click", strategy: "browser_click", target: safeText(command.args?.text || command.args?.label || command.args?.buttonText || "", 160), ref: safeText(command.args?.ref || command.args?.selector || command.args?.target || "", 160) };
+  if (tool === "browserNavigate") return { kind: "navigate", strategy: "browser_navigate", url: safeText(command.args?.url || "", 260) };
+  return null;
+}
+
+function browserExecutionTraceSummary(command = {}, execution = {}) {
+  const details = browserExecutionUiDetails(command, execution);
+  const page = cleanBrowserAgentTraceSummary({ summary: execution.actionResult?.text || "", url: execution.observation?.url || "", title: execution.observation?.title || "" });
+  if (!details) return execution.error || page;
+  if (details.kind === "fill") {
+    const fields = (details.fields || []).map((field) => field.label + (field.target ? " [" + field.target + "]" : "") + (field.valuePreview ? "=" + field.valuePreview : "")).join(", ");
+    return ["action=fill via=" + details.strategy + (fields ? " fields: " + fields : ""), page, execution.error || ""].filter(Boolean).join(" — ");
+  }
+  if (details.kind === "click") return ["action=click target=" + (details.target || "") + (details.ref ? " [" + details.ref + "]" : ""), page, execution.error || ""].filter(Boolean).join(" — ");
+  if (details.kind === "navigate") return ["action=navigate " + (details.url || ""), page, execution.error || ""].filter(Boolean).join(" — ");
+  return execution.error || page;
+}
+
+function watcherResultOrFallback({ resultCheck = {}, resultCheckCall = null, execution = {}, step = {}, command = {} } = {}) {
+  const hasData = resultCheck && typeof resultCheck === "object" && Object.keys(resultCheck).length > 0;
+  if (hasData) return resultCheck;
+  const actionSummary = browserExecutionTraceSummary(command, execution);
+  const callError = safeText(resultCheckCall?.error || "", 500);
+  const stepName = safeText(step?.instruction || "browser step", 240);
+  return { status: execution.ok === true ? "needs_repair" : "failed", success: false, summary: "Watcher returned no valid decision for: " + stepName + ". " + (actionSummary || callError || "Verification was inconclusive."), evidence: actionSummary || callError || "No watcher JSON was available.", repairInstruction: command.tool === "browserFillFields" || command.tool === "browserFillAndSubmit" ? "Re-fill the fields with verified typing, then submit only after values are confirmed." : "Retry the step with a more specific target and verify the result.", messageToUser: "", confidence: 0.1 };
+}
 
 function observationFromExecution(execution = null, fallback = {}) {
   return execution?.observation || {
@@ -707,6 +785,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   let currentTitle = args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "";
   let finalObservation = null;
   let stoppedReason = "";
+  let lastSuccessfulFillCommand = null;
 
   for (let index = 0; index < steps.length; index += 1) {
     const stepNumber = index + 1;
@@ -935,8 +1014,24 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       break;
     }
 
+    const executionCommand = commandWithFreshFillBeforeSubmit(normalized.command, lastSuccessfulFillCommand);
+
+    if (executionCommand !== normalized.command) {
+      trace.push(traceEntry({
+        role: "playwright_controller",
+        title: "Playwright browser controller",
+        step: stepNumber,
+        status: "prepared",
+        input: normalized.command,
+        output: executionCommand,
+        summary: "Re-filling verified form fields immediately before submit.",
+        tool: executionCommand.tool,
+        ok: null,
+      }));
+    }
+
     let execution = await executePlaywrightMcpBrowserCommand({
-      command: normalized.command,
+      command: executionCommand,
       args: { ...args, currentUrl },
       state: currentState,
       beforeSnapshot: before?.snapshot || null,
@@ -947,15 +1042,16 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       title: "Playwright browser controller",
       step: stepNumber,
       status: execution.status || "executed",
-      input: normalized.command,
+      input: executionCommand,
       output: {
         url: execution.observation?.url || "",
         title: execution.observation?.title || "",
         error: execution.error || "",
         summary: execution.actionResult?.text || "",
+        actionDetails: browserExecutionUiDetails(executionCommand, execution),
       },
-      summary: execution.error || cleanBrowserAgentTraceSummary({ summary: execution.actionResult?.text || "", url: execution.observation?.url || "", title: execution.observation?.title || "" }),
-      tool: normalized.command.tool,
+      summary: browserExecutionTraceSummary(executionCommand, execution),
+      tool: executionCommand.tool,
       ok: execution.ok === true,
     }));
 
@@ -966,7 +1062,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_RESULT_CHECKER", true) && isLowRiskAutoCheckCommand(normalized.command, step)) ||
       (envFlag("BROWSER_AGENT_SNAPSHOT_RESULT_FAST_PATH", true) && isSnapshotResultAutoPassCommand(normalized.command, step, execution))
     ) {
-      resultCheck = syntheticPassedResult({ execution, step, command: normalized.command });
+      resultCheck = syntheticPassedResult({ execution, step, command: executionCommand });
       trace.push(traceEntry({
         role: "gemma_result_checker",
         title: "Gemma result checker",
@@ -974,7 +1070,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         status: "auto_passed",
         input: {
           step,
-          command: normalized.command,
+          command: executionCommand,
           executionStatus: execution.status,
         },
         output: resultCheck,
@@ -1005,7 +1101,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
 
 
-      resultCheck = resultCheckCall.call?.data || {};
+      resultCheck = watcherResultOrFallback({
+        resultCheck: resultCheckCall.call?.data || {},
+        resultCheckCall,
+        execution,
+        step,
+        command: executionCommand,
+      });
       trace.push(traceEntry({
         role: "gemma_result_checker",
         title: "Gemma result checker",
@@ -1013,7 +1115,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         status: resultCheck.status || (resultCheckCall.ok ? "checked" : "failed"),
         input: {
           step,
-          command: normalized.command,
+          command: executionCommand,
           executionStatus: execution.status,
         },
         output: resultCheck,
@@ -1104,7 +1206,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
 
       resultCheckCall = repairCheckCall;
-      resultCheck = repairCheckCall.call?.data || {};
+      resultCheck = watcherResultOrFallback({
+        resultCheck: repairCheckCall.call?.data || {},
+        resultCheckCall: repairCheckCall,
+        execution,
+        step,
+        command: repairCommand.command,
+      });
 
       trace.push(traceEntry({
         role: "gemma_result_checker_repair",
@@ -1135,8 +1243,15 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       summary: resultCheck.summary || execution.error || execution.actionResult?.text || "",
       url: currentUrl,
       title: currentTitle,
-      command: normalized.command,
+      command: executionCommand,
     });
+
+    if (stepOk && commandHasFields(executionCommand)) {
+      lastSuccessfulFillCommand = {
+        ...executionCommand,
+        tool: "browserFillFields",
+      };
+    }
 
     if (!stepOk) {
       stoppedReason = resultCheck.repairInstruction || resultCheck.summary || execution.error || "Step failed verification.";
@@ -1176,6 +1291,10 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           ok: entry.ok,
           summary: entry.summary,
           tool: entry.tool,
+          output: entry.output && typeof entry.output === "object" ? {
+            error: entry.output.error || "",
+            actionDetails: entry.output.actionDetails || null,
+          } : null,
         })),
       },
     }));
