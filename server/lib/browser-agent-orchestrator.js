@@ -1224,8 +1224,61 @@ function activeWatcherHardTextV4(step = {}) {
   ].map((value) => String(value || "")).join(" ").toLowerCase();
 }
 
+function activeWatcherReadOnlyInspectionStepV5(step = {}) {
+  if (isNavigationStep(step)) return false;
+
+  const action = String(step.expectedAction || "").toLowerCase();
+  const instruction = String(step.instruction || "").toLowerCase();
+  const criteria = String(step.successCriteria || "").toLowerCase();
+  const text = [instruction, criteria, action].join(" ");
+
+  const isObserveOrReport = action === "observe" || action === "report";
+  const asksToRead =
+    /\b(inspect|report|list|show|summarize|read|describe|extract|find)\b/.test(instruction);
+
+  const asksForPageData =
+    /\b(title|control|controls|button|buttons|demo button|link|links|content|sentence|text|page|body text|first visible|first two|first three)\b/.test(text);
+
+  const explicitLiveVerify =
+    /\b(verify|check|confirm)\b/.test(instruction) &&
+    /\b(opened|open|closed|close|hidden|shown|visible|not visible|not open|expanded|collapsed)\b/.test(text);
+
+  return (isObserveOrReport || asksToRead) && asksForPageData && !explicitLiveVerify;
+}
+
+function activeWatcherReadOnlyInspectionStepV6(step = {}) {
+  if (isNavigationStep(step)) return false;
+
+  const action = String(step.expectedAction || "").toLowerCase();
+  const instruction = String(step.instruction || "").toLowerCase();
+  const criteria = String(step.successCriteria || "").toLowerCase();
+  const text = [instruction, criteria, action].join(" ");
+
+  const readLike =
+    action === "observe" ||
+    action === "report" ||
+    /\b(inspect|report|find|show|list|read|describe|extract)\b/.test(instruction);
+
+  const asksForData =
+    /\b(title|control|controls|button|buttons|demo button|link|links|content|sentence|text|body|body text|page|first visible|first two|first three)\b/.test(text);
+
+  const explicitVerify =
+    /\b(verify|check|confirm)\b/.test(instruction) &&
+    /\b(opened|open|closed|close|hidden|shown|not visible|not open|expanded|collapsed)\b/.test(text);
+
+  return readLike && asksForData && !explicitVerify;
+}
+
 function activeWatcherHardVerifyKindV4(step = {}) {
   if (isNavigationStep(step)) return null;
+
+  // Read-only discovery/report steps must stay in Lightpanda/reporting.
+  // Watcher only owns explicit live UI state verification.
+  if (activeWatcherReadOnlyInspectionStepV6(step)) return null;
+
+  // Read-only scrape/report/list/find steps belong to Lightpanda/normal observe.
+  // Watcher should only consume explicit live UI state verification.
+  if (activeWatcherReadOnlyInspectionStepV5(step)) return null;
 
   const action = String(step.expectedAction || "").toLowerCase();
   const instruction = String(step.instruction || "").toLowerCase();
@@ -1235,7 +1288,7 @@ function activeWatcherHardVerifyKindV4(step = {}) {
   const isVerifyLike =
     action === "observe" ||
     action === "report" ||
-    /\b(verify|check|confirm|observe|report)\b/.test(instruction);
+    /\b(verify|check|confirm)\b/.test(instruction);
 
   if (!isVerifyLike) return null;
 
@@ -1247,7 +1300,7 @@ function activeWatcherHardVerifyKindV4(step = {}) {
 
   if (!uiKind) return null;
 
-  if (/\b(closed|close|dismissed|gone|hidden|not visible|not open|does not contain|no element)\b/.test(text)) {
+  if (/\b(closed|close|dismissed|gone|hidden|not visible|not open|does not contain|no element|collapsed)\b/.test(text)) {
     return { uiKind, expected: "closed" };
   }
 
@@ -1258,6 +1311,7 @@ function activeWatcherHardVerifyKindV4(step = {}) {
   return null;
 }
 
+
 function activeWatcherCollapseToggleAgainStepV4(step = {}) {
   if (isNavigationStep(step)) return false;
 
@@ -1266,7 +1320,7 @@ function activeWatcherCollapseToggleAgainStepV4(step = {}) {
   return /\b(collapse|accordion|toggle)\b/.test(text) &&
     (
       /\b(same toggle again|toggle again|click .*again|again)\b/.test(text) ||
-      /\b(close|closed|hide|hidden|not visible|not open|no element)\b/.test(text)
+      /\b(close|closed|hide|hidden|not visible|not open|no element|collapsed)\b/.test(text)
     );
 }
 
@@ -1290,7 +1344,7 @@ function activeWatcherUiOpenStateV4(uiState = {}, uiKind = "") {
 async function activeWatcherHardUiStepV4({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
   if (isNavigationStep(step)) return null;
 
-  const verify = activeWatcherHardVerifyKindV4(step);
+const verify = activeWatcherHardVerifyKindV4(step);
 
   if (verify) {
     const uiState = await probePlaywrightUiState({
@@ -1701,6 +1755,186 @@ function observationFromPageState(pageState = null) {
   };
 }
 
+
+function stepReportTextV5(step = {}, originalInstruction = "") {
+  // Use only the current step for detailed read-only reporting.
+  // Do not include the full original instruction, otherwise every step
+  // inherits every report request.
+  return [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+}
+
+function observationItemLabelV5(item = {}) {
+  return safeText(
+    item.text ||
+    item.label ||
+    item.name ||
+    item.title ||
+    item.ariaLabel ||
+    item.alt ||
+    item.value ||
+    item.selector ||
+    item.href ||
+    "",
+    180
+  ).replace(/\s+/g, " ").trim();
+}
+
+function uniqueNonEmptyV5(values = []) {
+  const seen = new Set();
+  const result = [];
+
+  for (const value of values) {
+    const clean = safeText(value || "", 220).replace(/\s+/g, " ").trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+  }
+
+  return result;
+}
+
+function observationControlsForReportV5(observation = {}, step = {}, limit = 3) {
+  const text = stepReportTextV5(step);
+  const wantsCollapse = /\b(collapse|accordion)\b/.test(text);
+  const wantsDropdown = /\b(dropdown|menu)\b/.test(text);
+  const wantsModal = /\b(modal|dialog|popup)\b/.test(text);
+  const wantsOffcanvas = /\b(offcanvas|drawer|panel)\b/.test(text);
+
+  const items = [
+    ...(Array.isArray(observation.buttons) ? observation.buttons : []),
+    ...(Array.isArray(observation.interactiveElements) ? observation.interactiveElements : []),
+    ...(Array.isArray(observation.links) ? observation.links : []),
+  ];
+
+  const scored = items.map((item) => {
+    const label = observationItemLabelV5(item);
+    const haystack = [
+      label,
+      item.selector,
+      item.role,
+      item.type,
+      item.href,
+      item.id,
+      item.className,
+      item.attrs ? JSON.stringify(item.attrs) : "",
+    ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+    let score = 0;
+    if (label) score += 20;
+    if (/\bbutton\b/.test(haystack) || item.role === "button") score += 25;
+
+    if (wantsCollapse && /\b(collapse|toggle|accordion|expanded|aria-controls|data-bs-toggle|data-toggle)\b/.test(haystack)) score += 90;
+    if (wantsDropdown && /\b(dropdown|menu|data-bs-toggle|data-toggle)\b/.test(haystack)) score += 90;
+    if (wantsModal && /\b(modal|dialog|launch|data-bs-target|data-target)\b/.test(haystack)) score += 90;
+    if (wantsOffcanvas && /\b(offcanvas|drawer|data-bs-target|data-target)\b/.test(haystack)) score += 90;
+
+    const lowerLabel = String(label || "").toLowerCase();
+    if (/^link with href$/.test(lowerLabel)) score -= 120;
+    if (/browse .*docs navigation/.test(lowerLabel)) score -= 120;
+    if (lowerLabel === "bootstrap") score -= 100;
+    if (!label.trim()) score -= 120;
+
+    return { label, score, haystack };
+  }).filter((item) => item.label);
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const useful = scored
+    .filter((item) => {
+      if (item.score < 30) return false;
+
+      const label = String(item.label || "").toLowerCase();
+      const haystack = String(item.haystack || "").toLowerCase();
+
+      if (/^link with href$/.test(label)) return false;
+      if (/browse .*docs navigation/.test(label)) return false;
+      if (label === "bootstrap") return false;
+
+      if (wantsCollapse) {
+        return /\btoggle\b|\bcollapse\b|\baccordion\b/.test(label) ||
+          /data-bs-toggle|data-toggle|aria-controls|collapse/.test(haystack);
+      }
+
+      if (wantsDropdown) {
+        return /\bdropdown\b|\bmenu\b/.test(label) ||
+          /dropdown|data-bs-toggle|data-toggle/.test(haystack);
+      }
+
+      if (wantsModal) {
+        return /\bmodal\b|\bdialog\b|\blaunch\b/.test(label) ||
+          /modal|dialog|data-bs-target|data-target/.test(haystack);
+      }
+
+      if (wantsOffcanvas) {
+        return /\boffcanvas\b|\bdrawer\b|\bpanel\b/.test(label) ||
+          /offcanvas|data-bs-target|data-target/.test(haystack);
+      }
+
+      return true;
+    })
+    .map((item) => item.label);
+
+  return uniqueNonEmptyV5(useful).slice(0, limit);
+}
+
+function observationFirstSentenceForReportV5(observation = {}) {
+  const raw = [
+    observation.text,
+    observation.textPreview,
+    observation.markdown,
+  ].map((value) => String(value || "")).join("\n");
+
+  const clean = raw
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!clean) return "";
+
+  const preferred = clean.match(/Some placeholder content[^.?!]*[.?!]/i)?.[0];
+  if (preferred) return safeText(preferred, 280);
+
+  const sentence = clean.match(/[^.?!]{20,280}[.?!]/)?.[0] || "";
+  return safeText(sentence.trim(), 280);
+}
+
+function detailedStepReportSummaryFromObservation(observation = {}, step = {}, originalInstruction = "") {
+  const base = detailedReportSummaryFromObservation(observation, step, originalInstruction);
+  const text = stepReportTextV5(step, originalInstruction);
+  const parts = [base];
+
+  if (/\b(first three|visible .*controls|controls|buttons)\b/.test(text)) {
+    const controls = observationControlsForReportV5(observation, step, 3);
+    if (controls.length) {
+      parts.push("Controls: " + controls.join(" | "));
+    } else {
+      parts.push("Controls: not found in current observation");
+    }
+  }
+
+  if (/\b(first sentence|opened .*content|collapse content|body text)\b/.test(text)) {
+    const sentence = observationFirstSentenceForReportV5(observation);
+    if (sentence) {
+      parts.push("First sentence: " + sentence);
+    } else {
+      parts.push("First sentence: not found in current observation");
+    }
+  }
+
+  if (/\b(final page title|page title|title)\b/.test(text) && observation.title) {
+    const titlePart = "Page title: " + safeText(observation.title, 180);
+    if (!parts.some((part) => String(part).includes(titlePart))) parts.push(titlePart);
+  }
+
+  return safeText(uniqueNonEmptyV5(parts).join(" — "), 1800);
+}
+
+
 function pageStateTraceSummary(pageState = null) {
   if (!pageState) return "No Lightpanda page state was captured.";
   if (pageState.ok !== true) return pageState.error || "Lightpanda page state was unavailable.";
@@ -1924,6 +2158,94 @@ async function safeRole(label, fn) {
   }
 }
 
+function stepHaystackForTailCompletion(step = {}) {
+  return [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+}
+
+function hasTailStep(steps = [], pattern) {
+  return steps.some((step) => pattern.test(stepHaystackForTailCompletion(step)));
+}
+
+function pushTailStepIfMissing(steps = [], pattern, step = {}) {
+  if (!hasTailStep(steps, pattern)) {
+    steps.push(step);
+  }
+}
+
+function completeLongInstructionTailSteps(steps = [], originalInstruction = "") {
+  const text = String(originalInstruction || "").toLowerCase();
+  const next = [...steps];
+
+  const mentionsModalFlow =
+    /\/components\/modal\//.test(text) ||
+    /\bmodal\b/.test(text) ||
+    /\blaunch demo modal\b/.test(text);
+
+  if (!mentionsModalFlow) return next;
+
+  if (/\b(inspect|report|find|show|list)\b[\s\S]{0,80}\bmodal\b[\s\S]{0,80}\b(button|demo button)\b/.test(text)) {
+    pushTailStepIfMissing(next, /\b(inspect|report|find|show|list)\b.*\bmodal\b.*\b(button|demo button)\b/, {
+      instruction: "inspect and report the first visible modal demo button",
+      expectedAction: "observe",
+      successCriteria: "first visible modal demo button is reported",
+    });
+  }
+
+  if (/\b(click|press|tap)\b[\s\S]{0,80}\blaunch demo modal\b/.test(text)) {
+    pushTailStepIfMissing(next, /\bclick\b.*\blaunch demo modal\b|\blaunch demo modal\b.*\bclicked\b/, {
+      instruction: "click the Launch demo modal button",
+      expectedAction: "click",
+      successCriteria: "Launch demo modal button clicked successfully",
+    });
+  }
+
+  if (/\bverify\b[\s\S]{0,80}\bmodal\b[\s\S]{0,80}\b(open|opened|visible|shown)\b|\bverify it opened\b/.test(text)) {
+    pushTailStepIfMissing(next, /\bverify\b.*\bmodal\b.*\b(open|opened|visible|shown)\b|\bverify it opened\b/, {
+      instruction: "verify the modal opened",
+      expectedAction: "observe",
+      successCriteria: "modal is opened",
+    });
+  }
+
+  if (/\breport\b[\s\S]{0,100}\bmodal\b[\s\S]{0,100}\b(title|body text|body)\b/.test(text)) {
+    pushTailStepIfMissing(next, /\breport\b.*\bmodal\b.*\b(title|body|body text)\b/, {
+      instruction: "report the modal title and body text",
+      expectedAction: "observe",
+      successCriteria: "modal title and body text are reported",
+    });
+  }
+
+  if (/\bclose\b[\s\S]{0,80}\bmodal\b|\bclose it\b/.test(text)) {
+    pushTailStepIfMissing(next, /\bclose\b.*\bmodal\b|\bclose it\b/, {
+      instruction: "close the modal",
+      expectedAction: "click",
+      successCriteria: "modal is closed",
+    });
+  }
+
+  if (/\bverify\b[\s\S]{0,80}\bmodal\b[\s\S]{0,80}\b(close|closed|hidden|gone)\b|\bverify it closed\b/.test(text)) {
+    pushTailStepIfMissing(next, /\bverify\b.*\bmodal\b.*\b(close|closed|hidden|gone)\b|\bverify it closed\b/, {
+      instruction: "verify the modal closed",
+      expectedAction: "observe",
+      successCriteria: "modal is closed",
+    });
+  }
+
+  if (/\breport\b[\s\S]{0,80}\bfinal page title\b/.test(text)) {
+    pushTailStepIfMissing(next, /\breport\b.*\bfinal page title\b/, {
+      instruction: "report the final page title",
+      expectedAction: "report",
+      successCriteria: "final page title is reported",
+    });
+  }
+
+  return next;
+}
+
 function normalizeSteps(plan = {}, fallbackInstruction = "") {
   const rawSteps = Array.isArray(plan?.steps) ? plan.steps : [];
   const steps = rawSteps
@@ -1939,10 +2261,178 @@ function normalizeSteps(plan = {}, fallbackInstruction = "") {
     })
     .filter((step) => step.instruction);
 
-  return steps.length
+  const normalized = steps.length
     ? steps
     : [{ instruction: fallbackInstruction, expectedAction: "unknown", successCriteria: "The requested browser task is completed." }];
+
+  return ensureBrowserTaskTailStepsV6(
+    completeLongInstructionTailSteps(normalized, fallbackInstruction),
+    fallbackInstruction
+  );
 }
+
+
+function ensureBrowserTaskTailStepsV6(steps = [], originalInstruction = "") {
+  const text = String(originalInstruction || "").toLowerCase();
+  const out = Array.isArray(steps) ? [...steps] : [];
+
+  const stepText = (step = {}) => [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  const has = (pattern) => out.some((step) => pattern.test(stepText(step)));
+  const add = (pattern, step) => {
+    if (!has(pattern)) out.push(step);
+  };
+
+  const modalFlow = /\/components\/modal\//.test(text) ||
+    /\blaunch demo modal\b/.test(text) ||
+    /\bmodal\b/.test(text);
+
+  if (modalFlow) {
+    if (/\b(inspect|report|find|show|list)\b[\s\S]{0,100}\bmodal\b[\s\S]{0,100}\b(button|demo button)\b/.test(text)) {
+      add(/\b(inspect|report|find|show|list)\b.*\bmodal\b.*\b(button|demo button)\b/, {
+        instruction: "inspect and report the first visible modal demo button",
+        expectedAction: "observe",
+        successCriteria: "first visible modal demo button is reported",
+      });
+    }
+
+    if (/\b(click|press|tap)\b[\s\S]{0,100}\blaunch demo modal\b/.test(text)) {
+      add(/\b(click|press|tap)\b.*\blaunch demo modal\b/, {
+        instruction: "click the Launch demo modal button",
+        expectedAction: "click",
+        successCriteria: "Launch demo modal button clicked successfully",
+      });
+    }
+
+    if (/\bverify\b[\s\S]{0,100}\bmodal\b[\s\S]{0,100}\b(open|opened|visible|shown)\b/.test(text)) {
+      add(/\bverify\b.*\bmodal\b.*\b(open|opened|visible|shown)\b/, {
+        instruction: "verify the modal opened",
+        expectedAction: "observe",
+        successCriteria: "modal is opened",
+      });
+    }
+
+    if (/\breport\b[\s\S]{0,120}\bmodal\b[\s\S]{0,120}\b(title|body|body text)\b/.test(text)) {
+      add(/\breport\b.*\bmodal\b.*\b(title|body|body text)\b/, {
+        instruction: "report the modal title and body text",
+        expectedAction: "observe",
+        successCriteria: "modal title and body text are reported",
+      });
+    }
+
+    if (/\bclose\b[\s\S]{0,80}\bmodal\b|\bclose it\b/.test(text)) {
+      add(/\bclose\b.*\bmodal\b|\bclose it\b/, {
+        instruction: "close the modal",
+        expectedAction: "click",
+        successCriteria: "modal is closed",
+      });
+    }
+
+    if (/\bverify\b[\s\S]{0,100}\bmodal\b[\s\S]{0,100}\b(close|closed|hidden|gone)\b|\bverify it closed\b/.test(text)) {
+      add(/\bverify\b.*\bmodal\b.*\b(close|closed|hidden|gone)\b|\bverify it closed\b/, {
+        instruction: "verify the modal closed",
+        expectedAction: "observe",
+        successCriteria: "modal is closed",
+      });
+    }
+  }
+
+  if (/\breport\b[\s\S]{0,100}\bfinal page title\b/.test(text)) {
+    add(/\breport\b.*\bfinal page title\b/, {
+      instruction: "report the final page title",
+      expectedAction: "report",
+      successCriteria: "final page title is reported",
+    });
+  }
+
+  return out;
+}
+
+function ensureBrowserTaskTailStepsV8(steps = [], originalInstruction = "") {
+  const text = String(originalInstruction || "").toLowerCase();
+  const out = Array.isArray(steps) ? [...steps] : [];
+
+  const stepText = (step = {}) => [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  const has = (pattern) => out.some((step) => pattern.test(stepText(step)));
+  const add = (pattern, step) => {
+    if (!has(pattern)) out.push(step);
+  };
+
+  const hasModalFlow =
+    /\/components\/modal\//.test(text) ||
+    /\blaunch demo modal\b/.test(text) ||
+    /\bmodal\b/.test(text);
+
+  if (hasModalFlow) {
+    if (/\b(inspect|report|find|show|list)\b[\s\S]{0,140}\bmodal\b[\s\S]{0,140}\b(button|demo button)\b/.test(text)) {
+      add(/\b(inspect|report|find|show|list)\b.*\bmodal\b.*\b(button|demo button)\b/, {
+        instruction: "inspect and report the first visible modal demo button",
+        expectedAction: "observe",
+        successCriteria: "first visible modal demo button is reported",
+      });
+    }
+
+    if (/\b(click|press|tap)\b[\s\S]{0,140}\blaunch demo modal\b/.test(text)) {
+      add(/\b(click|press|tap)\b.*\blaunch demo modal\b/, {
+        instruction: "click the Launch demo modal button",
+        expectedAction: "click",
+        successCriteria: "Launch demo modal button clicked successfully",
+      });
+    }
+
+    if (/\bverify\b[\s\S]{0,140}\bmodal\b[\s\S]{0,140}\b(open|opened|visible|shown)\b/.test(text)) {
+      add(/\bverify\b.*\bmodal\b.*\b(open|opened|visible|shown)\b/, {
+        instruction: "verify the modal opened",
+        expectedAction: "observe",
+        successCriteria: "modal is opened",
+      });
+    }
+
+    if (/\breport\b[\s\S]{0,160}\bmodal\b[\s\S]{0,160}\b(title|body|body text)\b/.test(text)) {
+      add(/\breport\b.*\bmodal\b.*\b(title|body|body text)\b/, {
+        instruction: "report the modal title and body text",
+        expectedAction: "observe",
+        successCriteria: "modal title and body text are reported",
+      });
+    }
+
+    if (/\bclose\b[\s\S]{0,120}\bmodal\b|\bclose it\b/.test(text)) {
+      add(/\bclose\b.*\bmodal\b|\bclose it\b/, {
+        instruction: "close the modal",
+        expectedAction: "click",
+        successCriteria: "modal is closed",
+      });
+    }
+
+    if (/\bverify\b[\s\S]{0,140}\bmodal\b[\s\S]{0,140}\b(close|closed|hidden|gone)\b|\bverify it closed\b/.test(text)) {
+      add(/\bverify\b.*\bmodal\b.*\b(close|closed|hidden|gone)\b|\bverify it closed\b/, {
+        instruction: "verify the modal closed",
+        expectedAction: "observe",
+        successCriteria: "modal is closed",
+      });
+    }
+  }
+
+  if (/\breport\b[\s\S]{0,140}\bfinal page title\b/.test(text)) {
+    add(/\breport\b.*\bfinal page title\b/, {
+      instruction: "report the final page title",
+      expectedAction: "report",
+      successCriteria: "final page title is reported",
+    });
+  }
+
+  return out;
+}
+
 
 function normalizeCommandArgsForTool(tool = "", rawArgs = {}, currentUrl = "") {
   const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
@@ -2229,7 +2719,9 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     confidence: 0.5,
   };
 
-  const steps = normalizeSteps(orchestratorPlan, instruction).slice(0, maxSteps);
+  const normalizedSteps = normalizeSteps(orchestratorPlan, instruction);
+  const stepsWithTail = ensureBrowserTaskTailStepsV8(normalizedSteps, instruction);
+  const steps = stepsWithTail.slice(0, Math.max(maxSteps, stepsWithTail.length));
   const orchestratorHasExecutableSteps = steps.some((step) => {
     const action = String(step.expectedAction || "").toLowerCase();
     const stepText = String(step.instruction || "").trim();
@@ -2384,7 +2876,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       currentTitle = observation?.title || currentTitle;
       finalObservation = observation || finalObservation;
 
-      const summary = detailedReportSummaryFromObservation(observation || {}, step, instruction);
+      const summary = detailedStepReportSummaryFromObservation(observation || {}, step, instruction);
 
       trace.push(traceEntry({
         role: "report_step_observe",
@@ -2431,7 +2923,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       currentTitle = observation?.title || currentTitle;
       finalObservation = observation || finalObservation;
 
-      const summary = detailedReportSummaryFromObservation(observation || {}, step, instruction);
+      const summary = detailedStepReportSummaryFromObservation(observation || {}, step, instruction);
 
       trace.push(traceEntry({
         role: "report_step_observe",
@@ -2759,7 +3251,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       currentTitle = observation.title || currentTitle;
       finalObservation = observation;
 
-      const summary = detailedReportSummaryFromObservation(observation, step, instruction);
+      const summary = detailedStepReportSummaryFromObservation(observation, step, instruction);
 
       trace.push(traceEntry({
         role: "report_step_observe",
