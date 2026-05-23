@@ -89,12 +89,18 @@ function syntheticPassedResult({ execution = {}, step = {}, command = {} } = {})
   };
 }
 
-function syntheticStepPlanForLowRisk(step = {}, currentUrl = "") {
+function extractHttpUrl(text = "") {
+  const raw = String(text || "");
+  const match = raw.match(/https?:\/\/[^\s"'<>)}\]]+/i)?.[0] || "";
+  return match.replace(/[.,;:!?]+$/g, "");
+}
+
+function syntheticStepPlanForLowRisk(step = {}, currentUrl = "", originalInstruction = "") {
   const action = String(step.expectedAction || "").toLowerCase();
   const instruction = String(step.instruction || "");
 
   if (action === "navigate" || /\b(open|navigate|visit|go to)\b/i.test(instruction)) {
-    const url = instruction.match(/https?:\/\/[^\s"'<>),.]+/i)?.[0] || "";
+    const url = extractHttpUrl(instruction) || extractHttpUrl(originalInstruction);
     if (url) {
       return {
         status: "ready",
@@ -584,7 +590,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     let stepAgentCall = null;
     let stepPlan = envFlag("BROWSER_AGENT_SYNTHETIC_LOW_RISK_STEPS", true)
-      ? syntheticStepPlanForLowRisk(step, currentUrl)
+      ? syntheticStepPlanForLowRisk(step, currentUrl, instruction)
       : null;
 
     if (stepPlan) {
