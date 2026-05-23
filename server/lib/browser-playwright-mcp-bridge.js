@@ -484,19 +484,87 @@ function uniqueAttemptList(attempts = []) {
   });
 }
 
+function playwrightFieldType(field = {}) {
+  const haystack = [
+    field.type,
+    field.role,
+    field.label,
+    field.name,
+    field.placeholder,
+  ].map((item) => String(item || "")).join(" ").toLowerCase();
+
+  if (/checkbox/.test(haystack)) return "checkbox";
+  if (/radio/.test(haystack)) return "radio";
+  if (/combo|select|dropdown/.test(haystack)) return "combobox";
+  return "textbox";
+}
+
+function fillFormFieldsFromCommand(fields = []) {
+  return fields
+    .map((field) => {
+      const target = safeText(field.ref || field.selector || field.target || "", 180);
+      const name = fieldDisplayName(field);
+      const value = String(field.value ?? "");
+
+      if (!target || !name) return null;
+
+      return {
+        target,
+        name,
+        type: playwrightFieldType(field),
+        value,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function tryPlaywrightFillForm(fields = []) {
+  const mcpFields = fillFormFieldsFromCommand(fields);
+
+  if (!mcpFields.length) {
+    return {
+      ok: false,
+      error: "browser_fill_form needs snapshot targets.",
+      text: "",
+    };
+  }
+
+  const result = await callPlaywrightTool(["browser_fill_form", "fill_form"], {
+    fields: mcpFields,
+  }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  if (clickResultFailed(result)) {
+    return {
+      ...result,
+      ok: false,
+      error: result.error || result.text || "browser_fill_form failed.",
+      text: result.text || result.error || "",
+    };
+  }
+
+  return {
+    ...result,
+    ok: true,
+    text: ["browser_fill_form succeeded.", result.text].filter(Boolean).join("\n"),
+  };
+}
+
 function typeAttemptsForField(field = {}) {
   const label = fieldDisplayName(field);
-  const ref = safeText(field.ref || field.selector || "", 180);
+  const target = safeText(field.ref || field.selector || field.target || "", 180);
   const placeholder = safeText(field.placeholder || "", 180);
   const name = safeText(field.name || field.id || "", 180);
   const value = String(field.value ?? "");
 
   return uniqueAttemptList([
-    ref && label ? { label: "label_ref", args: { element: label, ref, text: value } } : null,
-    ref ? { label: "ref_element", args: { element: ref, ref, text: value } } : null,
-    label ? { label: "label_only", args: { element: label, text: value } } : null,
-    placeholder ? { label: "placeholder", args: { element: placeholder, text: value } } : null,
-    name ? { label: "name_or_id", args: { element: name, text: value } } : null,
+    target ? { label: "target_ref", args: { element: label || target, target, text: value, slowly: true } } : null,
+    placeholder ? { label: "placeholder", args: { element: placeholder, target: placeholder, text: value, slowly: true } } : null,
+    name ? { label: "name_or_id", args: { element: name, target: name, text: value, slowly: true } } : null,
+    label ? { label: "label", args: { element: label, target: label, text: value, slowly: true } } : null,
   ].filter(Boolean));
 }
 
@@ -512,7 +580,7 @@ async function tryPlaywrightTypeField(field = {}) {
     // Focus first when possible. If focus/click fails, still try browser_type.
     await callPlaywrightTool(["browser_click", "click"], {
       element: attempt.args.element,
-      ref: attempt.args.ref || attempt.args.element,
+      target: attempt.args.target,
     }).catch(() => null);
 
     const result = await callPlaywrightTool(["browser_type", "type"], attempt.args).catch((err) => ({
@@ -671,6 +739,15 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     const fields = fieldsFromCommand(command);
     if (!fields.length) return { ok: false, error: "Fill needs at least one field." };
 
+    const formFill = await tryPlaywrightFillForm(fields);
+    if (formFill.ok === true) {
+      return {
+        ok: true,
+        formFill,
+        text: formFill.text || "browser_fill_form succeeded.",
+      };
+    }
+
     const results = [];
     for (const field of fields) {
       results.push(await tryPlaywrightTypeField(field));
@@ -700,10 +777,15 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
 
   if (tool === "browserSubmitForm") {
     const text = safeText(commandArgs.text || commandArgs.submitText || commandArgs.buttonText || "Submit", 180);
-    return callPlaywrightTool(["browser_click", "click"], {
-      element: text,
-      ref: commandArgs.ref || commandArgs.selector || text,
-    });
+    return tryPlaywrightClick({
+      ...command,
+      tool: "browserClickByText",
+      args: {
+        ...commandArgs,
+        text,
+        ref: commandArgs.ref || commandArgs.selector || commandArgs.target || text,
+      },
+    }, args, state);
   }
 
   if (tool === "browserFillAndSubmit") {
