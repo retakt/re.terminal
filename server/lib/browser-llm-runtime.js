@@ -605,24 +605,87 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
   };
 }
 
-function extractJsonObject(content = "") {
-  const raw = String(content || "").trim()
-    .replace(/^```(?:json)?/i, "")
-    .replace(/```$/i, "")
+function stripJsonFence(content = "") {
+  return String(content || "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
     .trim();
+}
 
-  try {
-    return JSON.parse(raw);
-  } catch {}
+function balancedJsonCandidates(content = "") {
+  const raw = stripJsonFence(content);
+  const candidates = [raw];
 
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start >= 0 && end > start) {
-    return JSON.parse(raw.slice(start, end + 1));
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        candidates.push(raw.slice(start, i + 1));
+        start = -1;
+      }
+    }
   }
 
-  return JSON.parse(raw);
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first >= 0 && last > first) candidates.push(raw.slice(first, last + 1));
+
+  return [...new Set(candidates.map((item) => item.trim()).filter(Boolean))];
 }
+
+function lightJsonRepair(value = "") {
+  return String(value || "")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*([}\]])/g, "$1")
+    .trim();
+}
+
+function extractJsonObject(content = "") {
+  const candidates = balancedJsonCandidates(content);
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    for (const attempt of [candidate, lightJsonRepair(candidate)]) {
+      try {
+        return JSON.parse(attempt);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+  }
+
+  throw lastError || new Error("No JSON object found.");
+}
+
 
 function normalizeConfidence(value) {
   if (typeof value === "string") {
