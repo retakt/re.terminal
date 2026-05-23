@@ -887,29 +887,62 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
   };
 }
 
-export async function executePlaywrightMcpBrowserCommand({ command = {}, args = {}, state = {}, beforeSnapshot = null } = {}) {
-  const before = beforeSnapshot
-    ? {
-        ok: true,
-        status: "reused",
+export async function executePlaywrightMcpBrowserCommand({
+  command = {},
+  args = {},
+  state = {},
+  beforeSnapshot = null,
+  beforeObservation = null,
+  skipBeforeSnapshot = false,
+} = {}) {
+  let before;
+
+  if (beforeSnapshot) {
+    before = {
+      ok: true,
+      status: "reused",
+      engine: "playwright_mcp",
+      snapshot: beforeSnapshot,
+      observation: {
+        ok: Boolean(beforeSnapshot.text || beforeSnapshot.dom?.textPreview),
+        url: beforeSnapshot.url || "",
+        title: beforeSnapshot.title || "",
+        textPreview: safeText(beforeSnapshot.text || beforeSnapshot.dom?.textPreview || "", 5000),
         engine: "playwright_mcp",
-        snapshot: beforeSnapshot,
-        observation: {
-          ok: Boolean(beforeSnapshot.text || beforeSnapshot.dom?.textPreview),
-          url: beforeSnapshot.url || "",
-          title: beforeSnapshot.title || "",
-          textPreview: safeText(beforeSnapshot.text || beforeSnapshot.dom?.textPreview || "", 5000),
-          engine: "playwright_mcp",
-          links: [],
-          buttons: [],
-          inputs: [],
-          forms: [],
-          interactiveElements: [],
-          stats: {},
-        },
-        error: "",
-      }
-    : await capturePlaywrightMcpSnapshot({ ...args, label: "before" }, state);
+        links: [],
+        buttons: [],
+        inputs: [],
+        forms: [],
+        interactiveElements: [],
+        stats: {},
+      },
+      error: "",
+    };
+  } else if (skipBeforeSnapshot) {
+    const currentUrl = currentUrlFromInput(args, state) || beforeObservation?.url || "";
+    before = {
+      ok: true,
+      status: "skipped",
+      engine: "playwright_mcp",
+      snapshot: null,
+      observation: {
+        ok: Boolean(beforeObservation?.ok || beforeObservation?.url || currentUrl),
+        url: beforeObservation?.url || currentUrl,
+        title: beforeObservation?.title || "",
+        textPreview: safeText(beforeObservation?.textPreview || beforeObservation?.text || "", 5000),
+        engine: beforeObservation?.engine || "lightpanda_cdp",
+        links: Array.isArray(beforeObservation?.links) ? beforeObservation.links : [],
+        buttons: Array.isArray(beforeObservation?.buttons) ? beforeObservation.buttons : [],
+        inputs: Array.isArray(beforeObservation?.inputs) ? beforeObservation.inputs : [],
+        forms: Array.isArray(beforeObservation?.forms) ? beforeObservation.forms : [],
+        interactiveElements: Array.isArray(beforeObservation?.interactiveElements) ? beforeObservation.interactiveElements : [],
+        stats: beforeObservation?.stats || {},
+      },
+      error: "",
+    };
+  } else {
+    before = await capturePlaywrightMcpSnapshot({ ...args, label: "before" }, state);
+  }
 
   const action = await executeApprovedAction(command, { ...args, beforeSnapshot: before.snapshot || beforeSnapshot || null }, state);
 

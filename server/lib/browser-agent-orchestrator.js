@@ -198,6 +198,28 @@ function isSensitiveStep(step = {}) {
     .test(String(step?.instruction || ""));
 }
 
+function isVisualStep(step = {}) {
+  return /\b(visual|visually|screenshot|screen|image|picture|photo|see|look|appearance|layout|color|canvas|chart|graph|map|modal|popup|captcha|qr)\b/i
+    .test(String(step?.instruction || ""));
+}
+
+function shouldCapturePlaywrightBeforeSnapshot({ step = {}, beforeState = null } = {}) {
+  const policy = String(process.env.BROWSER_AGENT_BEFORE_SNAPSHOT_POLICY || "on_demand").trim().toLowerCase();
+
+  if (policy === "always") return true;
+  if (policy === "never") return false;
+  if (envFlag("BROWSER_AGENT_FORCE_PLAYWRIGHT_BEFORE_SNAPSHOT", false)) return true;
+
+  if (!beforeState || beforeState.ok !== true) return true;
+  if (isSensitiveStep(step)) return true;
+  if (isVisualStep(step)) return true;
+
+  // Fast snapshot checker depends on Playwright MCP snapshot refs.
+  if (envFlag("BROWSER_AGENT_FAST_SNAPSHOT_CHECKER", false)) return true;
+
+  return false;
+}
+
 function snapshotTextForFastChecker(snapshot = null) {
   return String(snapshot?.text || snapshot?.dom?.rawText || snapshot?.dom?.textPreview || "");
 }
@@ -893,20 +915,34 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ok: beforeState?.ok === true,
     }));
 
+    const captureBeforeSnapshot = shouldCapturePlaywrightBeforeSnapshot({ step, beforeState });
     let before = null;
-    try {
-      before = await capturePlaywrightMcpSnapshot({
-        ...args,
-        currentUrl,
-        label: `step_${stepNumber}_before`,
-        navigate: Boolean(currentUrl),
-      }, currentState);
-    } catch (err) {
+
+    if (captureBeforeSnapshot) {
+      try {
+        before = await capturePlaywrightMcpSnapshot({
+          ...args,
+          currentUrl,
+          label: `step_${stepNumber}_before`,
+          navigate: Boolean(currentUrl),
+        }, currentState);
+      } catch (err) {
+        before = {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+          snapshot: null,
+          observation: null,
+        };
+      }
+    } else {
       before = {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
+        ok: true,
+        status: "skipped",
+        skipped: true,
+        reason: "Skipped Playwright before snapshot because Lightpanda read-only page state is available.",
         snapshot: null,
-        observation: null,
+        observation: observationFromPageState(beforeState),
+        error: "",
       };
     }
 
@@ -1131,6 +1167,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       args: { ...args, currentUrl },
       state: currentState,
       beforeSnapshot: before?.snapshot || null,
+      beforeObservation: observationFromPageState(beforeState),
+      skipBeforeSnapshot: !captureBeforeSnapshot && beforeState?.ok === true,
     });
 
     trace.push(traceEntry({
