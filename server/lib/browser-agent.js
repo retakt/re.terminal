@@ -32,6 +32,7 @@ import {
 } from "./browser-task-runner.js";
 import { verifyBrowserResult } from "./browser-result-verifier.js";
 import { adviseBrowserFailure } from "./browser-error-advisor.js";
+import { runBrowserAgentPipeline } from "./browser-agent-pipeline.js";
 import {
   getExtension,
   getExtensionSkill,
@@ -2939,6 +2940,18 @@ export async function browserAgentRun(args = {}) {
     sessionId,
     instruction,
   };
+
+  // New browser architecture:
+  // Browser mode now goes through the multi-agent pipeline by default.
+  // The old deterministic watcher/runtime path is legacy-only.
+  if (!envFlag("BROWSER_AGENT_LEGACY_RUNTIME", false)) {
+    return runBrowserAgentPipeline({
+      ...baseArgs,
+      state,
+      currentUrl: args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
+      currentTitle: args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "",
+    });
+  }
 
   if (!instruction) {
     return responseBase({

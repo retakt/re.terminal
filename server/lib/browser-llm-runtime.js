@@ -45,7 +45,8 @@ function rawBaseUrl() {
     process.env.BROWSER_AGENT_BASE_URL ||
     process.env.BROWSER_AGENT_API_BASE_URL ||
     process.env.RUNTIME_BROWSER_AGENT_BASE_URL ||
-    ""
+    process.env.OLLAMA_BASE_URL ||
+    "https://chat-api.retakt.cc"
   ).trim().replace(/\/+$/, "").replace(/\/api$/, "");
 }
 
@@ -55,13 +56,48 @@ function resolvePromptPath(value = "") {
   return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
 }
 
+function stageKey(stage = "") {
+  const raw = String(stage || "planner").trim();
+  if (raw === "mainHandoff") return "MAIN";
+  if (raw === "resultReviewer") return "RESULT_REVIEWER";
+  return raw
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase() || "PLANNER";
+}
+
+function firstEnv(names = []) {
+  for (const name of names) {
+    if (process.env[name] !== undefined) return process.env[name];
+  }
+  return undefined;
+}
+
 function stageEnv(stage, suffix) {
-  const prefix = stage === "reporter" ? "BROWSER_AGENT_REPORTER" : "BROWSER_AGENT_PLANNER";
-  return process.env[`${prefix}_${suffix}`] ?? process.env[`BROWSER_AGENT_${suffix}`];
+  const key = stageKey(stage);
+  const legacyKey = stage === "resultReviewer" ? "REVIEWER" : key;
+
+  return firstEnv([
+    `BROWSER_AGENT_${key}_${suffix}`,
+    `BROWSER_${key}_${suffix}`,
+    `BROWSER_AGENT_${legacyKey}_${suffix}`,
+    `BROWSER_${legacyKey}_${suffix}`,
+    `BROWSER_AGENT_${suffix}`,
+  ]);
 }
 
 function baseBrowserAgentModel() {
-  return String(process.env.BROWSER_AGENT_MODEL || process.env.RUNTIME_BROWSER_AGENT_MODEL || "").trim();
+  return String(
+    process.env.BROWSER_AGENT_MODEL ||
+    process.env.RUNTIME_BROWSER_AGENT_MODEL ||
+    process.env.BROWSER_PLANNER_MODEL ||
+    process.env.BROWSER_AGENT_PLANNER_MODEL ||
+    process.env.BROWSER_REVIEWER_MODEL ||
+    process.env.BROWSER_AGENT_REVIEWER_MODEL ||
+    process.env.OLLAMA_MODEL ||
+    "llama3.1"
+  ).trim();
 }
 
 function stageModel(stage, fallback = "") {
@@ -165,7 +201,11 @@ export function browserAgentRuntimeConfig({ display = false } = {}) {
     model,
     models: {
       default: model,
+      main: stageModel("main", model),
       planner: plannerModel,
+      reviewer: stageModel("reviewer", model),
+      executor: stageModel("executor", model),
+      resultReviewer: stageModel("resultReviewer", model),
       reporter: reporterModel,
     },
     timeoutMs,
@@ -481,6 +521,67 @@ export async function callBrowserAgentReporter(context = {}) {
     usage: call.usage,
     rawContent: call.content,
   };
+}
+
+export async function callBrowserAgentRoleJson(stage = "planner", {
+  system = "",
+  context = {},
+  schemaName = "",
+} = {}) {
+  const role = String(stage || "planner").trim() || "planner";
+  const call = await callOllamaChat({
+    stage: role,
+    messages: [
+      { role: "system", content: String(system || "Return ONLY strict JSON. Do not use markdown.") },
+      { role: "user", content: compactContext(context) },
+    ],
+  });
+
+  let data;
+  try {
+    data = parseStrictJson(call.content, schemaName || role);
+  } catch (err) {
+    err.usage = call.usage;
+    throw err;
+  }
+
+  return {
+    data,
+    usage: call.usage,
+    rawContent: call.content,
+  };
+}
+
+export async function callBrowserAgentReviewer(context = {}, system = "") {
+  return callBrowserAgentRoleJson("reviewer", {
+    system,
+    context,
+    schemaName: "reviewer",
+  });
+}
+
+export async function callBrowserAgentExecutor(context = {}, system = "") {
+  return callBrowserAgentRoleJson("executor", {
+    system,
+    context,
+    schemaName: "executor",
+  });
+}
+
+export async function callBrowserAgentResultReviewer(context = {}, system = "") {
+  return callBrowserAgentRoleJson("resultReviewer", {
+    system,
+    context,
+    schemaName: "resultReviewer",
+  });
+}
+
+export async function callBrowserAgentMainHandoff(context = {}, system = "") {
+  return callBrowserAgentRoleJson("main", {
+    system,
+    context,
+    schemaName: "mainHandoff",
+  });
 }
 
 export function validatePlannerShape(plan = {}) {
