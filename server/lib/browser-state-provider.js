@@ -57,7 +57,14 @@ function compactButton(button = {}, index = 0) {
     tag: button.tag || "button",
     type: button.type || "",
     text: safeText(button.text || button.label || button.name || "", 220),
-    selector: safeText(button.selector || "", 320),
+    selector: safeText(button.selector || "", 500),
+    id: button.id || "",
+    name: button.name || "",
+    ariaLabel: button.ariaLabel || button.aria || "",
+    title: button.title || "",
+    value: button.value || "",
+    attrs: button.attrs && typeof button.attrs === "object" ? button.attrs : {},
+    raw: button.raw && typeof button.raw === "object" ? button.raw : null,
   };
 }
 
@@ -114,11 +121,15 @@ function compactInteractiveElement(element = {}, index = 0) {
     type: element.type || "",
     text: safeText(element.text || element.label || element.name || element.href || "", 220),
     href: element.href || "",
-    selector: safeText(element.selector || "", 320),
+    selector: safeText(element.selector || "", 500),
     name: element.name || "",
     id: element.id || "",
+    ariaLabel: element.ariaLabel || element.aria || "",
+    title: element.title || "",
     placeholder: element.placeholder || "",
     secret: Boolean(element.secret),
+    attrs: element.attrs && typeof element.attrs === "object" ? element.attrs : {},
+    raw: element.raw && typeof element.raw === "object" ? element.raw : null,
   };
 }
 

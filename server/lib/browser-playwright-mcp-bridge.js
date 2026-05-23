@@ -283,15 +283,43 @@ function fieldsFromCommand(command = {}) {
   return Array.isArray(command.args?.fields) ? command.args.fields : Array.isArray(command.fields) ? command.fields : [];
 }
 
+function cleanDuplicatedWords(value = "") {
+  const words = safeText(value, 240).split(/\s+/).filter(Boolean);
+  if (words.length >= 2 && words.length % 2 === 0) {
+    const half = words.length / 2;
+    const left = words.slice(0, half).join(" ");
+    const right = words.slice(half).join(" ");
+    if (left && left.toLowerCase() === right.toLowerCase()) return left;
+  }
+  return words.join(" ");
+}
+
 function targetTextFromCommand(command = {}) {
-  return safeText(
+  return cleanDuplicatedWords(
     command.args?.text ||
     command.args?.label ||
     command.args?.buttonText ||
     command.target ||
-    "",
-    240,
+    ""
   );
+}
+
+function isLightpandaSyntheticRef(value = "") {
+  return /^lp_(?:link|button|input|form|el)_\d+$/i.test(String(value || "").trim());
+}
+
+function playwrightSelectorFromCommand(command = {}) {
+  const args = command.args || {};
+  const selector = safeText(args.selector || args.rawSelector || args.cssSelector || "", 500);
+  if (selector && !isLightpandaSyntheticRef(selector)) return selector;
+  return "";
+}
+
+function playwrightRefFromCommand(command = {}) {
+  const args = command.args || {};
+  const ref = safeText(args.ref || "", 180);
+  if (!ref || isLightpandaSyntheticRef(ref)) return "";
+  return ref;
 }
 
 function envFlag(name, fallback = false) {
@@ -379,14 +407,108 @@ function clickResultFailed(result = {}) {
     /invalid_type|expected .* received|did not match any elements|tool call failed/i.test(text);
 }
 
+async function tryDomClick(command = {}) {
+  const selector = playwrightSelectorFromCommand(command);
+  const text = targetTextFromCommand(command);
+
+  if (!selector && !text) return { ok: false, error: "DOM click needs selector or text.", text: "" };
+
+  const payload = { selector, text };
+  const script = `() => {
+    const payload = ${JSON.stringify(payload)};
+    const norm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const labelFor = (el) => [
+      el.innerText || el.textContent || "",
+      el.getAttribute("aria-label") || "",
+      el.getAttribute("title") || "",
+      el.getAttribute("value") || "",
+      el.getAttribute("name") || "",
+      el.getAttribute("id") || "",
+      el.getAttribute("data-bs-target") || "",
+      el.getAttribute("aria-controls") || ""
+    ].filter(Boolean).join(" ");
+
+    let el = null;
+    if (payload.selector) {
+      try {
+        const selected = Array.from(document.querySelectorAll(payload.selector)).filter(visible);
+        el = selected[0] || null;
+      } catch {}
+    }
+
+    if (!el && payload.text) {
+      const wanted = norm(payload.text);
+      const candidates = Array.from(document.querySelectorAll("button, [role='button'], input[type='button'], input[type='submit'], a[href]")).filter(visible);
+      el = candidates.find((candidate) => {
+        const label = norm(labelFor(candidate));
+        return label === wanted || label.includes(wanted) || wanted.includes(label);
+      }) || null;
+    }
+
+    if (!el) return { ok: false, error: "No matching DOM element found.", selector: payload.selector, text: payload.text };
+
+    el.scrollIntoView({ block: "center", inline: "center" });
+    el.focus?.();
+    el.click();
+
+    return {
+      ok: true,
+      clickedText: labelFor(el),
+      selector: payload.selector || "",
+      tag: el.tagName.toLowerCase(),
+      id: el.getAttribute("id") || "",
+      ariaExpanded: el.getAttribute("aria-expanded") || "",
+      dataBsTarget: el.getAttribute("data-bs-target") || "",
+      ariaControls: el.getAttribute("aria-controls") || ""
+    };
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  if (clickResultFailed(result)) {
+    return {
+      ok: false,
+      error: "DOM click fallback failed.",
+      text: result.error || result.text || "",
+    };
+  }
+
+  const parsed = parseMcpJsonResult(result.text);
+  if (parsed && parsed.ok === false) {
+    return {
+      ok: false,
+      error: parsed.error || "DOM click did not find target.",
+      text: result.text || "",
+    };
+  }
+
+  return {
+    ...result,
+    ok: true,
+    text: ["DOM click fallback executed.", result.text].filter(Boolean).join("\n"),
+  };
+}
+
 async function tryPlaywrightClick(command = {}, args = {}, state = {}) {
   const commandArgs = command.args || {};
   const text = targetTextFromCommand(command);
-  const ref = safeText(commandArgs.ref || commandArgs.selector || "", 180);
+  const selector = playwrightSelectorFromCommand(command);
+  const ref = playwrightRefFromCommand(command);
 
-  if (!text && !ref) return { ok: false, error: "Click needs visible text or snapshot ref." };
+  if (!text && !ref && !selector) return { ok: false, error: "Click needs visible text, selector, or Playwright snapshot ref." };
 
   const attempts = [];
+  if (selector && text) attempts.push({ label: "selector_target", args: { target: selector, element: text } });
+  if (selector) attempts.push({ label: "selector_only", args: { target: selector } });
   if (text && ref) attempts.push({ label: "target_element_ref", args: { target: text, element: text, ref } });
   if (text && ref) attempts.push({ label: "element_ref", args: { element: text, ref } });
   if (text && ref) attempts.push({ label: "target_ref", args: { target: text, ref } });
@@ -413,6 +535,13 @@ async function tryPlaywrightClick(command = {}, args = {}, state = {}) {
 
     failures.push(attempt.label + ": " + safeText(result.error || result.text || "", 500));
   }
+
+  const domClick = await tryDomClick(command);
+  if (domClick.ok === true) {
+    return domClick;
+  }
+
+  failures.push("dom_click_fallback: " + safeText(domClick.error || domClick.text || "", 500));
 
   const href = hrefNearSnapshotTarget(args.beforeSnapshot, { text, ref });
   if (href) {

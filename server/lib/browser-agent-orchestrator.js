@@ -581,10 +581,12 @@ function commandWithLightpandaExecutionTarget(command = {}, { step = {}, beforeS
       args: {
         currentUrl,
         text: safeText(candidate.text || candidate.label || extractClickTargetText(step, originalInstruction), 180),
-        ref: safeText(candidate.ref || "", 120),
-        selector: safeText(candidate.selector || "", 320),
+        ref: "",
+        lpRef: safeText(candidate.ref || "", 120),
+        selector: safeText(candidate.selector || "", 500),
+        attrs: candidate.attrs && typeof candidate.attrs === "object" ? candidate.attrs : {},
       },
-      notes: "Button intent preserved as a real click even though the candidate had an href.",
+      notes: "Button intent preserved as a real click using raw Lightpanda selector/text, not lp_ref.",
     };
   }
 
@@ -596,12 +598,14 @@ function commandWithLightpandaExecutionTarget(command = {}, { step = {}, beforeS
       ...(command.args || {}),
       currentUrl: currentUrl || command.args?.currentUrl || "",
       text: safeText(candidate.text || candidate.label || command.args?.text || extractClickTargetText(step, originalInstruction), 180),
-      ref: safeText(candidate.ref || command.args?.ref || "", 120),
-      selector: safeText(candidate.selector || command.args?.selector || "", 320),
+      ref: "",
+      lpRef: safeText(candidate.ref || command.args?.ref || "", 120),
+      selector: safeText(candidate.selector || command.args?.selector || "", 500),
+      attrs: candidate.attrs && typeof candidate.attrs === "object" ? candidate.attrs : {},
     },
     notes: safeText([
       command.notes,
-      `Lightpanda execution target: ${safeText(candidate.text || candidate.label || "", 180)} ${safeText(candidate.ref || "", 120)} ${safeText(candidate.selector || "", 220)}`,
+      `Lightpanda execution target: ${safeText(candidate.text || candidate.label || "", 180)} lpRef=${safeText(candidate.ref || "", 120)} selector=${safeText(candidate.selector || "", 220)}`,
     ].filter(Boolean).join(" "), 500),
   };
 }
