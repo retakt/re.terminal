@@ -135,6 +135,45 @@ export function browserAgentTraceTitle(id = "") {
   return getBrowserAgentProfile(id).title;
 }
 
+function parseJsonObject(value = "") {
+  if (!String(value || "").trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveBrowserAgentProfile(id = "") {
+  const profile = getBrowserAgentProfile(id);
+  const customPersonality = envValue(profile, "PERSONALITY");
+  const customSkills = listFromEnv(envValue(profile, "SKILLS"));
+  const customSettingsRaw = envValue(profile, "SETTINGS");
+  const customSettingsObject = parseJsonObject(customSettingsRaw);
+  const customMemory = envValue(profile, "MEMORY");
+  const customPrompt = envValue(profile, "SYSTEM_PROMPT");
+
+  return {
+    id: profile.id,
+    role: profile.role,
+    title: profile.title,
+    stage: profile.stage,
+    envKey: profile.envKey,
+    legacyStage: profile.legacyStage,
+    personality: customPersonality || profile.defaultPersonality,
+    skills: customSkills.length ? customSkills : profile.defaultSkills,
+    settings: {
+      ...(profile.defaultSettings || {}),
+      ...(customSettingsObject || {}),
+    },
+    customSettings: customSettingsObject ? "" : customSettingsRaw,
+    memory: customMemory,
+    hasCustomPrompt: Boolean(customPrompt),
+  };
+}
+
+
 export function browserAgentIdentityBlock(id = "") {
   const profile = getBrowserAgentProfile(id);
   const customPersonality = envValue(profile, "PERSONALITY");

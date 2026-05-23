@@ -6,6 +6,7 @@ export {
   browserAgentSystemPrompt,
   browserAgentTraceTitle,
   getBrowserAgentProfile,
+  resolveBrowserAgentProfile,
 } from "./profiles.js";
 
 export { runOrchestratorAgent, orchestratorSystemPrompt } from "./orchestrator.js";

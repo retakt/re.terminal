@@ -17,6 +17,7 @@ import {
   runOrchestratorAgent,
   runStepAgent,
   runWatcherAgent,
+  resolveBrowserAgentProfile,
 } from "./browser-agents/index.js";
 import {
   buildWatcherSpyReport,
@@ -160,6 +161,14 @@ function checkerFallbackAfterModelError({ checkerCall = null } = {}) {
     messageToUser: "",
     confidence: 0.2,
   };
+}
+
+function isInvalidJsonCheckerError(callResult = null) {
+  return Boolean(
+    callResult &&
+    callResult.ok === false &&
+    /invalid JSON|BROWSER_AGENT_LLM_INVALID_JSON/i.test(String(callResult.error || ""))
+  );
 }
 
 function syntheticPassedResult({ execution = {}, step = {}, command = {} } = {}) {
@@ -473,6 +482,28 @@ function shortModelLabel(model = "") {
     .replace(/qwen3\.5:(\d+b)/i, "qwen3.5:$1");
 }
 
+function agentTraceProfileId(role = "") {
+  const map = {
+    main_orchestrator: "orchestrator",
+    gemma_step_agent: "stepAgent",
+    gemma_step_agent_repair: "stepAgent",
+    gemma_checker: "checker",
+    playwright_controller: "",
+    gemma_result_checker: "watcher",
+    gemma_result_checker_repair: "watcher",
+    report_step_observe: "reporter",
+    final_verifier: "finalVerifier",
+  };
+
+  return map[role] || "";
+}
+
+function agentTraceProfile(role = "") {
+  const id = agentTraceProfileId(role);
+  if (!id) return null;
+  return resolveBrowserAgentProfile(id);
+}
+
 function traceEntry({
   role = "",
   title = "",
@@ -489,6 +520,7 @@ function traceEntry({
 } = {}) {
   const modelValue = model || usage?.model || "";
   const label = agentTraceLabel(role, title);
+  const profile = agentTraceProfile(role);
 
   return {
     role,
@@ -496,6 +528,10 @@ function traceEntry({
     roleLabel: label,
     agentName: label,
     agentKind: agentTraceKind(role),
+    agentProfile: profile,
+    personality: profile?.personality || "",
+    skills: profile?.skills || [],
+    settings: profile?.settings || {},
     model: modelValue,
     modelLabel: shortModelLabel(modelValue),
     status,
@@ -841,6 +877,24 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         },
       }));
 
+      if (isInvalidJsonCheckerError(checkerCall) && envFlag("BROWSER_AGENT_CHECKER_RETRY_ON_INVALID_JSON", true)) {
+        checkerCall = await safeRole("gemma_checker_retry", () => runCheckerAgent({
+          schemaName: "gemma_checker_retry",
+          images: [],
+          context: {
+            originalInstruction: instruction,
+            fullPlan: { ...orchestratorPlan, steps },
+            stepNumber,
+            step,
+            currentUrl,
+            currentTitle,
+            snapshot: compactSnapshotForModel(before?.snapshot),
+            proposedCommand: stepPlan.command || null,
+            retryReason: "Previous checker call returned invalid JSON. Return only strict JSON matching the checker schema.",
+          },
+        }));
+      }
+
 
       checker = checkerCall.call?.data || {};
       const checkerFallback = checkerFallbackAfterModelError({ checkerCall, stepPlan, step, before });
@@ -1144,6 +1198,16 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       nextSafeAction: stoppedReason || "Continue with the next browser instruction.",
       missingSteps: passedAllSteps ? [] : steps.slice(stepResults.length).map((step) => step.instruction),
       reason: stoppedReason || "",
+    };
+  }
+
+  if (!passedAllSteps && final?.success === true) {
+    final = {
+      ...final,
+      success: false,
+      needsUser: true,
+      summary: stoppedReason || final.summary || "Browser task incomplete.",
+      reason: stoppedReason || final.reason || "Not all browser steps passed.",
     };
   }
 
