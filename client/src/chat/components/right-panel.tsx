@@ -89,10 +89,29 @@ function compactPreview(value: unknown, limit = 180) {
   return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
 }
 
+type BrowserAgentProfile = {
+  id?: string;
+  role?: string;
+  title?: string;
+  stage?: string;
+  personality?: string;
+  skills?: string[];
+  settings?: Record<string, unknown>;
+  memory?: string;
+};
+
 type BrowserAgentTraceEntry = {
   role?: string;
   title?: string;
+  roleLabel?: string;
+  agentName?: string;
+  agentKind?: string;
+  agentProfile?: BrowserAgentProfile | null;
+  personality?: string;
+  skills?: string[];
+  settings?: Record<string, unknown>;
   model?: string;
+  modelLabel?: string;
   status?: string;
   step?: number | null;
   tool?: string;
@@ -133,13 +152,43 @@ function browserAgentTraceFromResult(result = ""): BrowserAgentTraceEntry[] {
   return trace.filter(Boolean).slice(0, 80);
 }
 
-function traceRoleLabel(role = "") {
-  return role
-    .replace(/^gemma_/i, "gemma ")
-    .replace(/^main_/i, "main ")
-    .replace(/^playwright_/i, "playwright ")
+function traceRoleLabel(entry: BrowserAgentTraceEntry) {
+  if (entry.roleLabel || entry.agentName || entry.title) {
+    return entry.roleLabel || entry.agentName || entry.title || "Agent";
+  }
+
+  return (entry.role || "")
+    .replace(/^gemma_/i, "")
+    .replace(/^main_/i, "")
+    .replace(/^playwright_/i, "")
     .replace(/_/g, " ")
-    .trim() || "agent";
+    .trim() || "Agent";
+}
+
+function traceModelLabel(entry: BrowserAgentTraceEntry) {
+  return entry.modelLabel || (entry.model ? shortModelName(entry.model) : "");
+}
+
+function traceKindLabel(kind = "") {
+  return kind.replace(/_/g, " ").trim();
+}
+
+function traceProfile(entry: BrowserAgentTraceEntry) {
+  return entry.agentProfile || {
+    personality: entry.personality || "",
+    skills: entry.skills || [],
+    settings: entry.settings || {},
+  };
+}
+
+function hasTraceProfileDetails(entry: BrowserAgentTraceEntry) {
+  const profile = traceProfile(entry);
+  return Boolean(
+    profile?.personality ||
+    profile?.memory ||
+    (Array.isArray(profile?.skills) && profile.skills.length) ||
+    Object.keys(profile?.settings || {}).length
+  );
 }
 
 function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
@@ -158,15 +207,16 @@ function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
             <div className="flex items-center gap-1.5">
               {statusIcon(entry.ok === false ? "error" : entry.status === "running" ? "running" : "complete")}
               <span className="font-mono text-[10px] font-semibold uppercase text-foreground">
-                {entry.step ? `step ${entry.step} · ` : ""}{entry.title || traceRoleLabel(entry.role)}
+                {entry.step ? `step ${entry.step} · ` : ""}{traceRoleLabel(entry)}
               </span>
-              {entry.model && (
+              {traceModelLabel(entry) && (
                 <span className="ml-auto max-w-32 truncate rounded-sm border border-primary/20 px-1 font-mono text-[9px] text-muted-foreground">
-                  {shortModelName(entry.model)}
+                  {traceModelLabel(entry)}
                 </span>
               )}
             </div>
             <div className="mt-1 flex flex-wrap gap-1 font-mono text-[9px] text-muted-foreground">
+              {entry.agentKind && <span>{traceKindLabel(entry.agentKind)}</span>}
               {entry.status && <span>status={entry.status}</span>}
               {entry.tool && <span>tool={entry.tool}</span>}
               {typeof entry.tokens === "number" && <span>{entry.tokens.toLocaleString()} tok</span>}
@@ -176,6 +226,28 @@ function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
               <div className="mt-1 text-[11px] leading-4 text-foreground/90">
                 {compactPreview(entry.summary, 280)}
               </div>
+            )}
+
+            {hasTraceProfileDetails(entry) && (
+              <details className="mt-1 text-[10px] text-muted-foreground">
+                <summary className="cursor-pointer font-mono uppercase tracking-wide text-muted-foreground/80">
+                  profile
+                </summary>
+                <div className="mt-1 space-y-1 rounded-sm border border-border/50 bg-muted/20 p-1.5">
+                  {traceProfile(entry)?.personality && (
+                    <div><span className="font-mono text-muted-foreground/70">personality:</span> {traceProfile(entry)?.personality}</div>
+                  )}
+                  {Array.isArray(traceProfile(entry)?.skills) && Boolean(traceProfile(entry)?.skills?.length) && (
+                    <div><span className="font-mono text-muted-foreground/70">skills:</span> {traceProfile(entry)?.skills?.join(", ")}</div>
+                  )}
+                  {Object.keys(traceProfile(entry)?.settings || {}).length > 0 && (
+                    <div><span className="font-mono text-muted-foreground/70">settings:</span> {compactPreview(traceProfile(entry)?.settings, 220)}</div>
+                  )}
+                  {traceProfile(entry)?.memory && (
+                    <div><span className="font-mono text-muted-foreground/70">memory:</span> {compactPreview(traceProfile(entry)?.memory, 220)}</div>
+                  )}
+                </div>
+              </details>
             )}
           </div>
         ))}
