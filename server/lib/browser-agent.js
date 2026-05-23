@@ -36,6 +36,7 @@ import {
   planBrowserInstructionWithMainModel,
   runBrowserAgentPipeline,
 } from "./browser-agent-pipeline.js";
+import { runBrowserAgentOrchestrator } from "./browser-agent-orchestrator.js";
 import {
   getExtension,
   getExtensionSkill,
@@ -3090,6 +3091,30 @@ export async function browserAgentRun(args = {}) {
   // Browser mode now goes through the multi-agent pipeline by default.
   // The old deterministic watcher/runtime path is legacy-only.
   if (!envFlag("BROWSER_AGENT_LEGACY_RUNTIME", false)) {
+    if (envFlag("BROWSER_AGENT_ORCHESTRATOR_ENABLED", true)) {
+      const orchestratorResult = await runBrowserAgentOrchestrator({
+        ...baseArgs,
+        state,
+        currentUrl: args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
+        currentTitle: args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "",
+      });
+
+      const orchestratorObservation = orchestratorResult?.pipeline?.browserExecution?.observation || null;
+      if (orchestratorObservation && isValidObservation(orchestratorObservation)) {
+        const pageKey = pageKeyForObservation(null, orchestratorObservation);
+        const updated = updateStateFromObservation(state, orchestratorObservation, null, pageKey);
+        return {
+          ...orchestratorResult,
+          state: updated,
+          currentUrl: orchestratorObservation.url || orchestratorResult.currentUrl || "",
+          currentTitle: orchestratorObservation.title || orchestratorResult.currentTitle || "",
+          pageKey,
+        };
+      }
+
+      return orchestratorResult;
+    }
+
     const mainIntent = envFlag("BROWSER_AGENT_MAIN_INTENT_ENABLED", true)
       ? await planBrowserInstructionWithMainModel({
           ...baseArgs,
