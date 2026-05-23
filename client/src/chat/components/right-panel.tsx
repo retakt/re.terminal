@@ -127,6 +127,10 @@ type BrowserAgentTraceEntry = {
 type BrowserTraceActionDetails = {
   kind?: string;
   strategy?: string;
+  formFillOk?: boolean;
+  typeOk?: boolean;
+  domFallbackOk?: boolean;
+  verifyOk?: boolean;
   fields?: Array<{ label?: string; target?: string; type?: string; valuePreview?: string }>;
   target?: string;
   ref?: string;
@@ -245,24 +249,67 @@ function traceActionDetails(entry: BrowserAgentTraceEntry): BrowserTraceActionDe
   const details = output?.actionDetails;
   return details && typeof details === "object" ? details : null;
 }
+function traceOutcome(trace: BrowserAgentTraceEntry[]) {
+  const finalEntry = [...trace].reverse().find((entry) => entry.agentKind === "main_response" || entry.role === "final_verifier");
+  const failed = trace.filter((entry) => entry.ok === false).length;
+  const warnings = trace.filter((entry) => /needs|repair|repaired|started|warning/i.test(String(entry.status || ""))).length;
+  const lastPage = [...trace].reverse().find((entry) => {
+    const output = traceOutputObject(entry);
+    return output?.title || output?.url;
+  });
+  const lastOutput = lastPage ? traceOutputObject(lastPage) : null;
+
+  return {
+    ok: finalEntry?.ok === true && failed === 0,
+    failed,
+    warnings,
+    finalSummary: compactPreview(finalEntry?.summary || "", 220),
+    page: compactPreview([lastOutput?.title, lastOutput?.url].filter(Boolean).join(" — "), 220),
+  };
+}
+
+function traceOutcomeClass(ok: boolean, failed: number) {
+  if (failed > 0 || !ok) return "border-[color:rgba(255,123,114,0.25)] bg-[color:rgba(255,123,114,0.045)]";
+  return "border-[color:rgba(63,185,80,0.22)] bg-[color:rgba(63,185,80,0.04)]";
+}
+
+function strategyLabel(value = "") {
+  return value.replace(/_/g, " ").trim();
+}
+
+function detailPill(label: string, tone: "good" | "warn" | "muted" = "muted") {
+  const toneClass = tone === "good"
+    ? "border-[color:rgba(63,185,80,0.25)] text-[color:var(--accent-green)]"
+    : tone === "warn"
+      ? "border-[color:rgba(210,153,34,0.28)] text-[color:var(--accent-yellow)]"
+      : "border-border/45 text-muted-foreground";
+
+  return <span className={`rounded-sm border px-1 font-mono ${toneClass}`}>{label}</span>;
+}
 
 function BrowserTraceActionDetailsView({ details }: { details: BrowserTraceActionDetails }) {
   if (!details?.kind) return null;
+
   if (details.kind === "fill") {
     const fields = Array.isArray(details.fields) ? details.fields : [];
     return (
-      <div className="mt-1.5 rounded-sm border border-border/40 bg-background/30 px-2 py-1 text-[10px] text-muted-foreground">
-        <div className="flex flex-wrap gap-1 font-mono">
-          <span>action=fill</span>
-          {details.strategy && <span>via={details.strategy.replace(/_/g, " ")}</span>}
+      <div className="mt-1.5 rounded-sm border border-border/35 bg-background/25 px-2 py-1.5 text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-1">
+          {detailPill("fill", details.verifyOk ? "good" : "muted")}
+          {details.strategy && detailPill(strategyLabel(details.strategy), details.verifyOk ? "good" : details.domFallbackOk ? "warn" : "muted")}
+          {details.formFillOk && detailPill("form", "good")}
+          {details.typeOk && detailPill("typed", "good")}
+          {details.domFallbackOk && detailPill("dom", "warn")}
+          {details.verifyOk && detailPill("verified", "good")}
         </div>
+
         {fields.length > 0 && (
-          <div className="mt-1 space-y-0.5">
+          <div className="mt-1.5 space-y-1">
             {fields.slice(0, 4).map((field, index) => (
-              <div key={`${field.label || "field"}-${index}`} className="flex min-w-0 items-center gap-1">
-                <span className="truncate text-foreground/80">{field.label || "field"}</span>
-                {field.target && <span className="font-mono text-muted-foreground/70">[{field.target}]</span>}
-                {field.valuePreview && <span className="ml-auto truncate font-mono">{field.valuePreview}</span>}
+              <div key={(field.label || "field") + "-" + index} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1">
+                <span className="truncate text-foreground/85">{field.label || "field"}</span>
+                {field.target && <span className="rounded-sm bg-muted/40 px-1 font-mono text-muted-foreground/75">{field.target}</span>}
+                {field.valuePreview && <span className="max-w-28 truncate font-mono text-foreground/75">{field.valuePreview}</span>}
               </div>
             ))}
           </div>
@@ -270,13 +317,34 @@ function BrowserTraceActionDetailsView({ details }: { details: BrowserTraceActio
       </div>
     );
   }
-  if (details.kind === "click") return <div className="mt-1.5 rounded-sm border border-border/40 bg-background/30 px-2 py-1 font-mono text-[10px] text-muted-foreground">action=click {details.target || ""} {details.ref ? `[${details.ref}]` : ""}</div>;
-  if (details.kind === "navigate") return <div className="mt-1.5 rounded-sm border border-border/40 bg-background/30 px-2 py-1 font-mono text-[10px] text-muted-foreground">action=navigate {details.url || ""}</div>;
+
+  if (details.kind === "click") {
+    return (
+      <div className="mt-1.5 flex flex-wrap items-center gap-1 rounded-sm border border-border/35 bg-background/25 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+        {detailPill("click")}
+        {details.target && <span className="truncate">{details.target}</span>}
+        {details.ref && <span className="rounded-sm bg-muted/40 px-1">{details.ref}</span>}
+      </div>
+    );
+  }
+
+  if (details.kind === "navigate") {
+    return (
+      <div className="mt-1.5 flex min-w-0 items-center gap-1 rounded-sm border border-border/35 bg-background/25 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+        {detailPill("navigate")}
+        <span className="truncate">{details.url || ""}</span>
+      </div>
+    );
+  }
+
   return null;
 }
 
+
 function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
   if (!trace.length) return null;
+
+  const outcome = traceOutcome(trace);
 
   return (
     <div className="run-reasoning-block">
@@ -286,6 +354,18 @@ function BrowserAgentTraceView({ trace }: { trace: BrowserAgentTraceEntry[] }) {
         <em>{trace.length} events</em>
       </div>
       <div className="space-y-1.5 p-2">
+        <div className={`rounded-sm border px-2 py-1.5 text-[11px] ${traceOutcomeClass(outcome.ok, outcome.failed)}`}>
+          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase text-foreground">
+            {statusIcon(outcome.ok ? "complete" : "error")}
+            <span>{outcome.ok ? "task completed" : "task needs attention"}</span>
+            <span className="ml-auto text-muted-foreground">{outcome.failed} failed · {outcome.warnings} warnings</span>
+          </div>
+          {(outcome.finalSummary || outcome.page) && (
+            <div className="mt-1 leading-4 text-foreground/85">
+              {outcome.finalSummary || outcome.page}
+            </div>
+          )}
+        </div>
         {trace.map((entry, index) => (
           <div key={`${entry.role || "agent"}-${entry.step ?? "x"}-${index}`} className={`rounded-sm border p-2 ${traceToneClass(entry)}`}>
             <div className="flex items-start gap-1.5">
