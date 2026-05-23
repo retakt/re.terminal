@@ -214,6 +214,7 @@ html, body, #root {
   text-transform: lowercase;
   overflow: hidden;
   overscroll-behavior: none;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -254,6 +255,8 @@ body {
   background: var(--bg-base);
   overflow: hidden;
   overscroll-behavior: none;
+  overscroll-behavior-x: none;
+  -webkit-touch-callout: none;
 }
 
 .reterm-root::before {
@@ -340,6 +343,7 @@ body {
   touch-action: pan-x;
   scroll-behavior: smooth;
   scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
 }
 .reterm-tabs::-webkit-scrollbar { display: none; }
 
