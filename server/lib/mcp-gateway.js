@@ -264,12 +264,30 @@ function compactBrowserAgentStatusPayload(payload = {}) {
 
 function compactBrowserAgentPayload(payload = {}) {
   if (!payload || typeof payload !== "object") return payload;
-  const whatFound = compactBrowserObservation(payload.whatFound);
+  const pipelineObservation = payload.pipeline?.browserExecution?.observation || null;
+  const pipelineWhatFound = payload.whatFound || pipelineObservation || null;
+  const whatFound = compactBrowserObservation(pipelineWhatFound);
   const observedControls = {
     forms: Array.isArray(whatFound?.forms) ? whatFound.forms.length : 0,
     inputs: Array.isArray(whatFound?.inputs) ? whatFound.inputs : [],
     buttons: Array.isArray(whatFound?.buttons) ? whatFound.buttons : [],
     links: Array.isArray(whatFound?.links) ? whatFound.links : [],
+  };
+
+  const pipelinePlanner = payload.planner || payload.pipeline?.planner || null;
+  const pipelineReporter = payload.reporter || payload.pipeline?.resultReviewer || null;
+  const pipelineTokenUsage = payload.tokenUsage || {
+    totalTokens: Number(payload.pipeline?.calls?.planner?.usage?.totalTokens || 0) +
+      Number(payload.pipeline?.calls?.reviewer?.usage?.totalTokens || 0) +
+      Number(payload.pipeline?.calls?.executor?.usage?.totalTokens || 0) +
+      Number(payload.pipeline?.calls?.resultReviewer?.usage?.totalTokens || 0) +
+      Number(payload.pipeline?.calls?.mainHandoff?.usage?.totalTokens || 0),
+    planner: payload.pipeline?.calls?.planner?.usage || null,
+    reporter: payload.pipeline?.calls?.mainHandoff?.usage || payload.pipeline?.calls?.resultReviewer?.usage || null,
+    reviewer: payload.pipeline?.calls?.reviewer?.usage || null,
+    executor: payload.pipeline?.calls?.executor?.usage || null,
+    resultReviewer: payload.pipeline?.calls?.resultReviewer?.usage || null,
+    mainHandoff: payload.pipeline?.calls?.mainHandoff?.usage || null,
   };
   return {
     ok: Boolean(payload.ok),
@@ -288,14 +306,14 @@ function compactBrowserAgentPayload(payload = {}) {
     requiresUser: Boolean(payload.requiresUser),
     blockedReason: compactString(payload.blockedReason, 240),
     watcher: payload.watcher || null,
-    planner: payload.planner || null,
-    reporter: payload.reporter || null,
+    planner: pipelinePlanner,
+    reporter: pipelineReporter,
     filledFields: Array.isArray(payload.filledFields) ? payload.filledFields : [],
     missingFields: Array.isArray(payload.missingFields) ? payload.missingFields : [],
     submitStatus: compactString(payload.submitStatus, 160),
     nextSafeAction: compactString(payload.nextSafeAction, 260),
     runtimeTiming: payload.runtimeTiming || null,
-    tokenUsage: payload.tokenUsage || null,
+    tokenUsage: pipelineTokenUsage,
     runtime: payload.runtime || null,
     diagnostics: payload.diagnostics ? {
       diagnosis: compactString(payload.diagnostics.diagnosis, 400),

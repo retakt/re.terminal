@@ -159,40 +159,51 @@ function customSystemPrompt(stage) {
   return pieces.map((piece) => String(piece || "").trim()).filter(Boolean).join("\n\n");
 }
 
+function stageDefaultTemperature(stage = "") {
+  if (stage === "main") return 0.45;
+  if (stage === "reviewer" || stage === "resultReviewer") return 0.15;
+  if (stage === "executor") return 0.1;
+  if (stage === "reporter") return 0.25;
+  return 0.25;
+}
+
 function stageOptions(stage) {
-  const defaultTemperature = stage === "reporter" ? 0.25 : 0.1;
+  const key = stageKey(stage);
+  const defaultTemperature = stageDefaultTemperature(stage);
+
   const options = {
     temperature: envNumber(
-      stage === "reporter" ? "BROWSER_AGENT_REPORTER_TEMPERATURE" : "BROWSER_AGENT_PLANNER_TEMPERATURE",
-      envNumber("BROWSER_AGENT_TEMPERATURE", defaultTemperature, { min: 0, max: 2 }),
+      `BROWSER_AGENT_${key}_TEMPERATURE`,
+      envNumber(`BROWSER_${key}_TEMPERATURE`, envNumber("BROWSER_AGENT_TEMPERATURE", defaultTemperature, { min: 0, max: 2 }), { min: 0, max: 2 }),
       { min: 0, max: 2 },
     ),
     top_p: envNumber(
-      stage === "reporter" ? "BROWSER_AGENT_REPORTER_TOP_P" : "BROWSER_AGENT_PLANNER_TOP_P",
-      envNumber("BROWSER_AGENT_TOP_P", 0.85, { min: 0, max: 1 }),
+      `BROWSER_AGENT_${key}_TOP_P`,
+      envNumber(`BROWSER_${key}_TOP_P`, envNumber("BROWSER_AGENT_TOP_P", 0.85, { min: 0, max: 1 }), { min: 0, max: 1 }),
       { min: 0, max: 1 },
     ),
     top_k: envNumber(
-      stage === "reporter" ? "BROWSER_AGENT_REPORTER_TOP_K" : "BROWSER_AGENT_PLANNER_TOP_K",
-      envNumber("BROWSER_AGENT_TOP_K", 40, { min: 0, max: 1000 }),
+      `BROWSER_AGENT_${key}_TOP_K`,
+      envNumber(`BROWSER_${key}_TOP_K`, envNumber("BROWSER_AGENT_TOP_K", 40, { min: 0, max: 1000 }), { min: 0, max: 1000 }),
       { min: 0, max: 1000 },
     ),
     repeat_penalty: envNumber(
-      stage === "reporter" ? "BROWSER_AGENT_REPORTER_REPEAT_PENALTY" : "BROWSER_AGENT_PLANNER_REPEAT_PENALTY",
-      envNumber("BROWSER_AGENT_REPEAT_PENALTY", 1.05, { min: 0, max: 4 }),
+      `BROWSER_AGENT_${key}_REPEAT_PENALTY`,
+      envNumber(`BROWSER_${key}_REPEAT_PENALTY`, envNumber("BROWSER_AGENT_REPEAT_PENALTY", 1.05, { min: 0, max: 4 }), { min: 0, max: 4 }),
       { min: 0, max: 4 },
     ),
   };
+
   const numCtx = envNumber("BROWSER_AGENT_NUM_CTX", 8192, { min: 1024, max: 131072 });
   if (numCtx) options.num_ctx = numCtx;
 
-  const stageUpper = String(stage || "").toUpperCase();
   const numPredict = envNumber(
-    `BROWSER_AGENT_${stageUpper}_NUM_PREDICT`,
-    envNumber("BROWSER_AGENT_NUM_PREDICT", 2048, { min: 128, max: 32768 }),
+    `BROWSER_AGENT_${key}_NUM_PREDICT`,
+    envNumber(`BROWSER_${key}_NUM_PREDICT`, envNumber("BROWSER_AGENT_NUM_PREDICT", 2048, { min: 128, max: 32768 }), { min: 128, max: 32768 }),
     { min: 128, max: 32768 },
   );
   if (numPredict) options.num_predict = numPredict;
+
   const seed = envNumber("BROWSER_AGENT_SEED", NaN);
   if (Number.isFinite(seed)) options.seed = seed;
   return options;
@@ -225,7 +236,11 @@ export function browserAgentRuntimeConfig({ display = false } = {}) {
     timeoutMs,
     think: envFlag("BROWSER_AGENT_THINK", false),
     options: {
+      main: stageOptions("main"),
       planner: stageOptions("planner"),
+      reviewer: stageOptions("reviewer"),
+      executor: stageOptions("executor"),
+      resultReviewer: stageOptions("resultReviewer"),
       reporter: stageOptions("reporter"),
     },
     prompts: {

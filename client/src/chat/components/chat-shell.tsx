@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useApp } from "@/contexts/app-context";
 
 const PANEL_MOTION_KEY = "reterm.chat.panelMotion";
-const MOBILE_QUERY = "(max-width: 767px), (hover: none) and (pointer: coarse)";
+const MOBILE_QUERY = "(max-width: 1024px), (hover: none) and (pointer: coarse)";
 const MOBILE_PANEL_EXIT_MS = 380;
 type MobilePanelSide = "context" | "activity";
 
