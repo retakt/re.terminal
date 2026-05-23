@@ -23,3 +23,7 @@ server/.playwright-mcp/
 # Editors
 .vscode/
 ```
+
+# Browser agent debug artifacts
+server/debug-browser-agent-*.json
+server/config/browser-agent/debug-browser-*.json
