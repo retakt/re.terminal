@@ -160,7 +160,7 @@ import "./index.css";
       WebkitUserSelect: "none",
       WebkitTouchCallout: "none",
       background: "transparent",
-    } as CSSStyleDeclaration);
+    });
 
     const claim = (event: Event) => {
       cancel(event);

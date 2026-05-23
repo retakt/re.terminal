@@ -349,6 +349,147 @@ function browserWhatFound(observation = null) {
   };
 }
 
+function compactTraceValue(value = null, limit = 900) {
+  if (value == null) return "";
+  if (typeof value === "string") return safeText(value, limit);
+  try {
+    return safeText(JSON.stringify(value, null, 2), limit);
+  } catch {
+    return safeText(String(value), limit);
+  }
+}
+
+function agentTraceEntry({
+  role = "",
+  title = "",
+  model = "",
+  status = "",
+  step = null,
+  input = "",
+  output = "",
+  summary = "",
+  tool = "",
+  ok = null,
+  durationMs = null,
+  tokens = null,
+  reasoning = "",
+} = {}) {
+  return {
+    role,
+    title: title || role,
+    model,
+    status,
+    step,
+    tool,
+    ok,
+    durationMs,
+    tokens,
+    input: compactTraceValue(input, 1200),
+    output: compactTraceValue(output, 1400),
+    summary: compactTraceValue(summary || output, 900),
+    reasoning: compactTraceValue(reasoning, 1200),
+  };
+}
+
+function buildSingleStepAgentTrace({
+  instruction = "",
+  runtime = {},
+  planner = null,
+  reviewer = null,
+  executor = null,
+  browserExecution = null,
+  resultReviewer = null,
+  main = null,
+  plannerResult = null,
+  reviewerResult = null,
+  executorResult = null,
+  resultReviewerResult = null,
+  mainResult = null,
+} = {}) {
+  const models = runtime?.models || {};
+  const command = reviewer?.approvedCommand || planner?.proposedCommand || {};
+
+  return [
+    agentTraceEntry({
+      role: "gemma_step_planner",
+      title: "Gemma step planner",
+      model: models.planner || models.default || "",
+      status: planner?.status || (plannerResult?.ok ? "planned" : "failed"),
+      input: instruction,
+      output: planner,
+      summary: planner?.reason || planner?.userIntent || "",
+      tool: planner?.proposedCommand?.tool || "",
+      ok: plannerResult?.ok ?? null,
+      durationMs: plannerResult?.call?.usage?.totalDurationMs || plannerResult?.usage?.totalDurationMs || null,
+      tokens: plannerResult?.call?.usage?.totalTokens || plannerResult?.usage?.totalTokens || null,
+      reasoning: plannerResult?.call?.thinking || "",
+    }),
+    agentTraceEntry({
+      role: "gemma_checker",
+      title: "Gemma command checker",
+      model: models.reviewer || models.default || "",
+      status: reviewer?.status || (reviewerResult?.ok ? "checked" : "failed"),
+      input: planner,
+      output: reviewer,
+      summary: reviewer?.reason || reviewer?.messageToExecutor || reviewer?.messageToMain || "",
+      tool: command?.tool || "",
+      ok: reviewerResult?.ok ?? null,
+      durationMs: reviewerResult?.call?.usage?.totalDurationMs || reviewerResult?.usage?.totalDurationMs || null,
+      tokens: reviewerResult?.call?.usage?.totalTokens || reviewerResult?.usage?.totalTokens || null,
+      reasoning: reviewerResult?.call?.thinking || "",
+    }),
+    agentTraceEntry({
+      role: "playwright_controller",
+      title: "Playwright browser controller",
+      model: "playwright_mcp",
+      status: browserExecution?.status || "not_run",
+      input: command,
+      output: {
+        url: browserExecution?.observation?.url || "",
+        title: browserExecution?.observation?.title || "",
+        summary: browserExecution?.summary || browserExecution?.actionResult?.text || "",
+      },
+      summary: browserExecution?.summary || browserExecution?.actionResult?.text || "",
+      tool: browserExecution?.tool || command?.tool || "",
+      ok: browserExecution?.ok ?? null,
+    }),
+    agentTraceEntry({
+      role: "gemma_result_checker",
+      title: "Gemma result checker",
+      model: models.resultReviewer || models.reporter || models.default || "",
+      status: resultReviewer?.status || (resultReviewerResult?.ok ? "checked" : "skipped"),
+      input: browserExecution ? {
+        tool: browserExecution.tool,
+        status: browserExecution.status,
+        url: browserExecution.observation?.url,
+        title: browserExecution.observation?.title,
+      } : "",
+      output: resultReviewer,
+      summary: resultReviewer?.messageToMain || resultReviewer?.normalizedResult || "",
+      ok: resultReviewer?.success ?? null,
+      durationMs: resultReviewerResult?.call?.usage?.totalDurationMs || resultReviewerResult?.usage?.totalDurationMs || null,
+      tokens: resultReviewerResult?.call?.usage?.totalTokens || resultReviewerResult?.usage?.totalTokens || null,
+      reasoning: resultReviewerResult?.call?.thinking || "",
+    }),
+    agentTraceEntry({
+      role: "final_handoff",
+      title: "Final answer handoff",
+      model: models.main || models.default || "",
+      status: main?.needsUser ? "needs_user" : "ready",
+      input: {
+        originalInstruction: instruction,
+        result: resultReviewer?.messageToMain || browserExecution?.summary || "",
+      },
+      output: main,
+      summary: main?.summary || "",
+      ok: main?.needsUser === true ? false : true,
+      durationMs: mainResult?.call?.usage?.totalDurationMs || mainResult?.usage?.totalDurationMs || null,
+      tokens: mainResult?.call?.usage?.totalTokens || mainResult?.usage?.totalTokens || null,
+      reasoning: mainResult?.call?.thinking || "",
+    }),
+  ];
+}
+
 async function safeCaptureBeforeSnapshot(args, state) {
   try {
     return await capturePlaywrightMcpSnapshot({ ...args, label: "review_before" }, state);
@@ -656,6 +797,22 @@ export async function runBrowserAgentPipeline(args = {}) {
     mainResult,
   });
 
+  pipeline.agentTrace = buildSingleStepAgentTrace({
+    instruction,
+    runtime,
+    planner,
+    reviewer,
+    executor,
+    browserExecution,
+    resultReviewer,
+    main,
+    plannerResult,
+    reviewerResult,
+    executorResult,
+    resultReviewerResult,
+    mainResult,
+  });
+
   const timing = {
     totalMs: roundMs(nowMs() - startedAt),
     pipelineMs: roundMs(nowMs() - startedAt),
@@ -716,6 +873,7 @@ export async function runBrowserAgentPipeline(args = {}) {
       failureDiagnosis: executionOk ? "" : browserExecution?.error || reviewer.reason || "",
       role: envFlag("BROWSER_AGENT_MAIN_HANDOFF_ENABLED", false) ? "main_handoff" : "synthetic_handoff",
     },
+    agentTrace: pipeline.agentTrace || [],
     pipeline,
     runtime,
     runtimeTiming: timing,

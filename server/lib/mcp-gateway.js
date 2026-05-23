@@ -315,6 +315,11 @@ function compactBrowserAgentPayload(payload = {}) {
     runtimeTiming: payload.runtimeTiming || null,
     tokenUsage: pipelineTokenUsage,
     agentReasoning: payload.pipeline?.agentReasoning || null,
+    agentTrace: Array.isArray(payload.agentTrace)
+      ? payload.agentTrace.slice(0, 80)
+      : Array.isArray(payload.pipeline?.agentTrace)
+        ? payload.pipeline.agentTrace.slice(0, 80)
+        : [],
     runtime: payload.runtime || null,
     diagnostics: payload.diagnostics ? {
       diagnosis: compactString(payload.diagnostics.diagnosis, 400),

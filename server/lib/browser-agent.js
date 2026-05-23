@@ -3028,6 +3028,11 @@ export async function browserAgentRun(args = {}) {
         currentTitle,
         blockedReason: stepResult.blockedReason || "",
         visualCrosscheck: stepResult.pipeline?.visualCrosscheck || null,
+        agentTrace: Array.isArray(stepResult.agentTrace)
+          ? stepResult.agentTrace
+          : Array.isArray(stepResult.pipeline?.agentTrace)
+            ? stepResult.pipeline.agentTrace
+            : [],
       });
 
       finalResult = stepResult;
@@ -3054,6 +3059,24 @@ export async function browserAgentRun(args = {}) {
       nextSafeAction: completed === total
         ? last.nextSafeAction || "Continue with the next browser instruction."
         : sequenceItems[completed] || last.nextSafeAction || "Continue the remaining browser step.",
+      agentTrace: items.flatMap((item) => [
+        {
+          role: "sequence_step",
+          title: `Step ${item.index + 1}`,
+          status: item.status,
+          step: item.index + 1,
+          ok: item.ok,
+          input: item.instruction,
+          output: item.summary,
+          summary: item.summary,
+          tool: "",
+          model: "",
+        },
+        ...(Array.isArray(item.agentTrace) ? item.agentTrace.map((entry) => ({
+          ...entry,
+          step: item.index + 1,
+        })) : []),
+      ]),
       sequence: {
         completed,
         total,
@@ -3089,6 +3112,23 @@ export async function browserAgentRun(args = {}) {
       return {
         ...sequenceResult,
         mainIntent: mainIntent?.plan || null,
+        agentTrace: [
+          {
+            role: "main_orchestrator",
+            title: "Main model intent orchestrator",
+            model: mainIntent?.usage?.model || "",
+            status: mainIntent?.plan?.status || (mainIntent?.ok ? "ready" : "failed"),
+            step: null,
+            ok: mainIntent?.ok ?? null,
+            input: instruction,
+            output: mainIntent?.plan || null,
+            summary: mainIntent?.plan?.userIntent || "",
+            tool: "",
+            durationMs: mainIntent?.usage?.totalDurationMs || null,
+            tokens: mainIntent?.usage?.totalTokens || null,
+          },
+          ...(Array.isArray(sequenceResult.agentTrace) ? sequenceResult.agentTrace : []),
+        ],
         tokenUsage: sequenceResult.tokenUsage || {
           totalTokens: Number(mainIntent?.usage?.totalTokens || 0),
           planner: mainIntent?.usage || null,
