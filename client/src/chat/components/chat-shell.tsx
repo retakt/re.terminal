@@ -391,9 +391,9 @@ function ChatLayout({ isActive }: { isActive: boolean }) {
             </ResizablePanel>
             <ResizableHandle className="chat-resize-handle" />
             <ResizablePanel
-              defaultSize="320px"
-              minSize="280px"
-              maxSize="420px"
+              defaultSize="560px"
+              minSize="320px"
+              maxSize="760px"
               groupResizeBehavior="preserve-pixel-size"
             >
               <div className={cn("chat-activity-pane", `chat-motion-${panelMotion}`)}>
