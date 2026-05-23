@@ -80,44 +80,6 @@ function syntheticApprovedChecker(stepPlan = {}) {
   };
 }
 
-function checkerDecisionForExecution(checker = {}, checkerCall = null) {
-  if (checkerCall && checkerCall.ok === false) {
-    return {
-      ok: false,
-      reason: checkerCall.error || "Checker model call failed.",
-    };
-  }
-
-  const status = String(checker?.status || "").toLowerCase();
-  const hasCommand = Boolean(checker?.command && typeof checker.command === "object" && checker.command.tool);
-
-  if (status === "rejected" || status === "needs_user") {
-    return {
-      ok: false,
-      reason: checker.reason || checker.messageToUser || "Step was not approved.",
-    };
-  }
-
-  // Important:
-  // A repaired command is allowed even if the checker says approved=false.
-  // Many models use approved=false to mean "original command was not approved",
-  // while still returning a corrected command that should be executed.
-  if (status === "repaired") {
-    return hasCommand
-      ? { ok: true, repaired: true, reason: checker.reason || checker.repairInstruction || "" }
-      : { ok: false, reason: checker.reason || "Checker said repaired but returned no command." };
-  }
-
-  if (checker?.approved === false) {
-    return {
-      ok: false,
-      reason: checker.reason || checker.messageToUser || "Step was not approved.",
-    };
-  }
-
-  return { ok: true, repaired: false, reason: checker.reason || "" };
-}
-
 function syntheticPassedResult({ execution = {}, step = {}, command = {} } = {}) {
   const observation = observationFromExecution(execution);
   const where = [observation.title, observation.url].filter(Boolean).join(" — ");
@@ -246,6 +208,73 @@ function thinkingOf(callResult) {
   return safeText(callResult?.call?.thinking || "", 1200);
 }
 
+function traceValueSummary(value = "") {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return value.map((item) => traceValueSummary(item)).filter(Boolean).join(" | ");
+
+  if (typeof value === "object") {
+    const command = value.command || value.approvedCommand || null;
+    const args = command?.args || value.args || {};
+
+    const direct = [
+      value.summary,
+      value.reason,
+      value.messageToChecker,
+      value.messageToUser,
+      value.evidence,
+      value.repairInstruction,
+      value.notes,
+      command?.notes,
+    ].find((item) => typeof item === "string" && item.trim());
+
+    if (direct) return direct;
+
+    if (command?.tool) {
+      const target = args.text || args.label || args.buttonText || args.url || args.currentUrl || "";
+      const ref = args.ref ? " ref=" + args.ref : "";
+      return [command.tool, target ? "target=" + target : "", ref].filter(Boolean).join(" ");
+    }
+
+    if (value.url || value.title) {
+      return [value.title, value.url].filter(Boolean).join(" — ");
+    }
+
+    try {
+      return safeText(JSON.stringify(value), 700);
+    } catch {
+      return "";
+    }
+  }
+
+  return String(value || "");
+}
+
+function checkerDecisionForExecution(checker = {}, checkerCall = null) {
+  if (checkerCall && checkerCall.ok === false) {
+    return { ok: false, reason: checkerCall.error || "Checker model call failed." };
+  }
+
+  const status = String(checker?.status || "").toLowerCase();
+  const hasCommand = Boolean(checker?.command && typeof checker.command === "object" && checker.command.tool);
+
+  if (status === "rejected" || status === "needs_user") {
+    return { ok: false, reason: checker.reason || checker.messageToUser || "Step was not approved." };
+  }
+
+  if (status === "repaired") {
+    return hasCommand
+      ? { ok: true, repaired: true, reason: checker.reason || checker.repairInstruction || "" }
+      : { ok: false, reason: checker.reason || "Checker said repaired but returned no command." };
+  }
+
+  if (checker?.approved === false) {
+    return { ok: false, reason: checker.reason || checker.messageToUser || "Step was not approved." };
+  }
+
+  return { ok: true, repaired: false, reason: checker.reason || "" };
+}
+
 function traceEntry({
   role = "",
   title = "",
@@ -272,7 +301,7 @@ function traceEntry({
     tokens: usage?.totalTokens || null,
     input,
     output,
-    summary: safeText(summary || output, 1000),
+    summary: safeText(summary || traceValueSummary(output), 1000),
     reasoning: safeText(reasoning, 1200),
   };
 }
