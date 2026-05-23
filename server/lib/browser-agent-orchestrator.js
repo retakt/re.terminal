@@ -1244,14 +1244,106 @@ function browserExecutionTraceSummary(command = {}, execution = {}) {
   return execution.error || page;
 }
 
-function watcherResultOrFallback({ resultCheck = {}, resultCheckCall = null, execution = {}, step = {}, command = {} } = {}) {
+function isSyncSensitiveExecutionCommand(command = {}) {
+  return [
+    "browserClickByText",
+    "browserFillFields",
+    "browserSubmitForm",
+    "browserFillAndSubmit",
+  ].includes(String(command?.tool || ""));
+}
+
+function watcherStepHistory(stepResults = []) {
+  return (Array.isArray(stepResults) ? stepResults : []).map((item) => ({
+    stepNumber: item.stepNumber || null,
+    instruction: safeText(item.step?.instruction || "", 240),
+    expectedAction: safeText(item.step?.expectedAction || "", 80),
+    ok: item.ok === true,
+    status: safeText(item.status || "", 80),
+    summary: safeText(item.summary || "", 500),
+    url: safeText(item.url || "", 500),
+    title: safeText(item.title || "", 240),
+    command: item.command ? {
+      intent: safeText(item.command.intent || "", 80),
+      tool: safeText(item.command.tool || "", 80),
+      args: item.command.args || {},
+    } : null,
+  }));
+}
+
+function watcherRecentTrace(trace = [], limit = 14) {
+  return (Array.isArray(trace) ? trace : [])
+    .slice(-limit)
+    .map((entry) => ({
+      role: safeText(entry.role || "", 80),
+      step: entry.step ?? null,
+      status: safeText(entry.status || "", 80),
+      ok: entry.ok,
+      tool: safeText(entry.tool || "", 80),
+      summary: safeText(entry.summary || "", 500),
+    }));
+}
+
+function watcherHybridContext({ stepResults = [], trace = [], beforeState = null, currentUrl = "", currentTitle = "" } = {}) {
+  return {
+    currentUrl: safeText(currentUrl || "", 500),
+    currentTitle: safeText(currentTitle || "", 240),
+    stepHistory: watcherStepHistory(stepResults),
+    recentTrace: watcherRecentTrace(trace),
+    lightpanda: beforeState ? {
+      ok: beforeState.ok === true,
+      url: safeText(beforeState.url || "", 500),
+      title: safeText(beforeState.title || "", 240),
+      source: safeText(beforeState.source || "", 120),
+      engine: safeText(beforeState.engine || "", 120),
+      stats: beforeState.stats || {},
+    } : null,
+    policy: {
+      lightpandaRole: "read_only_dom_intelligence",
+      playwrightRole: "executor",
+      syncRepairInstruction: "SYNC_PLAYWRIGHT_TO_LIGHTPANDA_AND_RETRY: <beforeState.url>",
+    },
+  };
+}
+
+function watcherSyncRepairInstruction({ command = {}, beforeState = null, execution = {} } = {}) {
+  const url = safeText(beforeState?.url || "", 500);
+  if (!url) return "";
+  if (!isSyncSensitiveExecutionCommand(command)) return "";
+  if (execution?.ok === true && !execution?.error) return "";
+  return `SYNC_PLAYWRIGHT_TO_LIGHTPANDA_AND_RETRY: ${url}`;
+}
+
+function parseWatcherSyncRepairInstruction(value = "") {
+  const raw = String(value || "");
+  const match = raw.match(/SYNC_PLAYWRIGHT_TO_LIGHTPANDA_AND_RETRY:\s*(https?:\/\/\S+)/i);
+  return match?.[1] ? { url: match[1].replace(/[.,;:!?]+$/g, "") } : null;
+}
+
+function watcherResultOrFallback({ resultCheck = {}, resultCheckCall = null, execution = {}, step = {}, command = {}, beforeState = null } = {}) {
   const hasData = resultCheck && typeof resultCheck === "object" && Object.keys(resultCheck).length > 0;
   if (hasData) return resultCheck;
+
   const actionSummary = browserExecutionTraceSummary(command, execution);
   const callError = safeText(resultCheckCall?.error || "", 500);
   const stepName = safeText(step?.instruction || "browser step", 240);
-  return { status: execution.ok === true ? "needs_repair" : "failed", success: false, summary: "Watcher returned no valid decision for: " + stepName + ". " + (actionSummary || callError || "Verification was inconclusive."), evidence: actionSummary || callError || "No watcher JSON was available.", repairInstruction: command.tool === "browserFillFields" || command.tool === "browserFillAndSubmit" ? "Re-fill the fields with verified typing, then submit only after values are confirmed." : "Retry the step with a more specific target and verify the result.", messageToUser: "", confidence: 0.1 };
+  const syncRepair = watcherSyncRepairInstruction({ command, beforeState, execution });
+
+  return {
+    status: execution.ok === true ? "needs_repair" : "failed",
+    success: false,
+    summary: "Watcher returned no valid decision for: " + stepName + ". " + (actionSummary || callError || "Verification was inconclusive."),
+    evidence: actionSummary || callError || "No watcher JSON was available.",
+    repairInstruction: syncRepair || (
+      command.tool === "browserFillFields" || command.tool === "browserFillAndSubmit"
+        ? "Re-fill the fields with verified typing, then submit only after values are confirmed."
+        : "Retry the step with a more specific target and verify the result."
+    ),
+    messageToUser: "",
+    confidence: 0.1,
+  };
 }
+
 
 function observationFromExecution(execution = null, fallback = {}) {
   return execution?.observation || {
@@ -1942,6 +2034,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             observation: observationFromExecution(execution),
           },
           beforeState: compactBeforeState,
+          watcherContext: watcherHybridContext({
+            stepResults,
+            trace,
+            beforeState,
+            currentUrl,
+            currentTitle,
+          }),
           beforeSnapshot: compactSnapshotForModel(execution.beforeSnapshot || before?.snapshot),
           afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
         },
@@ -1954,6 +2053,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         execution,
         step,
         command: executionCommand,
+        beforeState,
       });
       trace.push(traceEntry({
         role: "gemma_result_checker",
@@ -1988,6 +2088,135 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         summary: resultCheck.repairInstruction,
         ok: null,
       }));
+
+      const syncRepair = parseWatcherSyncRepairInstruction(resultCheck.repairInstruction);
+      if (syncRepair) {
+        const syncCommand = {
+          intent: "sync_playwright_to_lightpanda",
+          tool: "browserNavigate",
+          args: { url: syncRepair.url },
+          notes: "Watcher requested Playwright sync to Lightpanda URL before retrying the original action.",
+        };
+
+        const syncExecution = await executePlaywrightMcpBrowserCommand({
+          command: syncCommand,
+          args: { ...args, currentUrl: syncRepair.url },
+          state: currentState,
+          beforeObservation: observationFromPageState(beforeState),
+          skipBeforeSnapshot: true,
+        });
+
+        trace.push(traceEntry({
+          role: "playwright_controller",
+          title: "Playwright sync controller",
+          step: stepNumber,
+          status: syncExecution.status || "synced",
+          input: syncCommand,
+          output: {
+            url: syncExecution.observation?.url || "",
+            title: syncExecution.observation?.title || "",
+            error: syncExecution.error || "",
+            summary: syncExecution.actionResult?.text || "",
+            actionDetails: browserExecutionUiDetails(syncCommand, syncExecution),
+          },
+          summary: "Watcher sync: " + browserExecutionTraceSummary(syncCommand, syncExecution),
+          tool: syncCommand.tool,
+          ok: syncExecution.ok === true,
+        }));
+
+        if (!syncExecution.ok) {
+          execution = syncExecution;
+          resultCheck = watcherResultOrFallback({
+            resultCheck: {},
+            resultCheckCall,
+            execution,
+            step,
+            command: syncCommand,
+            beforeState,
+          });
+          continue;
+        }
+
+        execution = await executePlaywrightMcpBrowserCommand({
+          command: executionCommand,
+          args: { ...args, currentUrl: syncRepair.url },
+          state: currentState,
+          beforeSnapshot: syncExecution.afterSnapshot || null,
+          beforeObservation: observationFromPageState(beforeState),
+        });
+
+        trace.push(traceEntry({
+          role: "playwright_controller",
+          title: "Playwright retry controller",
+          step: stepNumber,
+          status: execution.status || "retried",
+          input: executionCommand,
+          output: {
+            url: execution.observation?.url || "",
+            title: execution.observation?.title || "",
+            error: execution.error || "",
+            summary: execution.actionResult?.text || "",
+            actionDetails: browserExecutionUiDetails(executionCommand, execution),
+          },
+          summary: "Watcher retry: " + browserExecutionTraceSummary(executionCommand, execution),
+          tool: executionCommand.tool,
+          ok: execution.ok === true,
+        }));
+
+        const retryCheckCall = await safeRole("gemma_result_checker_repair", () => runWatcherAgent({
+          schemaName: "gemma_result_checker_repair",
+          images: snapshotImagesForModel(execution.beforeSnapshot, execution.afterSnapshot),
+          context: {
+            originalInstruction: instruction,
+            fullPlan: { ...orchestratorPlan, steps },
+            stepNumber,
+            step,
+            command: executionCommand,
+            browserExecution: {
+              ok: execution.ok,
+              status: execution.status,
+              error: execution.error || "",
+              observation: observationFromExecution(execution),
+            },
+            beforeState: compactBeforeState,
+            watcherContext: watcherHybridContext({
+              stepResults,
+              trace,
+              beforeState,
+              currentUrl: execution.observation?.url || syncRepair.url,
+              currentTitle: execution.observation?.title || currentTitle,
+            }),
+            beforeSnapshot: compactSnapshotForModel(execution.beforeSnapshot),
+            afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
+            repairKind: "watcher_sync_retry",
+          },
+        }));
+
+        resultCheckCall = retryCheckCall;
+        resultCheck = watcherResultOrFallback({
+          resultCheck: retryCheckCall.call?.data || {},
+          resultCheckCall: retryCheckCall,
+          execution,
+          step,
+          command: executionCommand,
+          beforeState,
+        });
+
+        trace.push(traceEntry({
+          role: "gemma_result_checker_repair",
+          title: "Watcher sync retry checker",
+          step: stepNumber,
+          status: resultCheck.status || (retryCheckCall.ok ? "checked" : "failed"),
+          input: executionCommand,
+          output: resultCheck,
+          summary: resultCheck.summary || resultCheck.evidence || resultCheck.repairInstruction || "",
+          ok: resultCheck.success === true,
+          usage: usageOf(retryCheckCall),
+          reasoning: thinkingOf(retryCheckCall),
+        }));
+
+        continue;
+      }
 
       const repairAgentCall = await safeRole("gemma_step_agent_repair", () => runStepAgent({
         schemaName: "gemma_step_agent_repair",
@@ -2046,6 +2275,14 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             error: execution.error || "",
             observation: observationFromExecution(execution),
           },
+          beforeState: compactBeforeState,
+          watcherContext: watcherHybridContext({
+            stepResults,
+            trace,
+            beforeState,
+            currentUrl: execution.observation?.url || currentUrl,
+            currentTitle: execution.observation?.title || currentTitle,
+          }),
           beforeSnapshot: compactSnapshotForModel(execution.beforeSnapshot),
           afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
         },
@@ -2059,6 +2296,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         execution,
         step,
         command: repairCommand.command,
+        beforeState,
       });
 
       trace.push(traceEntry({
