@@ -2945,12 +2945,27 @@ export async function browserAgentRun(args = {}) {
   // Browser mode now goes through the multi-agent pipeline by default.
   // The old deterministic watcher/runtime path is legacy-only.
   if (!envFlag("BROWSER_AGENT_LEGACY_RUNTIME", false)) {
-    return runBrowserAgentPipeline({
+    const pipelineResult = await runBrowserAgentPipeline({
       ...baseArgs,
       state,
       currentUrl: args.currentUrl || state.currentUrl || state.lastValidObservation?.url || "",
       currentTitle: args.currentTitle || state.currentTitle || state.lastValidObservation?.title || "",
     });
+
+    const pipelineObservation = pipelineResult?.pipeline?.browserExecution?.observation || null;
+    if (pipelineObservation && isValidObservation(pipelineObservation)) {
+      const pageKey = pageKeyForObservation(null, pipelineObservation);
+      const updated = updateStateFromObservation(state, pipelineObservation, null, pageKey);
+      return {
+        ...pipelineResult,
+        state: updated,
+        currentUrl: pipelineObservation.url || pipelineResult.currentUrl || "",
+        currentTitle: pipelineObservation.title || pipelineResult.currentTitle || "",
+        pageKey,
+      };
+    }
+
+    return pipelineResult;
   }
 
   if (!instruction) {

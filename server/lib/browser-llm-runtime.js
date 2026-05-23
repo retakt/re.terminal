@@ -479,12 +479,28 @@ function compactContext(context = {}) {
   return JSON.stringify(context, null, 2).slice(0, 12000);
 }
 
-export async function callBrowserAgentPlanner(context = {}) {
+function normalizedImages(images = []) {
+  return (Array.isArray(images) ? images : [])
+    .map((image) => String(image || "").trim().replace(/^data:image\/[a-z0-9.+-]+;base64,/i, ""))
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function userMessageWithImages(context = {}, images = []) {
+  const safeImages = normalizedImages(images);
+  return {
+    role: "user",
+    content: compactContext(context),
+    ...(safeImages.length ? { images: safeImages } : {}),
+  };
+}
+
+export async function callBrowserAgentPlanner(context = {}, options = {}) {
   const call = await callOllamaChat({
     stage: "planner",
     messages: [
       { role: "system", content: plannerSystemPrompt() },
-      { role: "user", content: compactContext(context) },
+      userMessageWithImages(context, options.images),
     ],
   });
   let plan;
@@ -527,13 +543,14 @@ export async function callBrowserAgentRoleJson(stage = "planner", {
   system = "",
   context = {},
   schemaName = "",
+  images = [],
 } = {}) {
   const role = String(stage || "planner").trim() || "planner";
   const call = await callOllamaChat({
     stage: role,
     messages: [
       { role: "system", content: String(system || "Return ONLY strict JSON. Do not use markdown.") },
-      { role: "user", content: compactContext(context) },
+      userMessageWithImages(context, images),
     ],
   });
 
@@ -552,35 +569,39 @@ export async function callBrowserAgentRoleJson(stage = "planner", {
   };
 }
 
-export async function callBrowserAgentReviewer(context = {}, system = "") {
+export async function callBrowserAgentReviewer(context = {}, system = "", options = {}) {
   return callBrowserAgentRoleJson("reviewer", {
     system,
     context,
     schemaName: "reviewer",
+    images: options.images || [],
   });
 }
 
-export async function callBrowserAgentExecutor(context = {}, system = "") {
+export async function callBrowserAgentExecutor(context = {}, system = "", options = {}) {
   return callBrowserAgentRoleJson("executor", {
     system,
     context,
     schemaName: "executor",
+    images: options.images || [],
   });
 }
 
-export async function callBrowserAgentResultReviewer(context = {}, system = "") {
+export async function callBrowserAgentResultReviewer(context = {}, system = "", options = {}) {
   return callBrowserAgentRoleJson("resultReviewer", {
     system,
     context,
     schemaName: "resultReviewer",
+    images: options.images || [],
   });
 }
 
-export async function callBrowserAgentMainHandoff(context = {}, system = "") {
+export async function callBrowserAgentMainHandoff(context = {}, system = "", options = {}) {
   return callBrowserAgentRoleJson("main", {
     system,
     context,
     schemaName: "mainHandoff",
+    images: options.images || [],
   });
 }
 
