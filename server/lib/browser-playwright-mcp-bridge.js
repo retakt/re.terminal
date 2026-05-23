@@ -169,7 +169,7 @@ async function callPlaywrightTool(aliases = [], args = {}) {
     result?.isError ||
     result?.error ||
     /(^|\\n)###\\s*Error\\b/i.test(text) ||
-    /invalid_type|expected .* received|tool call failed/i.test(text)
+    /invalid_type|expected .* received|did not match any elements|tool call failed/i.test(text)
   );
 
   return {
@@ -283,6 +283,141 @@ function targetTextFromCommand(command = {}) {
   );
 }
 
+function snapshotUrlFromLine(line = "") {
+  const raw = String(line || "").trim();
+
+  const urlMarker = "/url:";
+  const urlIndex = raw.toLowerCase().indexOf(urlMarker);
+  if (urlIndex >= 0) {
+    const value = raw.slice(urlIndex + urlMarker.length).trim().split(/\s+/)[0] || "";
+    return normalizeUrl(value.replace(/[.,;:!?]+$/g, ""));
+  }
+
+  const hrefDouble = 'href="';
+  const hrefDoubleIndex = raw.toLowerCase().indexOf(hrefDouble);
+  if (hrefDoubleIndex >= 0) {
+    const rest = raw.slice(hrefDoubleIndex + hrefDouble.length);
+    const value = rest.split('"')[0] || "";
+    return normalizeUrl(value.replace(/[.,;:!?]+$/g, ""));
+  }
+
+  const hrefSingle = "href='";
+  const hrefSingleIndex = raw.toLowerCase().indexOf(hrefSingle);
+  if (hrefSingleIndex >= 0) {
+    const rest = raw.slice(hrefSingleIndex + hrefSingle.length);
+    const value = rest.split("'")[0] || "";
+    return normalizeUrl(value.replace(/[.,;:!?]+$/g, ""));
+  }
+
+  return "";
+}
+
+function hrefNearSnapshotTarget(snapshot = null, { text = "", ref = "" } = {}) {
+  const raw = String(snapshot?.text || snapshot?.dom?.rawText || snapshot?.dom?.textPreview || "");
+  if (!raw.trim()) return "";
+
+  const lines = raw.split(/\r?\n/);
+  const lowerText = String(text || "").toLowerCase();
+
+  function scanFrom(index) {
+    for (let offset = 0; offset <= 6; offset += 1) {
+      const url = snapshotUrlFromLine(lines[index + offset] || "");
+      if (url) return url;
+    }
+    return "";
+  }
+
+  if (ref) {
+    const refNeedle = "[ref=" + ref + "]";
+    const refIndex = lines.findIndex((line) => String(line || "").includes(refNeedle));
+    if (refIndex >= 0) {
+      const url = scanFrom(refIndex);
+      if (url) return url;
+    }
+  }
+
+  if (lowerText) {
+    const textIndex = lines.findIndex((line) => String(line || "").toLowerCase().includes(lowerText));
+    if (textIndex >= 0) {
+      const url = scanFrom(textIndex);
+      if (url) return url;
+    }
+  }
+
+  return "";
+}
+
+function clickResultFailed(result = {}) {
+  const text = String(result?.text || result?.error || "");
+  return result?.ok === false ||
+    /###\s*Error\b/i.test(text) ||
+    /invalid_type|expected .* received|did not match any elements|tool call failed/i.test(text);
+}
+
+async function tryPlaywrightClick(command = {}, args = {}, state = {}) {
+  const commandArgs = command.args || {};
+  const text = targetTextFromCommand(command);
+  const ref = safeText(commandArgs.ref || commandArgs.selector || "", 180);
+
+  if (!text && !ref) return { ok: false, error: "Click needs visible text or snapshot ref." };
+
+  const attempts = [];
+  if (text && ref) attempts.push({ label: "target_element_ref", args: { target: text, element: text, ref } });
+  if (text && ref) attempts.push({ label: "element_ref", args: { element: text, ref } });
+  if (text && ref) attempts.push({ label: "target_ref", args: { target: text, ref } });
+  if (ref) attempts.push({ label: "ref_as_target", args: { target: ref } });
+  if (text) attempts.push({ label: "target_text", args: { target: text } });
+  if (text) attempts.push({ label: "element_text", args: { element: text } });
+
+  const failures = [];
+
+  for (const attempt of attempts) {
+    const result = await callPlaywrightTool(["browser_click", "click"], attempt.args).catch((err) => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      text: err instanceof Error ? err.message : String(err),
+    }));
+
+    if (!clickResultFailed(result)) {
+      return {
+        ...result,
+        ok: true,
+        text: ["Click succeeded using " + attempt.label + ".", result.text].filter(Boolean).join("\n"),
+      };
+    }
+
+    failures.push(attempt.label + ": " + safeText(result.error || result.text || "", 500));
+  }
+
+  const href = hrefNearSnapshotTarget(args.beforeSnapshot, { text, ref });
+  if (href) {
+    const nav = await callPlaywrightTool(["browser_navigate", "navigate"], { url: href }).catch((err) => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      text: err instanceof Error ? err.message : String(err),
+    }));
+
+    if (!clickResultFailed(nav)) {
+      return {
+        ...nav,
+        ok: true,
+        text: [
+          "Direct click failed, but snapshot showed link URL. Navigated to " + href + " as click fallback.",
+          nav.text,
+        ].filter(Boolean).join("\n"),
+      };
+    }
+
+    failures.push("href_fallback: " + safeText(nav.error || nav.text || "", 500));
+  }
+
+  return {
+    ok: false,
+    error: "Click failed for all Playwright MCP payloads.",
+    text: failures.join("\n"),
+  };
+}
+
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";
   const commandArgs = command.args || {};
@@ -298,14 +433,7 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
   }
 
   if (tool === "browserClickByText") {
-    const text = targetTextFromCommand(command);
-    if (!text) return { ok: false, error: "Click needs visible text." };
-
-    return callPlaywrightTool(["browser_click", "click"], {
-      target: text,
-      element: text,
-      ref: commandArgs.ref || commandArgs.selector || text,
-    });
+    return tryPlaywrightClick(command, args, state);
   }
 
   if (tool === "browserFillFields") {
@@ -382,7 +510,7 @@ export async function executePlaywrightMcpBrowserCommand({ command = {}, args = 
       }
     : await capturePlaywrightMcpSnapshot({ ...args, label: "before" }, state);
 
-  const action = await executeApprovedAction(command, args, state);
+  const action = await executeApprovedAction(command, { ...args, beforeSnapshot: before.snapshot || beforeSnapshot || null }, state);
 
   const after = await capturePlaywrightMcpSnapshot({
     ...args,
