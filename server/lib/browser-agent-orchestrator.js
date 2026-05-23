@@ -10,6 +10,15 @@ import {
   snapshotImagesForModel,
 } from "./browser-playwright-mcp-bridge.js";
 
+import {
+  BROWSER_AGENT_ARCHITECTURE,
+  runCheckerAgent,
+  runFinalVerifierAgent,
+  runOrchestratorAgent,
+  runStepAgent,
+  runWatcherAgent,
+} from "./browser-agents/index.js";
+
 const SUPPORTED_TOOLS = new Set([
   "browserNavigate",
   "browserObserve",
@@ -505,14 +514,11 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     };
   }
 
-  const orchestratorCall = await safeRole("main_orchestrator", () => callBrowserAgentRoleJson("main", {
-    system: orchestratorSystemPrompt(),
-    schemaName: "main_orchestrator",
-    context: {
-      originalInstruction: instruction,
-      currentState: compactState(state),
-    },
+  const orchestratorCall = await safeRole("main_orchestrator", () => runOrchestratorAgent({
+    originalInstruction: instruction,
+    currentState: compactState(state),
   }));
+
 
   const orchestratorPlan = orchestratorCall.call?.data || {
     status: "ready",
@@ -634,8 +640,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         ok: true,
       }));
     } else {
-      stepAgentCall = await safeRole(`gemma_step_agent_step_${stepNumber}`, () => callBrowserAgentRoleJson("planner", {
-        system: stepAgentSystemPrompt(),
+      stepAgentCall = await safeRole(`gemma_step_agent_step_${stepNumber}`, () => runStepAgent({
         schemaName: "gemma_step_agent",
         images: beforeImages,
         context: {
@@ -649,6 +654,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           snapshot: compactSnapshotForModel(before?.snapshot),
         },
       }));
+
 
       stepPlan = stepAgentCall.call?.data || {};
       trace.push(traceEntry({
@@ -683,8 +689,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         ok: true,
       }));
     } else {
-      checkerCall = await safeRole("gemma_checker", () => callBrowserAgentRoleJson("reviewer", {
-        system: checkerSystemPrompt(),
+      checkerCall = await safeRole("gemma_checker", () => runCheckerAgent({
         schemaName: "gemma_checker",
         images: beforeImages,
         context: {
@@ -698,6 +703,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           proposedCommand: stepPlan.command || null,
         },
       }));
+
 
       checker = checkerCall.call?.data || {};
       trace.push(traceEntry({
@@ -777,8 +783,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     } else {
       const resultImages = snapshotImagesForModel(execution.beforeSnapshot || before?.snapshot, execution.afterSnapshot);
 
-      resultCheckCall = await safeRole("gemma_result_checker", () => callBrowserAgentRoleJson("resultReviewer", {
-        system: resultCheckerSystemPrompt(),
+      resultCheckCall = await safeRole("gemma_result_checker", () => runWatcherAgent({
         schemaName: "gemma_result_checker",
         images: resultImages,
         context: {
@@ -797,6 +802,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
         },
       }));
+
 
       resultCheck = resultCheckCall.call?.data || {};
       trace.push(traceEntry({
@@ -833,8 +839,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         ok: null,
       }));
 
-      const repairAgentCall = await safeRole("gemma_step_agent_repair", () => callBrowserAgentRoleJson("planner", {
-        system: stepAgentSystemPrompt(),
+      const repairAgentCall = await safeRole("gemma_step_agent_repair", () => runStepAgent({
         schemaName: "gemma_step_agent_repair",
         images: snapshotImagesForModel(execution.afterSnapshot),
         context: {
@@ -849,6 +854,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           snapshot: compactSnapshotForModel(execution.afterSnapshot),
         },
       }));
+
 
       const repairPlan = repairAgentCall.call?.data || {};
       const repairCommand = normalizeCommand(repairPlan.command, execution.observation?.url || currentUrl);
@@ -876,8 +882,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         beforeSnapshot: execution.afterSnapshot || null,
       });
 
-      const repairCheckCall = await safeRole("gemma_result_checker_repair", () => callBrowserAgentRoleJson("resultReviewer", {
-        system: resultCheckerSystemPrompt(),
+      const repairCheckCall = await safeRole("gemma_result_checker_repair", () => runWatcherAgent({
         schemaName: "gemma_result_checker_repair",
         images: snapshotImagesForModel(execution.beforeSnapshot, execution.afterSnapshot),
         context: {
@@ -895,6 +900,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
         },
       }));
+
 
       resultCheckCall = repairCheckCall;
       resultCheck = repairCheckCall.call?.data || {};
@@ -942,8 +948,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   let final = null;
 
   if (envFlag("BROWSER_AGENT_FINAL_VERIFIER_ENABLED", false)) {
-    finalCall = await safeRole("final_verifier", () => callBrowserAgentRoleJson("main", {
-      system: finalVerifierSystemPrompt(),
+    finalCall = await safeRole("final_verifier", () => runFinalVerifierAgent({
       schemaName: "final_verifier",
       context: {
         originalInstruction: instruction,
@@ -961,6 +966,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         })),
       },
     }));
+
 
     final = finalCall.call?.data || {
       success: passedAllSteps,
@@ -1061,7 +1067,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       })),
     },
     pipeline: {
-      architecture: "main_orchestrator_step_agent_checker_repair_final_verifier_v1",
+      architecture: BROWSER_AGENT_ARCHITECTURE,
       dryRun: false,
       runtime,
       agentTrace: trace,

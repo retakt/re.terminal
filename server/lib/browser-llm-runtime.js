@@ -88,17 +88,36 @@ function firstEnv(names = []) {
   return undefined;
 }
 
+function stageAliasKeys(stage = "") {
+  const raw = String(stage || "").trim();
+
+  if (raw === "main") return ["ORCHESTRATOR"];
+  if (raw === "planner") return ["STEP_AGENT"];
+  if (raw === "reviewer") return ["CHECKER"];
+  if (raw === "resultReviewer") return ["WATCHER", "REVIEWER"];
+  if (raw === "finalVerifier") return ["FINAL_VERIFIER"];
+  if (raw === "reporter") return ["REPORTER"];
+  if (raw === "executor") return ["EXECUTOR"];
+
+  return [];
+}
+
 function stageEnv(stage, suffix) {
   const key = stageKey(stage);
-  const legacyKey = stage === "resultReviewer" ? "REVIEWER" : key;
+  const keys = [key, ...stageAliasKeys(stage)].filter(Boolean);
+  const uniqueKeys = [...new Set(keys)];
 
-  return firstEnv([
-    `BROWSER_AGENT_${key}_${suffix}`,
-    `BROWSER_${key}_${suffix}`,
-    `BROWSER_AGENT_${legacyKey}_${suffix}`,
-    `BROWSER_${legacyKey}_${suffix}`,
-    `BROWSER_AGENT_${suffix}`,
-  ]);
+  const names = [];
+  for (const candidate of uniqueKeys) {
+    names.push(
+      `BROWSER_AGENT_${candidate}_${suffix}`,
+      `BROWSER_${candidate}_${suffix}`,
+    );
+  }
+
+  names.push(`BROWSER_AGENT_${suffix}`);
+
+  return firstEnv(names);
 }
 
 function baseBrowserAgentModel() {
