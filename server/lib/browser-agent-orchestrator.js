@@ -435,6 +435,46 @@ function checkerDecisionForExecution(checker = {}, checkerCall = null) {
   return { ok: true, repaired: false, reason: checker.reason || "" };
 }
 
+function agentTraceLabel(role = "", title = "") {
+  const labels = {
+    main_orchestrator: "Orchestrator",
+    gemma_step_agent: "Step Agent",
+    gemma_step_agent_repair: "Step Agent Repair",
+    gemma_checker: "Checker",
+    playwright_controller: "Browser",
+    gemma_result_checker: "Watcher",
+    gemma_result_checker_repair: "Watcher Repair",
+    report_step_observe: "Reporter",
+    repair_loop: "Repair Loop",
+    final_verifier: "Main Response",
+  };
+
+  return labels[role] || title || role || "Agent";
+}
+
+function agentTraceKind(role = "") {
+  if (role === "main_orchestrator") return "orchestrator";
+  if (role.includes("step_agent")) return "step_agent";
+  if (role.includes("checker") && !role.includes("result")) return "checker";
+  if (role === "playwright_controller") return "browser";
+  if (role.includes("result_checker")) return "watcher";
+  if (role === "final_verifier") return "main_response";
+  if (role === "report_step_observe") return "reporter";
+  if (role === "repair_loop") return "repair";
+  return "agent";
+}
+
+function shortModelLabel(model = "") {
+  const raw = safeText(model, 180);
+  if (!raw) return "";
+
+  return raw
+    .replace(/^joe-speedboat\//i, "")
+    .replace(/Gemma-4-Uncensored-HauhauCS-Aggressive/i, "Gemma-4")
+    .replace(/:latest$/i, "")
+    .replace(/qwen3\.5:(\d+b)/i, "qwen3.5:$1");
+}
+
 function traceEntry({
   role = "",
   title = "",
@@ -449,10 +489,17 @@ function traceEntry({
   usage = null,
   reasoning = "",
 } = {}) {
+  const modelValue = model || usage?.model || "";
+  const label = agentTraceLabel(role, title);
+
   return {
     role,
-    title: title || role,
-    model: model || usage?.model || "",
+    title: label,
+    roleLabel: label,
+    agentName: label,
+    agentKind: agentTraceKind(role),
+    model: modelValue,
+    modelLabel: shortModelLabel(modelValue),
     status,
     step,
     tool,
