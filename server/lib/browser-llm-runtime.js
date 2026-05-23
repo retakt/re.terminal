@@ -118,6 +118,75 @@ function stageModel(stage, fallback = "") {
   return String(stageEnv(stage, "MODEL") || fallback || "").trim();
 }
 
+function normalizeBrowserAgentProvider(value = "", baseUrl = "") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (["openai", "openai-compatible", "openai_compatible"].includes(raw)) return "openai";
+  if (raw === "ollama") return "ollama";
+
+  const url = String(baseUrl || "").toLowerCase();
+  if (url.includes("/v1") || url.includes("openai.com")) return "openai";
+  return "ollama";
+}
+
+function normalizeBrowserAgentBaseUrl(value = "", provider = "ollama") {
+  const raw = String(value || "").trim().replace(/\/+$/, "");
+  if (!raw) return "";
+  if (provider === "ollama") return raw.replace(/\/api$/i, "");
+  if (provider === "openai") {
+    const cleaned = raw.replace(/\/chat\/completions$/i, "");
+    if (/^https:\/\/api\.openai\.com$/i.test(cleaned)) return cleaned + "/v1";
+    return cleaned;
+  }
+  return raw;
+}
+
+function stageProvider(stage, fallbackBaseUrl = "") {
+  const baseCandidate = String(stageEnv(stage, "BASE_URL") || fallbackBaseUrl || rawBaseUrl()).trim();
+  return normalizeBrowserAgentProvider(stageEnv(stage, "PROVIDER"), baseCandidate);
+}
+
+function stageBaseUrl(stage, fallbackBaseUrl = "") {
+  const raw = String(stageEnv(stage, "BASE_URL") || fallbackBaseUrl || rawBaseUrl()).trim();
+  return normalizeBrowserAgentBaseUrl(raw, stageProvider(stage, raw));
+}
+
+function stageApiKey(stage, provider = "") {
+  return String(
+    stageEnv(stage, "API_KEY") ||
+    (provider === "openai" ? process.env.OPENAI_API_KEY : "") ||
+    ""
+  ).trim();
+}
+
+function stageEndpointDisplay(stage, fallbackBaseUrl = "") {
+  const provider = stageProvider(stage, fallbackBaseUrl);
+  const baseUrl = stageBaseUrl(stage, fallbackBaseUrl);
+  return {
+    provider,
+    redactedBaseUrl: redactBaseUrl(baseUrl),
+    hasApiKey: Boolean(stageApiKey(stage, provider)),
+  };
+}
+
+function modelForStage(config = {}, stage = "planner") {
+  if (stage === "finalVerifier") {
+    return config.models?.finalVerifier || config.models?.main || config.model;
+  }
+  return config.models?.[stage] || config.model;
+}
+
+function runtimeForStage(config = {}, stage = "planner") {
+  const provider = stageProvider(stage, config.baseUrl);
+  return {
+    ...config,
+    stage,
+    provider,
+    baseUrl: stageBaseUrl(stage, config.baseUrl),
+    apiKey: stageApiKey(stage, provider),
+    model: modelForStage(config, stage),
+  };
+}
+
 function stagePromptConfig(stage) {
   const promptPath = resolvePromptPath(stageEnv(stage, "SYSTEM_PROMPT_PATH") || "");
   const inlinePrompt = String(stageEnv(stage, "SYSTEM_PROMPT") || "").trim();
@@ -231,7 +300,18 @@ export function browserAgentRuntimeConfig({ display = false } = {}) {
       reviewer: stageModel("reviewer", model),
       executor: stageModel("executor", model),
       resultReviewer: stageModel("resultReviewer", model),
+      finalVerifier: stageModel("finalVerifier", stageModel("main", model)),
       reporter: reporterModel,
+    },
+    endpoints: {
+      default: stageEndpointDisplay("default", baseUrl),
+      main: stageEndpointDisplay("main", baseUrl),
+      planner: stageEndpointDisplay("planner", baseUrl),
+      reviewer: stageEndpointDisplay("reviewer", baseUrl),
+      executor: stageEndpointDisplay("executor", baseUrl),
+      resultReviewer: stageEndpointDisplay("resultReviewer", baseUrl),
+      finalVerifier: stageEndpointDisplay("finalVerifier", baseUrl),
+      reporter: stageEndpointDisplay("reporter", baseUrl),
     },
     timeoutMs,
     think: envFlag("BROWSER_AGENT_THINK", false),
@@ -241,6 +321,7 @@ export function browserAgentRuntimeConfig({ display = false } = {}) {
       reviewer: stageOptions("reviewer"),
       executor: stageOptions("executor"),
       resultReviewer: stageOptions("resultReviewer"),
+      finalVerifier: stageOptions("finalVerifier"),
       reporter: stageOptions("reporter"),
     },
     prompts: {
@@ -380,49 +461,122 @@ async function postOllamaChat({ config, model, messages, format, options, think 
   return { response, data };
 }
 
-async function callOllamaChat({ stage, messages, format = "json" }) {
-  const config = requireBrowserAgentRuntimeConfig();
-  const startedAt = performance.now();
-  const options = stageOptions(stage);
-  const model = config.models?.[stage] || config.model;
+function openAiMessages(messages = []) {
+  return messages.map((message) => {
+    const images = Array.isArray(message.images) ? message.images : [];
 
-  let retriedWithoutThink = false;
-  let attempt = await postOllamaChat({
-    config,
+    if (!images.length) {
+      return {
+        role: message.role,
+        content: String(message.content || ""),
+      };
+    }
+
+    return {
+      role: message.role,
+      content: [
+        { type: "text", text: String(message.content || "") },
+        ...images.map((image) => ({
+          type: "image_url",
+          image_url: {
+            url: "data:image/png;base64," + String(image || "").replace(/^data:image\/[a-z0-9.+-]+;base64,/i, ""),
+          },
+        })),
+      ],
+    };
+  });
+}
+
+async function postOpenAiChat({ config, model, messages, format, options }) {
+  const body = {
     model,
-    messages,
-    format,
-    options,
-    think: config.think,
+    messages: openAiMessages(messages),
+    stream: false,
+  };
+
+  if (format === "json") body.response_format = { type: "json_object" };
+  if (Number.isFinite(Number(options?.temperature))) body.temperature = Number(options.temperature);
+  if (Number.isFinite(Number(options?.top_p))) body.top_p = Number(options.top_p);
+  if (Number.isFinite(Number(options?.num_predict))) body.max_tokens = Number(options.num_predict);
+
+  const headers = { "Content-Type": "application/json" };
+  if (config.apiKey) headers.Authorization = "Bearer " + config.apiKey;
+
+  const response = await fetch(config.baseUrl + "/chat/completions", {
+    method: "POST",
+    headers,
+    signal: AbortSignal.timeout(config.timeoutMs),
+    body: JSON.stringify(body),
   });
 
-  if (!attempt.response.ok && config.think && thinkUnsupportedError(attempt.data, model)) {
-    retriedWithoutThink = true;
-    attempt = await postOllamaChat({
-      config,
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = { response: await response.text().catch(() => "") };
+  }
+
+  return { response, data };
+}
+
+async function callOllamaChat({ stage, messages, format = "json" }) {
+  const config = requireBrowserAgentRuntimeConfig();
+  const stageConfig = runtimeForStage(config, stage);
+  const startedAt = performance.now();
+  const options = stageOptions(stage);
+  const model = stageConfig.model;
+
+  let retriedWithoutThink = false;
+  let attempt = null;
+
+  if (stageConfig.provider === "openai") {
+    attempt = await postOpenAiChat({
+      config: stageConfig,
       model,
       messages,
       format,
       options,
-      think: false,
     });
+  } else {
+    attempt = await postOllamaChat({
+      config: stageConfig,
+      model,
+      messages,
+      format,
+      options,
+      think: config.think,
+    });
+
+    if (!attempt.response.ok && config.think && thinkUnsupportedError(attempt.data, model)) {
+      retriedWithoutThink = true;
+      attempt = await postOllamaChat({
+        config: stageConfig,
+        model,
+        messages,
+        format,
+        options,
+        think: false,
+      });
+    }
   }
 
   const { response, data } = attempt;
 
   if (!response.ok) {
-    const error = new Error(data?.error || `Browser agent LLM ${stage} call failed: HTTP ${response.status}`);
+    const error = new Error(data?.error || data?.message || `Browser agent LLM ${stage} call failed: HTTP ${response.status}`);
     error.code = "BROWSER_AGENT_LLM_HTTP_ERROR";
     error.status = response.status;
-    error.usage = tokenUsageFromResponse(data || {}, { ...config, model }, stage, Math.round(performance.now() - startedAt));
+    error.usage = tokenUsageFromResponse(data || {}, { ...stageConfig, model }, stage, Math.round(performance.now() - startedAt));
     error.retriedWithoutThink = retriedWithoutThink;
     throw error;
   }
 
-  const usage = tokenUsageFromResponse(data || {}, { ...config, model }, stage, Math.round(performance.now() - startedAt));
-  usage.thinkRequested = Boolean(config.think);
+  const usage = tokenUsageFromResponse(data || {}, { ...stageConfig, model }, stage, Math.round(performance.now() - startedAt));
+  usage.provider = stageConfig.provider;
+  usage.redactedBaseUrl = redactBaseUrl(stageConfig.baseUrl);
+  usage.thinkRequested = Boolean(stageConfig.provider === "ollama" && config.think);
   usage.retriedWithoutThink = retriedWithoutThink;
-  usage.thinkUsed = Boolean(config.think && !retriedWithoutThink);
+  usage.thinkUsed = Boolean(stageConfig.provider === "ollama" && config.think && !retriedWithoutThink);
 
   return {
     content: responseContent(data),
