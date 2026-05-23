@@ -1,9 +1,16 @@
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import {
   callExternalMcpTool,
   listExternalMcpTools,
 } from "./external-mcp-client.js";
 
 const SERVER_ID = "playwright";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const SERVER_ROOT = path.resolve(__dirname, "..");
+const PLAYWRIGHT_MCP_DIR = path.resolve(process.env.PLAYWRIGHT_MCP_OUTPUT_DIR || path.join(SERVER_ROOT, "playwright-mcp"));
 
 function safeText(value = "", limit = 4000) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
@@ -48,8 +55,8 @@ function textFromMcp(result = {}) {
     .filter(Boolean);
 
   if (parts.length) return parts.join("\n");
-
   if (typeof result === "string") return result;
+
   try {
     return JSON.stringify(result, null, 2);
   } catch {
@@ -61,10 +68,75 @@ function imagesFromMcp(result = {}) {
   return contentArray(result)
     .filter((item) => item?.type === "image" && item.data)
     .map((item) => ({
-      data: String(item.data || ""),
+      data: String(item.data || "").replace(/^data:image\/[a-z0-9.+-]+;base64,/i, ""),
       mimeType: String(item.mimeType || item.mime_type || "image/png"),
     }))
     .filter((item) => item.data);
+}
+
+function readImageBase64(filePath = "") {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return null;
+    const ext = path.extname(filePath).toLowerCase();
+    if (![".png", ".jpg", ".jpeg", ".webp"].includes(ext)) return null;
+    return {
+      imageBase64: fs.readFileSync(filePath).toString("base64"),
+      imagePath: filePath,
+      mimeType: ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".webp" ? "image/webp" : "image/png",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function latestPlaywrightScreenshot(sinceMs = 0) {
+  try {
+    if (!fs.existsSync(PLAYWRIGHT_MCP_DIR)) return null;
+
+    const files = fs.readdirSync(PLAYWRIGHT_MCP_DIR)
+      .filter((name) => /\.(png|jpe?g|webp)$/i.test(name))
+      .map((name) => {
+        const filePath = path.join(PLAYWRIGHT_MCP_DIR, name);
+        const stat = fs.statSync(filePath);
+        return { filePath, mtimeMs: stat.mtimeMs };
+      })
+      .filter((entry) => entry.mtimeMs >= sinceMs - 2500)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    return files[0] ? readImageBase64(files[0].filePath) : null;
+  } catch {
+    return null;
+  }
+}
+
+function snapshotPathFromText(text = "") {
+  const raw = String(text || "");
+  const match = raw.match(/(?:[A-Za-z]:)?[^"'`\n\r]*playwright-mcp[\\/][^"'`\n\r]+\.(?:png|jpe?g|webp)/i)
+    || raw.match(/page-[^"'`\n\r]+\.(?:png|jpe?g|webp)/i);
+  if (!match) return null;
+
+  const candidate = match[0];
+  if (path.isAbsolute(candidate)) return readImageBase64(candidate);
+
+  return readImageBase64(path.join(PLAYWRIGHT_MCP_DIR, path.basename(candidate)));
+}
+
+function parseSnapshotMetadata(text = "", fallbackUrl = "") {
+  const raw = String(text || "");
+  const url =
+    raw.match(/(?:Page\s+URL|URL|url)\s*[:=]\s*(https?:\/\/[^\s)]+)/i)?.[1] ||
+    raw.match(/https?:\/\/[^\s)]+/i)?.[0] ||
+    fallbackUrl ||
+    "";
+
+  const title =
+    raw.match(/(?:Page\s+Title|Title|title)\s*[:=]\s*(.+)/i)?.[1]?.split("\n")[0]?.trim() ||
+    "";
+
+  return {
+    url: safeText(url, 500),
+    title: safeText(title, 300),
+  };
 }
 
 async function availableToolNames() {
@@ -74,6 +146,7 @@ async function availableToolNames() {
 
 async function findTool(aliases = []) {
   const names = await availableToolNames();
+
   for (const alias of aliases) {
     if (names.includes(alias)) return alias;
   }
@@ -92,6 +165,7 @@ async function callPlaywrightTool(aliases = [], args = {}) {
   const tool = await findTool(aliases);
   const result = await callExternalMcpTool(SERVER_ID, tool, args);
   return {
+    ok: true,
     tool,
     result,
     text: textFromMcp(result),
@@ -109,6 +183,7 @@ function summarizeSnapshotText(value = "") {
 }
 
 export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
+  const startedAt = Date.now();
   const currentUrl = currentUrlFromInput(args, state);
 
   if (currentUrl && args.navigate !== false) {
@@ -124,6 +199,7 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
     });
   } catch (err) {
     screenshotCall = {
+      ok: false,
       tool: "",
       result: null,
       text: "",
@@ -132,16 +208,31 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
     };
   }
 
+  const imageFromMcp = screenshotCall.images?.[0]
+    ? {
+        imageBase64: screenshotCall.images[0].data,
+        mimeType: screenshotCall.images[0].mimeType,
+        imagePath: "",
+      }
+    : null;
+
+  const imageFromText = snapshotPathFromText(screenshotCall.text) || snapshotPathFromText(snapshotCall.text);
+  const imageFromDisk = latestPlaywrightScreenshot(startedAt);
+  const image = imageFromMcp || imageFromText || imageFromDisk || {};
+
+  const metadata = parseSnapshotMetadata(snapshotCall.text, currentUrl);
+
   const snapshot = {
     label: args.label || "snapshot",
     capturedAt: new Date().toISOString(),
-    url: currentUrl,
-    title: "",
+    url: metadata.url || currentUrl,
+    title: metadata.title,
     mcpSnapshotTool: snapshotCall.tool,
     mcpScreenshotTool: screenshotCall.tool,
     text: snapshotCall.text,
-    imageBase64: screenshotCall.images[0]?.data || "",
-    mimeType: screenshotCall.images[0]?.mimeType || "",
+    imageBase64: image.imageBase64 || "",
+    imagePath: image.imagePath || "",
+    mimeType: image.mimeType || "",
     screenshotError: screenshotCall.error || "",
     dom: summarizeSnapshotText(snapshotCall.text),
   };
@@ -153,8 +244,8 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
     snapshot,
     observation: {
       ok: Boolean(snapshot.text),
-      url: currentUrl,
-      title: "",
+      url: snapshot.url,
+      title: snapshot.title,
       textPreview: safeText(snapshot.text, 5000),
       engine: "playwright_mcp",
       links: [],
@@ -186,7 +277,6 @@ function targetTextFromCommand(command = {}) {
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";
   const commandArgs = command.args || {};
-  const currentUrl = currentUrlFromInput({ ...args, ...commandArgs }, state);
 
   if (tool === "browserNavigate") {
     const url = normalizeUrl(commandArgs.url || command.url || command.target || "");
@@ -286,6 +376,7 @@ export function snapshotImagesForModel(...snapshots) {
   return snapshots
     .filter(Boolean)
     .map((snapshot) => snapshot.imageBase64 || snapshot.snapshot?.imageBase64 || "")
+    .map((image) => String(image || "").replace(/^data:image\/[a-z0-9.+-]+;base64,/i, ""))
     .filter(Boolean)
     .slice(0, 4);
 }
@@ -298,6 +389,7 @@ export function compactSnapshotForModel(snapshot = null) {
     url: snapshot.url || "",
     title: snapshot.title || "",
     hasImage: Boolean(snapshot.imageBase64),
+    imagePath: snapshot.imagePath || "",
     screenshotError: snapshot.screenshotError || "",
     textPreview: safeText(snapshot.text || snapshot.dom?.textPreview || "", 3000),
     mcpSnapshotTool: snapshot.mcpSnapshotTool || "",
