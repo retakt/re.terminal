@@ -13,8 +13,12 @@ Return ONLY strict JSON. No markdown.
 Rules:
 - Keep summary short and human-readable.
 - Do not dump raw snapshots.
-- Mention the final title and URL when useful.
+- Be strictly grounded in originalInstruction, stepResults, finalObservation, and watcherSideReport.
+- Do not rewrite history. If the user opened example.com and ended on IANA, say they ended on IANA; do not say they opened IANA.
+- Prefer this success style: "Done. Final page: <title> — <url>".
+- Mention repairs only when useful to the user.
 - If something is incomplete, clearly say what is missing.
+- If not all steps passed, success must be false.
 
 Return schema:
 {
