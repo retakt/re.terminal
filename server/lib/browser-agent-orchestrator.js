@@ -254,6 +254,53 @@ function isClickStep(step = {}) {
   return action === "click" || /\b(click|press|tap)\b/.test(text);
 }
 
+function isButtonIntentStep(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = String(step.instruction || "").toLowerCase();
+  if (action !== "click" && !/\b(click|press|tap)\b/.test(text)) return false;
+  return /\b(button|modal|collapse|dropdown|toggle|data-bs-target|data-target|popup|dialog|accordion|launch demo|open demo)\b/i
+    .test(text);
+}
+
+function isExplicitLinkNavigationIntent(step = {}) {
+  const text = String(step.instruction || "").toLowerCase();
+  return /\b(link|href|anchor|url|navigate|go to|open link|visit)\b/i.test(text) &&
+    !/\b(button|modal|collapse|dropdown|toggle|data-bs-target|data-target|popup|dialog|accordion)\b/i.test(text);
+}
+
+function samePageAnchorHref(href = "", baseUrl = "") {
+  const raw = String(href || "").trim();
+  if (!raw) return false;
+  try {
+    const target = new URL(raw, baseUrl || undefined);
+    const base = new URL(baseUrl || target.href);
+    return Boolean(target.hash) &&
+      target.origin === base.origin &&
+      target.pathname.replace(/\/$/, "") === base.pathname.replace(/\/$/, "");
+  } catch {
+    return raw.startsWith("#");
+  }
+}
+
+function buttonIntentScoreAdjustment(entry = {}, step = {}, baseUrl = "") {
+  if (!isButtonIntentStep(step)) return 0;
+
+  const kind = String(entry.kind || "").toLowerCase();
+  const href = String(entry.href || "");
+  const selector = String(entry.selector || "").toLowerCase();
+  const text = String(entry.text || entry.label || entry.name || "").toLowerCase();
+
+  let score = 0;
+  if (kind === "button" || !href) score += 0.35;
+  if (/button|data-bs-target|data-target|aria-controls|modal|collapse/.test(selector)) score += 0.25;
+  if (/button|modal|collapse|toggle|launch demo/.test(text)) score += 0.15;
+
+  if (kind === "link" && href) score -= 0.35;
+  if (samePageAnchorHref(href, baseUrl)) score -= 0.45;
+
+  return score;
+}
+
 function tokenSetFromNormalized(value = "") {
   return new Set(String(value || "").split(/\s+/).filter(Boolean));
 }
@@ -324,6 +371,10 @@ function syntheticStepPlanFromLightpandaClick({ step = {}, beforeState = null, o
 
   const best = ranked[0]?.entry;
   if (!best) return null;
+
+  if (isButtonIntentStep(step) && best.kind === "link" && !isExplicitLinkNavigationIntent(step)) {
+    return null;
+  }
 
   const href = absoluteHrefFromState(best.href || "", beforeState.url || "");
   const visibleText = safeText(best.text || best.label || best.name || targetText, 180);
@@ -436,7 +487,8 @@ function compactClickCandidatesForStep({ step = {}, beforeState = null, original
       kind: safeText(entry.kind || "", 40),
       text: safeText(entry.text || entry.label || entry.name || "", 140),
       href: absoluteHrefFromState(entry.href || "", beforeState.url || ""),
-      score: lightpandaClickScore(entry, targetText, candidates.length),
+      score: lightpandaClickScore(entry, targetText, candidates.length) +
+        buttonIntentScoreAdjustment(entry, step, beforeState.url || ""),
     }))
     .filter((entry) => entry.text || entry.href || entry.ref || entry.selector)
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
@@ -464,14 +516,97 @@ function compactPageStateForStepAgent({ step = {}, beforeState = null, originalI
         originalInstruction,
         limit: 12,
       }),
-      instruction: "For click steps, choose only from clickCandidates when possible. If a matching link has href, prefer browserNavigate with args.url.",
+      clickIntent: {
+        buttonLike: isButtonIntentStep(step),
+        explicitLinkNavigation: isExplicitLinkNavigationIntent(step),
+      },
+      instruction: isButtonIntentStep(step)
+        ? "For button/modal/collapse/toggle click steps, prefer real buttons or non-href controls from clickCandidates/snapshot. Do not choose navigation links or section anchors just because their text is related. Use browserClickByText for the visible button/control."
+        : "For click steps, choose only from clickCandidates when possible. If a matching link has href and the user asked for a link/navigation, prefer browserNavigate with args.url.",
     };
   }
 
   return base;
 }
 
-function lightpandaEvidenceCheckerForStep({ stepPlan = {}, beforeState = null } = {}) {
+function bestLightpandaClickCandidateForStep({ step = {}, beforeState = null, originalInstruction = "" } = {}) {
+  if (!beforeState || beforeState.ok !== true || !isClickStep(step)) return null;
+
+  const targetText = extractClickTargetText(step, originalInstruction);
+  const candidates = [
+    ...(Array.isArray(beforeState.buttons) ? beforeState.buttons : []).map((entry) => ({ ...entry, kind: "button" })),
+    ...(Array.isArray(beforeState.interactiveElements) ? beforeState.interactiveElements : []).map((entry) => ({ ...entry, kind: entry.href ? "link" : "interactive" })),
+    ...(Array.isArray(beforeState.links) ? beforeState.links : []).map((entry) => ({ ...entry, kind: "link" })),
+  ];
+
+  const ranked = candidates
+    .map((entry) => ({
+      entry,
+      score:
+        lightpandaClickScore(entry, targetText, candidates.length) +
+        buttonIntentScoreAdjustment(entry, step, beforeState.url || ""),
+    }))
+    .filter((item) => item.score >= 0.55)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0]?.entry || null;
+}
+
+function commandWithLightpandaExecutionTarget(command = {}, { step = {}, beforeState = null, originalInstruction = "", currentUrl = "" } = {}) {
+  if (!command || typeof command !== "object") return command;
+  if (!isButtonIntentStep(step)) return command;
+
+  const candidate = bestLightpandaClickCandidateForStep({ step, beforeState, originalInstruction });
+  if (!candidate) {
+    if (command.tool === "browserNavigate") {
+      return {
+        intent: "click",
+        tool: "browserClickByText",
+        args: {
+          currentUrl,
+          text: extractClickTargetText(step, originalInstruction) || step.instruction || "",
+        },
+        notes: "Button intent forced real click; no Lightpanda candidate was available.",
+      };
+    }
+    return command;
+  }
+
+  const href = absoluteHrefFromState(candidate.href || "", beforeState?.url || "");
+  if (href && candidate.kind === "link" && !isExplicitLinkNavigationIntent(step)) {
+    // Same-page docs anchors/links are not acceptable for button/modal/collapse intent.
+    return {
+      intent: "click",
+      tool: "browserClickByText",
+      args: {
+        currentUrl,
+        text: safeText(candidate.text || candidate.label || extractClickTargetText(step, originalInstruction), 180),
+        ref: safeText(candidate.ref || "", 120),
+        selector: safeText(candidate.selector || "", 320),
+      },
+      notes: "Button intent preserved as a real click even though the candidate had an href.",
+    };
+  }
+
+  return {
+    ...command,
+    intent: command.intent || "click",
+    tool: "browserClickByText",
+    args: {
+      ...(command.args || {}),
+      currentUrl: currentUrl || command.args?.currentUrl || "",
+      text: safeText(candidate.text || candidate.label || command.args?.text || extractClickTargetText(step, originalInstruction), 180),
+      ref: safeText(candidate.ref || command.args?.ref || "", 120),
+      selector: safeText(candidate.selector || command.args?.selector || "", 320),
+    },
+    notes: safeText([
+      command.notes,
+      `Lightpanda execution target: ${safeText(candidate.text || candidate.label || "", 180)} ${safeText(candidate.ref || "", 120)} ${safeText(candidate.selector || "", 220)}`,
+    ].filter(Boolean).join(" "), 500),
+  };
+}
+
+function lightpandaEvidenceCheckerForStep({ stepPlan = {}, beforeState = null, step = {} } = {}) {
   const command = stepPlan?.command || null;
   if (!command || typeof command !== "object") return null;
 
@@ -483,6 +618,18 @@ function lightpandaEvidenceCheckerForStep({ stepPlan = {}, beforeState = null } 
   if (tool === "browserNavigate") {
     const url = args.url || args.href || args.targetUrl || "";
     if (!url) return null;
+
+    if (isButtonIntentStep(step) && !isExplicitLinkNavigationIntent(step)) {
+      return {
+        status: "rejected",
+        approved: false,
+        command: null,
+        reason: "Button/modal/collapse click intent cannot be satisfied by browserNavigate. A real Playwright click is required.",
+        repairInstruction: "Use browserClickByText on the actual visible button/control.",
+        messageToUser: "",
+        confidence: 0.9,
+      };
+    }
 
     return {
       status: "approved",
@@ -503,6 +650,15 @@ function lightpandaEvidenceCheckerForStep({ stepPlan = {}, beforeState = null } 
 
   const candidate = lightpandaCandidateFromCommand(beforeState, command);
   if (!candidate) return null;
+
+  if (
+    candidate.href &&
+    candidate.kind === "link" &&
+    isButtonIntentStep(step) &&
+    !isExplicitLinkNavigationIntent(step)
+  ) {
+    return null;
+  }
 
   if (candidate.href && candidate.kind === "link") {
     return {
@@ -542,6 +698,7 @@ function isLowRiskAutoCheckCommand(command = {}, step = {}) {
   const tool = String(command?.tool || "");
   const text = String(step?.instruction || "");
   if (/\b(submit|pay|payment|delete|remove|approve|reject|password|otp|login|sign in|checkout)\b/i.test(text)) return false;
+  if (isButtonIntentStep(step) && tool === "browserNavigate") return false;
   return ["browserNavigate", "browserObserve", "browserStatus", "browserShowActions"].includes(tool);
 }
 
@@ -679,6 +836,7 @@ function shouldCapturePlaywrightBeforeSnapshot({ step = {}, beforeState = null }
   if (!beforeState || beforeState.ok !== true) return true;
   if (isSensitiveStep(step)) return true;
   if (isVisualStep(step)) return true;
+  if (isButtonIntentStep(step)) return true;
 
   // Fast snapshot checker depends on Playwright MCP snapshot refs.
   if (envFlag("BROWSER_AGENT_FAST_SNAPSHOT_CHECKER", false)) return true;
@@ -765,6 +923,7 @@ function fastSnapshotCheckerForStep({ stepPlan = {}, step = {}, before = null } 
 function isSnapshotResultAutoPassCommand(command = {}, step = {}, execution = {}) {
   const tool = String(command?.tool || "");
   if (isSensitiveStep(step)) return false;
+  if (isButtonIntentStep(step) && tool === "browserNavigate") return false;
   if (execution?.ok !== true) return false;
   if (execution?.error) return false;
   if (/###\\s*Error|invalid_type|expected .* received/i.test(String(execution?.actionResult?.text || ""))) return false;
@@ -1950,7 +2109,28 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       break;
     }
 
-    const executionCommand = commandWithFreshFillBeforeSubmit(normalized.command, lastSuccessfulFillCommand);
+    const targetAdjustedCommand = commandWithLightpandaExecutionTarget(normalized.command, {
+      step,
+      beforeState,
+      originalInstruction: instruction,
+      currentUrl,
+    });
+
+    if (targetAdjustedCommand !== normalized.command) {
+      trace.push(traceEntry({
+        role: "playwright_controller",
+        title: "Lightpanda execution target",
+        step: stepNumber,
+        status: "prepared",
+        input: normalized.command,
+        output: targetAdjustedCommand,
+        summary: "Prepared real Playwright click target from Lightpanda DOM evidence for button-like intent.",
+        tool: targetAdjustedCommand.tool,
+        ok: null,
+      }));
+    }
+
+    const executionCommand = commandWithFreshFillBeforeSubmit(targetAdjustedCommand, lastSuccessfulFillCommand);
 
     if (executionCommand !== normalized.command) {
       trace.push(traceEntry({
@@ -2074,7 +2254,10 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }
 
     let repaired = false;
-    for (let repairAttempt = 0; repairAttempt < maxRepairAttempts; repairAttempt += 1) {
+    const initialSyncRepair = parseWatcherSyncRepairInstruction(resultCheck?.repairInstruction || "");
+    const effectiveRepairAttempts = initialSyncRepair ? Math.max(1, maxRepairAttempts) : maxRepairAttempts;
+
+    for (let repairAttempt = 0; repairAttempt < effectiveRepairAttempts; repairAttempt += 1) {
       if (resultCheck.success === true) break;
       if (!resultCheck.repairInstruction) break;
 

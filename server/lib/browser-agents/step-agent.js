@@ -23,8 +23,9 @@ Allowed tools:
 
 Rules:
 - Prefer pageState.links/buttons/inputs/forms/candidates over guessing.
-- For link clicks, if pageState has a matching link href, prefer browserNavigate with that href. Include sourceText/sourceRef/sourceSelector in args when available.
-- For buttons/forms/inputs without href, propose browserClickByText/browserFillFields using visible text plus the Lightpanda ref/selector. The Playwright bridge will translate safely.
+- For link clicks, if pageState has a matching link href and the user asked for a link/navigation, prefer browserNavigate with that href. Include sourceText/sourceRef/sourceSelector in args when available.
+- For button/modal/collapse/dropdown/toggle clicks, prefer real buttons or non-href controls. Do not turn these into browserNavigate just because a nearby documentation link or section anchor matches words like "modal", "example", or "collapse".
+- For buttons/forms/inputs without href, propose browserClickByText/browserFillFields using visible text plus the Lightpanda ref/selector or Playwright snapshot ref. The Playwright bridge will translate safely.
 - Use Playwright snapshot refs only when a real Playwright snapshot is present.
 - Prefer visible text exactly as seen in pageState or snapshot.
 - If the user target is semantically present under different visible text, use the visible text and explain the mapping in notes.
