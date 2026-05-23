@@ -86,6 +86,216 @@ function syntheticApprovedChecker(stepPlan = {}) {
   };
 }
 
+
+function strictSnapshotLineForRef(snapshot = null, ref = "") {
+  const raw = String(snapshot?.text || snapshot?.dom?.rawText || snapshot?.dom?.textPreview || "");
+  if (!raw || !ref) return "";
+  const needle = "[ref=" + ref + "]";
+  return raw.split(/\r?\n/).find((line) => String(line || "").includes(needle)) || "";
+}
+
+function strictVisibleTextFromSnapshotLine(line = "") {
+  const quoted = String(line || "").match(/"([^"]+)"/);
+  if (quoted?.[1]) return safeText(quoted[1], 240);
+  return safeText(String(line || "").replace(/\[ref=[^\]]+\]/g, "").replace(/^[-\s]+/, ""), 240);
+}
+
+function strictSnapshotClickApproval({ command = {}, before = null } = {}) {
+  const args = command.args || {};
+  const ref = safeText(args.ref || args.selector || "", 180);
+  const text = safeText(args.text || args.label || args.buttonText || "", 240);
+
+  if (!ref || !text) {
+    return {
+      ok: false,
+      reason: "Click fallback blocked: command needs both snapshot ref and visible text.",
+    };
+  }
+
+  const line = strictSnapshotLineForRef(before?.snapshot || null, ref);
+  if (!line) {
+    return {
+      ok: false,
+      reason: "Click fallback blocked: ref was not found in the current snapshot.",
+    };
+  }
+
+  if (!/\b(link|button|menuitem|option|checkbox|radio|tab)\b/i.test(line)) {
+    return {
+      ok: false,
+      reason: "Click fallback blocked: ref exists but is not clearly clickable in the snapshot.",
+    };
+  }
+
+  const visible = strictVisibleTextFromSnapshotLine(line);
+  if (!visible || visible.toLowerCase() !== text.toLowerCase()) {
+    return {
+      ok: false,
+      reason: "Click fallback blocked: command text does not exactly match snapshot visible text.",
+      visible,
+      requested: text,
+    };
+  }
+
+  return {
+    ok: true,
+    visible,
+    line: safeText(line, 500),
+  };
+}
+
+
+
+function checkerFallbackAfterModelError({ checkerCall = null, stepPlan = {}, step = {}, before = null } = {}) {
+  if (!checkerCall || checkerCall.ok !== false) return null;
+
+  const error = String(checkerCall.error || "");
+  if (!/invalid JSON|BROWSER_AGENT_LLM_INVALID_JSON/i.test(error)) return null;
+
+  const command = stepPlan?.command || null;
+  const tool = String(command?.tool || "");
+  if (!command || !tool) return null;
+  if (isSensitiveStep(step)) return null;
+
+  const allowed = new Set(["browserNavigate", "browserObserve", "browserClickByText", "browserStatus", "browserShowActions"]);
+  if (!allowed.has(tool)) return null;
+
+  if (tool === "browserClickByText") {
+    const approval = strictSnapshotClickApproval({ command, before });
+    if (!approval.ok) {
+      return {
+        status: "blocked_checker_invalid_json",
+        approved: false,
+        command: null,
+        reason: approval.reason,
+        repairInstruction: "Run the model checker again or ask Step Agent to choose a target that exactly matches the snapshot.",
+        messageToUser: "",
+        confidence: 0.2,
+      };
+    }
+
+    return {
+      status: "auto_approved_snapshot_strict_fallback",
+      approved: true,
+      command: {
+        ...command,
+        args: {
+          ...(command.args || {}),
+          text: approval.visible,
+        },
+        notes: safeText([
+          command.notes,
+          "Strict snapshot fallback approved exact clickable target: " + approval.visible,
+        ].filter(Boolean).join(" "), 500),
+      },
+      reason: "Checker returned invalid JSON. Strict snapshot fallback approved because ref/text matched a clickable snapshot line exactly.",
+      repairInstruction: "",
+      messageToUser: "",
+      confidence: Math.min(Number(stepPlan.confidence || 0.85), 0.9),
+    };
+  }
+
+  return {
+    status: "auto_approved_checker_fallback",
+    approved: true,
+    command,
+    reason: "Checker returned invalid JSON. Non-sensitive non-click command was approved by deterministic fallback.",
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: Math.min(Number(stepPlan.confidence || 0.75), 0.85),
+  };
+}
+
+ = {}) {
+  if (!checkerCall || checkerCall.ok !== false) return null;
+
+  const error = String(checkerCall.error || "");
+  if (!/invalid JSON|BROWSER_AGENT_LLM_INVALID_JSON/i.test(error)) return null;
+
+  const command = stepPlan?.command || null;
+  const tool = String(command?.tool || "");
+  if (!command || !tool) return null;
+  if (isSensitiveStep(step)) return null;
+
+  const allowed = new Set(["browserNavigate", "browserObserve", "browserClickByText", "browserStatus", "browserShowActions"]);
+  if (!allowed.has(tool)) return null;
+
+  if (tool === "browserClickByText") {
+    const approval = strictSnapshotClickApproval({ command, before });
+    if (!approval.ok) {
+      return {
+        status: "blocked_checker_invalid_json",
+        approved: false,
+        command: null,
+        reason: approval.reason,
+        repairInstruction: "Run the model checker again or ask Step Agent to choose a target that exactly matches the snapshot.",
+        messageToUser: "",
+        confidence: 0.2,
+      };
+    }
+
+    return {
+      status: "auto_approved_snapshot_strict_fallback",
+      approved: true,
+      command: {
+        ...command,
+        args: {
+          ...(command.args || {}),
+          text: approval.visible,
+        },
+        notes: safeText([
+          command.notes,
+          "Strict snapshot fallback approved exact clickable target: " + approval.visible,
+        ].filter(Boolean).join(" "), 500),
+      },
+      reason: "Checker returned invalid JSON. Strict snapshot fallback approved because ref/text matched a clickable snapshot line exactly.",
+      repairInstruction: "",
+      messageToUser: "",
+      confidence: Math.min(Number(stepPlan.confidence || 0.85), 0.9),
+    };
+  }
+
+  return {
+    status: "auto_approved_checker_fallback",
+    approved: true,
+    command,
+    reason: "Checker returned invalid JSON. Non-sensitive non-click command was approved by deterministic fallback.",
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: Math.min(Number(stepPlan.confidence || 0.75), 0.85),
+  };
+}
+
+ = {}) {
+  if (!checkerCall || checkerCall.ok !== false) return null;
+
+  const error = String(checkerCall.error || "");
+  if (!/invalid JSON|BROWSER_AGENT_LLM_INVALID_JSON/i.test(error)) return null;
+
+  const command = stepPlan?.command || null;
+  const tool = String(command?.tool || "");
+  if (!command || !tool) return null;
+  if (isSensitiveStep(step)) return null;
+
+  const allowed = new Set(["browserNavigate", "browserObserve", "browserClickByText", "browserStatus", "browserShowActions"]);
+  if (!allowed.has(tool)) return null;
+
+  if (tool === "browserClickByText") {
+    const args = command.args || {};
+    if (!args.text && !args.ref && !args.selector) return null;
+  }
+
+  return {
+    status: "auto_approved_checker_fallback",
+    approved: true,
+    command,
+    reason: "Checker returned invalid JSON. Non-sensitive Step Agent command was approved by deterministic fallback.",
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: Math.min(Number(stepPlan.confidence || 0.75), 0.85),
+  };
+}
+
 function syntheticPassedResult({ execution = {}, step = {}, command = {} } = {}) {
   const observation = observationFromExecution(execution);
   const where = [observation.title, observation.url].filter(Boolean).join(" — ");
@@ -107,6 +317,82 @@ function syntheticPassedResult({ execution = {}, step = {}, command = {} } = {})
 function isSensitiveStep(step = {}) {
   return /\b(submit|pay|payment|delete|remove|approve|reject|password|otp|login|sign in|checkout|profile update|attendance|payroll)\b/i
     .test(String(step?.instruction || ""));
+}
+
+function snapshotTextForFastChecker(snapshot = null) {
+  return String(snapshot?.text || snapshot?.dom?.rawText || snapshot?.dom?.textPreview || "");
+}
+
+function snapshotLineForRef(snapshot = null, ref = "") {
+  const raw = snapshotTextForFastChecker(snapshot);
+  if (!raw || !ref) return "";
+  const needle = "[ref=" + ref + "]";
+  return raw.split(/\r?\n/).find((line) => String(line || "").includes(needle)) || "";
+}
+
+function visibleTextFromSnapshotLine(line = "") {
+  const quoted = String(line || "").match(/"([^"]+)"/);
+  if (quoted?.[1]) return safeText(quoted[1], 240);
+  return safeText(String(line || "").replace(/\[ref=[^\]]+\]/g, "").replace(/^[-\s]+/, ""), 240);
+}
+
+function fastSnapshotCheckerForStep({ stepPlan = {}, step = {}, before = null } = {}) {
+  if (!envFlag("BROWSER_AGENT_FAST_SNAPSHOT_CHECKER", true)) return null;
+  if (isSensitiveStep(step)) return null;
+
+  const command = stepPlan?.command || null;
+  if (!command || typeof command !== "object") return null;
+
+  const tool = String(command.tool || "");
+  if (tool !== "browserClickByText") return null;
+
+  const snapshot = before?.snapshot || null;
+  const raw = snapshotTextForFastChecker(snapshot);
+  if (!raw.trim()) return null;
+
+  const args = command.args || {};
+  const ref = safeText(args.ref || args.selector || "", 180);
+  const text = safeText(args.text || args.label || args.buttonText || "", 240);
+  if (!ref && !text) return null;
+
+  let visible = "";
+  let status = "auto_approved_snapshot_crosscheck";
+  let reason = "Snapshot checker confirmed the non-sensitive click target before model checker was needed.";
+
+  if (ref) {
+    const line = snapshotLineForRef(snapshot, ref);
+    if (!line) return null;
+    visible = visibleTextFromSnapshotLine(line);
+  } else if (text && raw.toLowerCase().includes(text.toLowerCase())) {
+    visible = text;
+  } else {
+    return null;
+  }
+
+  const nextArgs = { ...args };
+  if (visible) nextArgs.text = visible;
+
+  if (visible && text && visible.toLowerCase() !== text.toLowerCase()) {
+    status = "auto_repaired_snapshot_crosscheck";
+    reason = "Snapshot checker replaced the command text with the visible page text for the same target/ref.";
+  }
+
+  return {
+    status,
+    approved: true,
+    command: {
+      ...command,
+      args: nextArgs,
+      notes: safeText([
+        command.notes,
+        visible ? "Snapshot-confirmed visible target: " + visible : "",
+      ].filter(Boolean).join(" "), 500),
+    },
+    reason,
+    repairInstruction: "",
+    messageToUser: "",
+    confidence: Math.max(0.85, Number(stepPlan.confidence || 0.85)),
+  };
 }
 
 function isSnapshotResultAutoPassCommand(command = {}, step = {}, execution = {}) {
@@ -745,6 +1031,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     let checkerCall = null;
     let checker = null;
 
+    const snapshotChecker = fastSnapshotCheckerForStep({ stepPlan, step, before });
+
     if (envFlag("BROWSER_AGENT_SKIP_LOW_RISK_CHECKER", true) && isLowRiskAutoCheckCommand(stepPlan.command, step)) {
       checker = syntheticApprovedChecker(stepPlan);
       trace.push(traceEntry({
@@ -755,6 +1043,19 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         input: stepPlan,
         output: checker,
         summary: checker.reason,
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: true,
+      }));
+    } else if (snapshotChecker) {
+      checker = snapshotChecker;
+      trace.push(traceEntry({
+        role: "gemma_checker",
+        title: "Snapshot command checker",
+        step: stepNumber,
+        status: checker.status,
+        input: stepPlan,
+        output: checker,
+        summary: checker.reason || checker.repairInstruction || checker.messageToUser || "",
         tool: checker.command?.tool || stepPlan.command?.tool || "",
         ok: true,
       }));
@@ -776,6 +1077,15 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
 
       checker = checkerCall.call?.data || {};
+      const checkerFallback = checkerFallbackAfterModelError({ checkerCall, stepPlan, step, before });
+      if (checkerFallback) {
+        checker = checkerFallback;
+        checkerCall = {
+          ...checkerCall,
+          ok: true,
+          error: "",
+        };
+      }
       trace.push(traceEntry({
         role: "gemma_checker",
         title: "Gemma command checker",
