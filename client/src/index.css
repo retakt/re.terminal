@@ -14224,3 +14224,9 @@ display: flex !important;
 .spin-animation {
   animation: spin 2s linear infinite;
 }
+
+[data-reterm-edge-guard] {
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+}
