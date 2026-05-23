@@ -9,6 +9,10 @@ import {
   executePlaywrightMcpBrowserCommand,
   snapshotImagesForModel,
 } from "./browser-playwright-mcp-bridge.js";
+import {
+  compactBrowserStateForModel,
+  getBrowserState,
+} from "./browser-state-provider.js";
 
 import {
   BROWSER_AGENT_ARCHITECTURE,
@@ -365,6 +369,43 @@ function compactState(state = {}) {
         }
       : null,
   };
+}
+
+function observationFromPageState(pageState = null) {
+  if (!pageState || pageState.ok !== true) return null;
+  return {
+    ok: true,
+    url: pageState.url || "",
+    title: pageState.title || "",
+    text: pageState.text || pageState.textPreview || "",
+    textPreview: pageState.textPreview || pageState.text || "",
+    markdown: pageState.markdown || "",
+    links: Array.isArray(pageState.links) ? pageState.links : [],
+    buttons: Array.isArray(pageState.buttons) ? pageState.buttons : [],
+    inputs: Array.isArray(pageState.inputs) ? pageState.inputs : [],
+    forms: Array.isArray(pageState.forms) ? pageState.forms : [],
+    interactiveElements: Array.isArray(pageState.interactiveElements) ? pageState.interactiveElements : [],
+    stats: pageState.stats || {},
+    engine: pageState.engine || "lightpanda_cdp",
+    source: pageState.source || "lightpanda_read_only",
+    extractionPath: pageState.extractionPath || "",
+    extractionSources: Array.isArray(pageState.extractionSources) ? pageState.extractionSources : [],
+    extractionCapabilities: pageState.extractionCapabilities || {},
+  };
+}
+
+function pageStateTraceSummary(pageState = null) {
+  if (!pageState) return "No Lightpanda page state was captured.";
+  if (pageState.ok !== true) return pageState.error || "Lightpanda page state was unavailable.";
+  const counts = pageState.stats || {};
+  return [
+    "Lightpanda read-only state",
+    pageState.title || pageState.url || "",
+    `links=${Number(counts.links || 0)}`,
+    `buttons=${Number(counts.buttons || 0)}`,
+    `inputs=${Number(counts.inputs || 0)}`,
+    `forms=${Number(counts.forms || 0)}`,
+  ].filter(Boolean).join(" — ");
 }
 
 function usageOf(callResult) {
@@ -801,6 +842,57 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ok: null,
     }));
 
+    let beforeState = null;
+    try {
+      beforeState = await getBrowserState({
+        ...args,
+        state: currentState,
+        currentUrl,
+        navigate: false,
+        waitMs: args.waitMs || "700",
+      });
+    } catch (err) {
+      beforeState = {
+        ok: false,
+        status: "failed",
+        source: "lightpanda_read_only",
+        engine: "lightpanda_cdp",
+        url: currentUrl || "",
+        title: currentTitle || "",
+        error: err instanceof Error ? err.message : String(err),
+        links: [],
+        buttons: [],
+        inputs: [],
+        forms: [],
+        interactiveElements: [],
+        candidates: [],
+        stats: {},
+      };
+    }
+
+    trace.push(traceEntry({
+      role: "lightpanda_state_provider",
+      title: "Lightpanda state provider",
+      step: stepNumber,
+      status: beforeState?.ok === true ? "observed" : "unavailable",
+      input: {
+        currentUrl,
+        readOnly: true,
+      },
+      output: compactBrowserStateForModel(beforeState, {
+        textLimit: 900,
+        markdownLimit: 900,
+        linkLimit: 12,
+        buttonLimit: 12,
+        inputLimit: 12,
+        formLimit: 4,
+        candidateLimit: 24,
+      }),
+      summary: pageStateTraceSummary(beforeState),
+      tool: "browserObserve",
+      ok: beforeState?.ok === true,
+    }));
+
     let before = null;
     try {
       before = await capturePlaywrightMcpSnapshot({
@@ -819,9 +911,10 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }
 
     const beforeImages = snapshotImagesForModel(before?.snapshot);
+    const compactBeforeState = compactBrowserStateForModel(beforeState);
 
     if (envFlag("BROWSER_AGENT_REPORT_STEP_FAST_PATH", true) && isReportOnlyStep(step)) {
-      const observation = before?.observation || observationFromExecution(null, before);
+      const observation = observationFromPageState(beforeState) || before?.observation || observationFromExecution(null, before);
       currentUrl = observation.url || currentUrl;
       currentTitle = observation.title || currentTitle;
       finalObservation = observation;
@@ -888,6 +981,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           currentUrl,
           currentTitle,
           currentState: compactState(currentState),
+          pageState: compactBeforeState,
           snapshot: compactSnapshotForModel(before?.snapshot),
         },
       }));
@@ -951,6 +1045,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           step,
           currentUrl,
           currentTitle,
+          pageState: compactBeforeState,
           snapshot: compactSnapshotForModel(before?.snapshot),
           proposedCommand: stepPlan.command || null,
         },
@@ -967,6 +1062,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             step,
             currentUrl,
             currentTitle,
+            pageState: compactBeforeState,
             snapshot: compactSnapshotForModel(before?.snapshot),
             proposedCommand: stepPlan.command || null,
             retryReason: "Previous checker call returned invalid JSON. Return only strict JSON matching the checker schema.",
@@ -1095,6 +1191,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             error: execution.error || "",
             observation: observationFromExecution(execution),
           },
+          beforeState: compactBeforeState,
           beforeSnapshot: compactSnapshotForModel(execution.beforeSnapshot || before?.snapshot),
           afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
         },
