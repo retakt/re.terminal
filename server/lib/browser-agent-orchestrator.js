@@ -1341,10 +1341,164 @@ function activeWatcherUiOpenStateV4(uiState = {}, uiKind = "") {
   return Boolean(uiState.blockingOpen);
 }
 
+
+function activeWatcherLiveUiReportStepV10(step = {}) {
+  if (isNavigationStep(step)) return null;
+
+  const action = String(step.expectedAction || "").toLowerCase();
+  const instruction = String(step.instruction || "").toLowerCase();
+  const criteria = String(step.successCriteria || "").toLowerCase();
+  const text = [instruction, criteria, action].join(" ");
+
+  const readLike =
+    action === "observe" ||
+    action === "report" ||
+    /\b(inspect|report|read|describe|extract|show)\b/.test(instruction);
+
+  if (!readLike) return null;
+
+  if (/\bmodal\b/.test(text) && /\b(title|body|body text|content|text)\b/.test(text)) {
+    return { uiKind: "modal" };
+  }
+
+  if (/\bcollapse\b/.test(text) && /\b(sentence|content|text|body)\b/.test(text)) {
+    return { uiKind: "collapse" };
+  }
+
+  return null;
+}
+
+function activeWatcherSentenceFromTextV10(value = "") {
+  const clean = safeText(value || "", 1200)
+    .replace(/\b(Close|Save changes)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!clean) return "";
+  return clean.match(/[^.?!]{8,260}[.?!]/)?.[0]?.trim() || clean.slice(0, 260);
+}
+
+function activeWatcherModalReportSummaryV10(uiState = {}) {
+  const dialog = Array.isArray(uiState.dialogs) ? uiState.dialogs[0] : null;
+  const raw = safeText(dialog?.text || "", 1200).replace(/\s+/g, " ").trim();
+
+  if (!raw) return "Modal content: not found in live UI state.";
+
+  const titleMatch = raw.match(/^(.*?)(?=\s+Woo-hoo|\s+Close|\s+Save changes|$)/i);
+  const title = safeText(titleMatch?.[1] || "Modal", 180).trim();
+  const withoutTitle = title ? raw.replace(title, " ") : raw;
+  const body = activeWatcherSentenceFromTextV10(withoutTitle);
+
+  return [
+    title ? `Modal title: ${title}` : "",
+    body ? `Modal body: ${body}` : "",
+  ].filter(Boolean).join(" — ") || `Modal content: ${raw}`;
+}
+
+function activeWatcherCollapseReportSummaryV10(uiState = {}) {
+  const collapse = Array.isArray(uiState.collapses) ? uiState.collapses[0] : null;
+  const sentence = activeWatcherSentenceFromTextV10(collapse?.text || "");
+  return sentence
+    ? `First sentence: ${sentence}`
+    : "First sentence: not found in live collapse UI state.";
+}
+
+async function activeWatcherReportLiveUiContentV10({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
+  const report = activeWatcherLiveUiReportStepV10(step);
+  if (!report) return null;
+
+  const uiState = await probePlaywrightUiState({
+    currentUrl,
+    navigate: false,
+  }, currentState).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const modalOpen = Boolean(uiState.modalOpen || uiState.dialogOpen);
+  const collapseOpen = Boolean(uiState.collapseOpen);
+
+  if (report.uiKind === "modal" && !modalOpen) return null;
+  if (report.uiKind === "collapse" && !collapseOpen) return null;
+
+  const summary = report.uiKind === "modal"
+    ? activeWatcherModalReportSummaryV10(uiState)
+    : activeWatcherCollapseReportSummaryV10(uiState);
+
+  trace.push(traceEntry({
+    role: "watcher",
+    title: "Active watcher live UI report",
+    step: stepNumber,
+    status: "reported_live_ui_content",
+    input: step,
+    output: {
+      uiKind: report.uiKind,
+      modalOpen,
+      collapseOpen,
+      dialogs: Array.isArray(uiState.dialogs) ? uiState.dialogs.slice(0, 1) : [],
+      collapses: Array.isArray(uiState.collapses) ? uiState.collapses.slice(0, 1) : [],
+      error: uiState.error || "",
+    },
+    summary,
+    tool: "browserObserve",
+    ok: true,
+  }));
+
+  return {
+    handled: true,
+    stepResult: {
+      stepNumber,
+      step,
+      ok: true,
+      repaired: false,
+      status: "passed",
+      summary,
+      url: uiState.url || currentUrl,
+      title: uiState.title || currentTitle,
+      command: {
+        intent: "report_live_ui_content",
+        tool: "browserObserve",
+        args: {
+          currentUrl,
+          uiKind: report.uiKind,
+          navigate: false,
+        },
+        notes: "Active watcher reported currently open UI content from live Playwright state instead of Lightpanda page scrape.",
+      },
+      finalObservation: {
+        url: uiState.url || currentUrl,
+        title: uiState.title || currentTitle,
+        textPreview: summary,
+        uiState,
+      },
+    },
+    finalObservation: {
+      url: uiState.url || currentUrl,
+      title: uiState.title || currentTitle,
+      textPreview: summary,
+      uiState,
+    },
+  };
+}
+
+
 async function activeWatcherHardUiStepV4({ step = {}, stepNumber = 0, currentUrl = "", currentTitle = "", currentState = {}, trace = [] } = {}) {
   if (isNavigationStep(step)) return null;
 
-const verify = activeWatcherHardVerifyKindV4(step);
+  const liveUiReportV10 = await activeWatcherReportLiveUiContentV10({
+    step,
+    stepNumber,
+    currentUrl,
+    currentTitle,
+    currentState,
+    trace,
+  });
+
+  if (liveUiReportV10?.handled) {
+    return liveUiReportV10;
+  }
+
+  const verify = activeWatcherHardVerifyKindV4(step);
 
   if (verify) {
     const uiState = await probePlaywrightUiState({
