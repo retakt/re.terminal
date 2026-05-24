@@ -5324,11 +5324,39 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       command: executionCommand,
     });
 
-    if (stepOk && commandHasFields(executionCommand)) {
+    const executedFields = Array.isArray(executionCommand?.args?.fields)
+      ? executionCommand.args.fields
+      : Array.isArray(executionCommand?.args?.requestedValues)
+        ? executionCommand.args.requestedValues
+        : Array.isArray(executionCommand?.fields)
+          ? executionCommand.fields
+          : [];
+
+    if (
+      stepOk &&
+      executedFields.length > 0 &&
+      ["browserFillFields", "browserFillAndSubmit", "browserPrepareFormSubmission"].includes(String(executionCommand?.tool || ""))
+    ) {
       lastSuccessfulFillCommand = {
         ...executionCommand,
         tool: "browserFillFields",
+        args: {
+          ...(executionCommand.args || {}),
+          fields: executedFields,
+        },
       };
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Remember verified form fill",
+        step: stepNumber,
+        status: "stored_previous_fill",
+        input: executionCommand,
+        output: lastSuccessfulFillCommand,
+        summary: "Stored verified form fields for a later submit-only step.",
+        tool: "browserFillFields",
+        ok: true,
+      }));
     }
 
     if (!stepOk) {
