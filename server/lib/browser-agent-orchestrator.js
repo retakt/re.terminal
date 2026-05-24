@@ -2730,26 +2730,47 @@ function commandWithGenericFormPreparedValues(command = {}, step = {}, originalI
     return command;
   }
 
-  if (!["browserFillAndSubmit", "browserFillFields"].includes(tool)) {
+  if (!["browserFillAndSubmit", "browserFillFields", "browserPrepareFormSubmission"].includes(tool)) {
     return command;
   }
 
   const requestedValues = fieldsArrayFromLooseFormArgs(args);
   if (!requestedValues.length) return command;
 
+  // If a command is already prepared-form, preserve it but attach normalized requestedValues.
+  if (tool === "browserPrepareFormSubmission") {
+    return {
+      ...command,
+      args: {
+        ...args,
+        requestedValues,
+      },
+    };
+  }
+
+  const wantsSubmit =
+    tool === "browserFillAndSubmit" ||
+    /\b(submit|submitted|register|registration|send|save|continue)\b/i.test(text);
+
+  const submitText =
+    args.text ||
+    args.submitText ||
+    args.buttonText ||
+    (/\b(register|registration)\b/i.test(text) ? "Register" : "");
+
   return {
     ...command,
-    intent: "prepare_form_submission",
-    tool: "browserPrepareFormSubmission",
+    intent: wantsSubmit ? "fill_and_submit" : "fill_form",
+    tool: wantsSubmit ? "browserFillAndSubmit" : "browserFillFields",
     args: {
-      currentUrl: args.currentUrl || "",
-      formIntent: originalInstruction || step.instruction || "",
-      stepInstruction: step.instruction || "",
-      requestedValues,
+      ...args,
+      fields: requestedValues,
+      ...(wantsSubmit ? { explicitSubmit: true } : {}),
+      ...(submitText ? { text: submitText } : {}),
     },
     notes: [
       command.notes || "",
-      "Normalized LLM-selected form values into prepared-form flow.",
+      "Normalized LLM-selected form values into direct fill/submit flow.",
     ].filter(Boolean).join(" "),
   };
 }

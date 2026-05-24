@@ -2397,12 +2397,24 @@ async function tryDomFillFields(fields = []) {
       return parts.join(" ");
     };
 
-    const candidates = Array.from(document.querySelectorAll("input, textarea, [contenteditable=true]")).filter(visible);
+    const candidates = Array.from(document.querySelectorAll("input, textarea, select, [contenteditable=true]")).filter(visible);
     const filled = [];
     const missing = [];
 
     function setNativeValue(el, value) {
-      if (el.isContentEditable) {
+      if (el.tagName.toLowerCase() === "select") {
+        const wanted = norm(value);
+        const options = Array.from(el.options || []).filter((option) => !option.disabled);
+        const option = options.find((item) => {
+            const hay = norm(String(item.value || "") + " " + String(item.textContent || ""));
+            return wanted && hay.includes(wanted);
+          }) ||
+          options.find((item) => item.value && !/choose|select|open this/i.test(item.textContent || "")) ||
+          options.find((item) => item.value) ||
+          options[0] ||
+          null;
+        if (option) el.value = option.value;
+      } else if (el.isContentEditable) {
         el.focus();
         el.textContent = value;
       } else {
@@ -2507,7 +2519,7 @@ async function verifyFilledFields(fields = []) {
       parts.push(el.getAttribute("aria-label") || "", el.getAttribute("placeholder") || "", el.getAttribute("name") || "", el.getAttribute("id") || "", el.getAttribute("type") || "");
       return parts.join(" ");
     };
-    const candidates = Array.from(document.querySelectorAll("input, textarea, [contenteditable=true]")).filter(visible);
+    const candidates = Array.from(document.querySelectorAll("input, textarea, select, [contenteditable=true]")).filter(visible);
     const filled = [];
     const missing = [];
     for (const field of fields) {
@@ -3335,6 +3347,21 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     const fields = fieldsFromCommand(command);
     if (!fields.length) return { ok: false, error: "Fill needs at least one field." };
 
+    const domFallback = await tryDomFillFields(fields);
+    const verifyAfterDom = await verifyFilledFields(fields);
+
+    if (verifyAfterDom.ok === true) {
+      return {
+        ok: true,
+        domFallback,
+        verify: verifyAfterDom,
+        text: [
+          domFallback.text || domFallback.error || "",
+          verifyAfterDom.text || "",
+        ].filter(Boolean).join("\n"),
+      };
+    }
+
     const formFill = await tryPlaywrightFillForm(fields);
 
     const results = [];
@@ -3343,50 +3370,63 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     }
 
     const verifyAfterType = await verifyFilledFields(fields);
-    if (verifyAfterType.ok === true) {
-      return {
-        ok: true,
-        formFill,
-        results,
-        verify: verifyAfterType,
-        text: [
-          formFill.text || formFill.error || "",
-          results.map((result) => result.text || result.error || "").filter(Boolean).join("\n"),
-          verifyAfterType.text || "",
-        ].filter(Boolean).join("\n"),
-      };
-    }
-
-    const domFallback = await tryDomFillFields(fields);
-    const verifyAfterDom = await verifyFilledFields(fields);
-
     return {
-      ok: verifyAfterDom.ok === true,
+      ok: verifyAfterType.ok === true,
       formFill,
       results,
       domFallback,
-      verify: verifyAfterDom,
-      error: verifyAfterDom.ok === true ? "" : verifyAfterDom.error || domFallback.error || "Fill failed verification.",
+      verify: verifyAfterType,
+      error: verifyAfterType.ok === true ? "" : verifyAfterType.error || domFallback.error || "Fill failed verification.",
       text: [
-        formFill.text || formFill.error || "",
-        results.map((result) => result.text || result.error || "").filter(Boolean).join("\n"),
         domFallback.text || domFallback.error || "",
         verifyAfterDom.text || verifyAfterDom.error || "",
+        formFill.text || formFill.error || "",
+        results.map((result) => result.text || result.error || "").filter(Boolean).join("\n"),
+        verifyAfterType.text || verifyAfterType.error || "",
       ].filter(Boolean).join("\n"),
     };
   }
 
   if (tool === "browserSubmitForm") {
-    const text = safeText(commandArgs.text || commandArgs.submitText || commandArgs.buttonText || "Submit", 180);
-    return tryPlaywrightClick({
-      ...command,
-      tool: "browserClickByText",
-      args: {
-        ...commandArgs,
-        text,
-        ref: commandArgs.ref || commandArgs.selector || commandArgs.target || text,
-      },
-    }, args, state);
+    const labels = [
+      commandArgs.text,
+      commandArgs.submitText,
+      commandArgs.buttonText,
+      "Submit",
+      "Register",
+      "Send",
+      "Save",
+      "Continue",
+      "Next",
+    ].map((value) => safeText(value || "", 180)).filter(Boolean);
+
+    const seen = new Set();
+    const failures = [];
+
+    for (const text of labels) {
+      const key = text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const result = await tryPlaywrightClick({
+        ...command,
+        tool: "browserClickByText",
+        args: {
+          ...commandArgs,
+          text,
+          ref: commandArgs.ref || commandArgs.selector || commandArgs.target || text,
+        },
+      }, args, state);
+
+      if (result.ok === true) return result;
+      failures.push(text + ": " + safeText(result.error || result.text || "", 300));
+    }
+
+    return {
+      ok: false,
+      error: "Submit click failed for all common submit labels.",
+      text: failures.join("\n"),
+    };
   }
 
   if (tool === "browserFillAndSubmit") {
