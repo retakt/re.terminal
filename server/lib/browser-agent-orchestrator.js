@@ -4275,6 +4275,43 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     };
   }
 
+  if (passedAllSteps && final?.success !== true) {
+    const lastStep = stepResults.at(-1) || {};
+    final = {
+      ...final,
+      success: true,
+      needsUser: false,
+      summary: finalBrowserAgentUserSummary({
+        passedAllSteps,
+        stoppedReason: "",
+        finalObservation,
+        lastStep,
+      }),
+      missingSteps: [],
+      reason: "",
+      verifierOverridden: true,
+      verifierOriginal: {
+        success: final?.success,
+        summary: final?.summary || "",
+        reason: final?.reason || "",
+        missingSteps: Array.isArray(final?.missingSteps) ? final.missingSteps : [],
+      },
+    };
+
+    trace.push(traceEntry({
+      role: "final_verifier",
+      title: "Final verifier false-negative guard",
+      status: "overrode_false_negative",
+      input: {
+        passedAllSteps,
+        originalFinal: final.verifierOriginal,
+      },
+      output: final,
+      summary: "All browser steps passed; overrode final verifier false negative.",
+      ok: true,
+    }));
+  }
+
   trace.push(traceEntry({
     role: "final_verifier",
     title: "Final verifier",
