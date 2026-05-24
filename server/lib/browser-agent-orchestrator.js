@@ -2712,7 +2712,64 @@ function fieldsArrayFromLooseFormArgs(rawArgs = {}) {
     }));
 }
 
-function commandWithGenericFormPreparedValues(command = {}, step = {}, originalInstruction = "") {
+function compactFormFieldKey(value = "") {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function fieldsFromCommandArgsForMerge(command = null) {
+  const args = command?.args && typeof command.args === "object" && !Array.isArray(command.args)
+    ? command.args
+    : {};
+
+  if (Array.isArray(args.fields)) return args.fields;
+  if (Array.isArray(args.requestedValues)) return args.requestedValues;
+  if (Array.isArray(args.values)) return args.values;
+  if (Array.isArray(command?.fields)) return command.fields;
+
+  return [];
+}
+
+function mergeFormFieldTargetsFromTemplate(fields = [], templateCommand = null) {
+  const templates = fieldsFromCommandArgsForMerge(templateCommand);
+
+  return fields.map((field, index) => {
+    const fieldKey = compactFormFieldKey(
+      field.label || field.name || field.field || field.selector || field.ref || ""
+    );
+
+    const match = templates.find((template) => {
+      const templateKey = compactFormFieldKey(
+        template.label || template.name || template.field || template.selector || template.ref || ""
+      );
+
+      return fieldKey &&
+        templateKey &&
+        (fieldKey === templateKey || fieldKey.includes(templateKey) || templateKey.includes(fieldKey));
+    }) || templates[index] || null;
+
+    if (!match || typeof match !== "object") return field;
+
+    return {
+      ...match,
+      ...field,
+
+      // Targeting comes from Step Agent / Lightpanda evidence.
+      label: match.label || field.label || field.name || field.field || "",
+      name: match.name || field.name || "",
+      id: match.id || field.id || "",
+      placeholder: match.placeholder || field.placeholder || "",
+      selector: match.selector || field.selector || "",
+      ref: match.ref || field.ref || "",
+      type: match.type || field.type || "",
+
+      // Value comes from Checker/user.
+      value: field.value,
+      secret: Boolean(field.secret || match.secret),
+    };
+  });
+}
+
+function commandWithGenericFormPreparedValues(command = {}, step = {}, originalInstruction = "", templateCommand = null) {
   const tool = String(command.tool || "");
   const args = command.args && typeof command.args === "object" && !Array.isArray(command.args)
     ? command.args
@@ -2737,19 +2794,11 @@ function commandWithGenericFormPreparedValues(command = {}, step = {}, originalI
   const requestedValues = fieldsArrayFromLooseFormArgs(args);
   if (!requestedValues.length) return command;
 
-  // If a command is already prepared-form, preserve it but attach normalized requestedValues.
-  if (tool === "browserPrepareFormSubmission") {
-    return {
-      ...command,
-      args: {
-        ...args,
-        requestedValues,
-      },
-    };
-  }
+  const normalizedValues = mergeFormFieldTargetsFromTemplate(requestedValues, templateCommand);
 
   const wantsSubmit =
     tool === "browserFillAndSubmit" ||
+    String(step.expectedAction || "").toLowerCase() === "submit" ||
     /\b(submit|submitted|register|registration|send|save|continue)\b/i.test(text);
 
   const submitText =
@@ -2764,13 +2813,13 @@ function commandWithGenericFormPreparedValues(command = {}, step = {}, originalI
     tool: wantsSubmit ? "browserFillAndSubmit" : "browserFillFields",
     args: {
       ...args,
-      fields: requestedValues,
+      fields: normalizedValues,
       ...(wantsSubmit ? { explicitSubmit: true } : {}),
       ...(submitText ? { text: submitText } : {}),
     },
     notes: [
       command.notes || "",
-      "Normalized LLM-selected form values into direct fill/submit flow.",
+      "Normalized LLM-selected form values into direct fill/submit flow while preserving Step Agent refs.",
     ].filter(Boolean).join(" "),
   };
 }
@@ -4059,7 +4108,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       const recoveredCommand = commandWithGenericFormPreparedValues(
         recoverableFormCommandCandidate,
         step,
-        instruction
+        instruction,
+        stepPlan?.command
       );
 
       checker = {
@@ -4067,7 +4117,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         status: "approved_form_contract_normalized",
         approved: true,
         command: recoveredCommand,
-        reason: "Checker was uncertain about form tool choice, but provided executable field values. Pipeline normalized them into prepared-form flow.",
+        reason: "Checker was uncertain about form tool choice, but provided executable field values. Pipeline normalized them into direct fill/submit flow while preserving Step Agent refs.",
         repairInstruction: "",
         messageToUser: "",
         confidence: Math.max(0.8, Number(checker?.confidence || stepPlan?.confidence || 0.8)),
@@ -4102,7 +4152,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     const commandBeforeNormalize = commandWithGenericFormPreparedValues(
       checker.command || stepPlan.command,
       step,
-      instruction
+      instruction,
+      stepPlan?.command
     );
 
     const normalized = normalizeCommand(commandBeforeNormalize, currentUrl);
@@ -4534,6 +4585,28 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             tool: lastRepairCommand.tool,
             ok: repairExecution.ok === true,
           }));
+
+          if (
+            repairExecution.ok !== true &&
+            !["browserObserve", "browserScrape", "browserShowActions"].includes(String(lastRepairCommand.tool || ""))
+          ) {
+            repairCommandFailed = true;
+            resultCheck = normalizeWatcherRepairResult({
+              status: "failed",
+              success: false,
+              summary: repairExecution.error || repairExecution.actionResult?.text || "Repair command failed.",
+              evidence: repairExecution.actionResult?.text || "",
+              failureKind: "field_value_not_confirmed",
+              repairInstruction: "",
+              confidence: 0.2,
+            }, {
+              execution: repairExecution,
+              step,
+              command: lastRepairCommand,
+              beforeState,
+            });
+            break;
+          }
         }
 
         if (repairCommandFailed || !lastRepairCommand) {

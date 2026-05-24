@@ -2401,6 +2401,8 @@ async function tryDomFillFields(fields = []) {
     name: safeText(field.name || field.id || "", 180),
     placeholder: safeText(field.placeholder || "", 180),
     type: safeText(field.type || "", 80),
+    ref: safeText(field.ref || "", 180),
+    selector: safeText(field.selector || field.target || "", 300),
     value: String(field.value ?? ""),
     secret: fieldIsSecret(field),
   }));
@@ -2470,10 +2472,34 @@ async function tryDomFillFields(fields = []) {
       const wanted = [field.label, field.name, field.placeholder].map(norm).filter(Boolean);
       const isSecret = field.secret || /password|pass|pin|otp|secret/.test(norm(field.label + " " + field.name + " " + field.type));
 
-      let target = candidates.find((el) => {
-        const hay = norm(textFor(el));
-        return wanted.some((needle) => needle && hay.includes(needle));
-      });
+      let target = null;
+
+      if (field.selector) {
+        try {
+          const selected = document.querySelector(field.selector);
+          if (selected && visible(selected)) target = selected;
+        } catch {}
+      }
+
+      const refMatch = String(field.ref || "").match(/^lp_input_(\d+)$/i);
+      if (!target && refMatch) {
+        target = candidates[Number(refMatch[1])] || null;
+      }
+
+      if (!target && field.name) {
+        const wantedName = norm(field.name);
+        target = candidates.find((el) => {
+          const nameKey = norm([el.getAttribute("name") || "", el.getAttribute("id") || ""].join(" "));
+          return wantedName && nameKey && (nameKey === wantedName || nameKey.includes(wantedName) || wantedName.includes(nameKey));
+        }) || null;
+      }
+
+      if (!target) {
+        target = candidates.find((el) => {
+          const hay = norm(textFor(el));
+          return wanted.some((needle) => needle && (hay === needle || hay.includes(needle) || needle.includes(hay)));
+        }) || null;
+      }
 
       if (!target && isSecret) {
         target = candidates.find((el) => String(el.getAttribute("type") || "").toLowerCase() === "password");
@@ -2534,6 +2560,8 @@ async function verifyFilledFields(fields = []) {
     name: safeText(field.name || field.id || "", 180),
     placeholder: safeText(field.placeholder || "", 180),
     type: safeText(field.type || "", 80),
+    ref: safeText(field.ref || "", 180),
+    selector: safeText(field.selector || field.target || "", 300),
     value: String(field.value ?? ""),
     secret: fieldIsSecret(field),
   }));
@@ -2561,12 +2589,42 @@ async function verifyFilledFields(fields = []) {
     for (const field of fields) {
       const wanted = [field.label, field.name, field.placeholder].map(norm).filter(Boolean);
       const isSecret = field.secret || /password|pass|pin|otp|secret/.test(norm(field.label + " " + field.name + " " + field.type));
-      let target = candidates.find((el) => {
-        const hay = norm(textFor(el));
-        return wanted.some((needle) => needle && hay.includes(needle));
-      });
+      let target = null;
+
+      if (field.selector) {
+        try {
+          const selected = document.querySelector(field.selector);
+          if (selected && visible(selected)) target = selected;
+        } catch {}
+      }
+
+      const refMatch = String(field.ref || "").match(/^lp_input_(\d+)$/i);
+      if (!target && refMatch) {
+        target = candidates[Number(refMatch[1])] || null;
+      }
+
+      if (!target && field.name) {
+        const wantedName = norm(field.name);
+        target = candidates.find((el) => {
+          const nameKey = norm([el.getAttribute("name") || "", el.getAttribute("id") || ""].join(" "));
+          return wantedName && nameKey && (nameKey === wantedName || nameKey.includes(wantedName) || wantedName.includes(nameKey));
+        }) || null;
+      }
+
+      if (!target) {
+        target = candidates.find((el) => {
+          const hay = norm(textFor(el));
+          return wanted.some((needle) => needle && (hay === needle || hay.includes(needle) || needle.includes(hay)));
+        }) || null;
+      }
+
       if (!target && isSecret) target = candidates.find((el) => String(el.getAttribute("type") || "").toLowerCase() === "password");
-      const actual = target ? (target.isContentEditable ? target.textContent || "" : target.value || "") : "";
+
+      const actual = target
+        ? (target.tagName.toLowerCase() === "select"
+            ? target.value || target.options?.[target.selectedIndex]?.textContent || ""
+            : target.isContentEditable ? target.textContent || "" : target.value || "")
+        : "";
       if (target && actual === field.value) filled.push({ label: field.label, secret: field.secret });
       else missing.push({ label: field.label, actualLength: actual.length });
     }
