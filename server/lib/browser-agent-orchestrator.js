@@ -2713,10 +2713,35 @@ function fieldsArrayFromLooseFormArgs(rawArgs = {}) {
     "text",
     "ref",
     "selector",
+    "formSelector",
+    "submitText",
+    "buttonText",
+    "target",
     "notes",
   ]);
 
-  return Object.entries(args)
+  const objectFields = Object.entries(args)
+    .filter(([key, value]) =>
+      !reserved.has(key) &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (
+        value.value !== undefined ||
+        value.label ||
+        value.name ||
+        value.field
+      )
+    )
+    .map(([fallbackLabel, value]) => ({
+      ...value,
+      label: value.label || value.name || value.field || fallbackLabel,
+      value: String(value.value ?? ""),
+      secret: Boolean(value.secret) || /password|passcode|token|secret/i.test(fallbackLabel),
+    }))
+    .filter((field) => field.label && String(field.value || "").trim());
+
+  const scalarFields = Object.entries(args)
     .filter(([key, value]) =>
       !reserved.has(key) &&
       typeof value !== "object" &&
@@ -2729,6 +2754,8 @@ function fieldsArrayFromLooseFormArgs(rawArgs = {}) {
       value: String(value),
       secret: /password|passcode|token|secret/i.test(label),
     }));
+
+  return [...objectFields, ...scalarFields];
 }
 
 function cleanExplicitFormValueV1(value = "") {

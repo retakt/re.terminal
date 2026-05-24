@@ -33,10 +33,32 @@ function fieldsFromArgs(args = {}) {
     "ref",
     "selector",
     "target",
+    "formSelector",
     "notes",
   ]);
 
-  return Object.entries(args)
+  const objectFields = Object.entries(args)
+    .filter(([name, value]) =>
+      !reserved.has(name) &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (
+        value.value !== undefined ||
+        value.label ||
+        value.name ||
+        value.field
+      )
+    )
+    .map(([fallbackLabel, value]) => ({
+      ...value,
+      label: value.label || value.name || value.field || fallbackLabel,
+      value: String(value.value ?? ""),
+      secret: Boolean(value.secret),
+    }))
+    .filter((field) => field.label && String(field.value || "").trim());
+
+  const scalarFields = Object.entries(args)
     .filter(([name, value]) =>
       !reserved.has(name) &&
       value !== undefined &&
@@ -49,6 +71,8 @@ function fieldsFromArgs(args = {}) {
       value: String(value),
       secret: false,
     }));
+
+  return [...objectFields, ...scalarFields];
 }
 
 function fieldLooksLike(field = {}, pattern) {
