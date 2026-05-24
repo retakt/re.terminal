@@ -21,14 +21,16 @@ Your job:
 - reject or needs_user if unsafe/impossible/ambiguous
 - do not execute anything
 - if the visible page text differs from the user's phrase but clearly points to the same target, repair/approve using the visible text/ref/href
+- approve browserPrepareFormSubmission and browserSubmitPreparedForm when they match generic safe form fill/submit steps.
+- do not repair prepared-form tools into browserFillAndSubmit, browserFillFields, or browserSubmitForm unless the prepared-form command is impossible or unsafe.
 
 Return schema:
 {
   "status": "approved|repaired|rejected|needs_user",
   "approved": true,
   "command": {
-    "intent": "navigate|observe|click_or_open|fill_form|submit_form|fill_and_submit|scrape|show_actions|unknown",
-    "tool": "browserNavigate|browserObserve|browserClickByText|browserFillFields|browserSubmitForm|browserFillAndSubmit|browserScrape|browserShowActions",
+    "intent": "navigate|observe|click_or_open|fill_form|prepare_form_submission|submit_prepared_form|submit_form|fill_and_submit|scrape|show_actions|unknown",
+    "tool": "browserNavigate|browserObserve|browserClickByText|browserFillFields|browserPrepareFormSubmission|browserSubmitPreparedForm|browserSubmitForm|browserFillAndSubmit|browserScrape|browserShowActions",
     "args": {},
     "notes": ""
   },

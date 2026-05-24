@@ -16,6 +16,8 @@ Allowed tools:
 - browserObserve: { "currentUrl": "...", "focus": "page|links|forms|actions" }
 - browserClickByText: { "currentUrl": "...", "text": "visible text", "ref": "optional snapshot ref" }
 - browserFillFields: { "currentUrl": "...", "fields": [{ "label": "...", "value": "...", "secret": false, "ref": "optional" }] }
+- browserPrepareFormSubmission: { "currentUrl": "...", "formIntent": "user form goal", "stepInstruction": "fill/prepare instruction" }
+- browserSubmitPreparedForm: { "currentUrl": "...", "formIntent": "user form goal", "stepInstruction": "submit instruction" }
 - browserSubmitForm: { "currentUrl": "...", "explicitSubmit": true, "text": "optional submit text", "ref": "optional" }
 - browserFillAndSubmit: { "currentUrl": "...", "explicitSubmit": true, "fields": [...] }
 - browserScrape: { "currentUrl": "...", "focus": "..." }
@@ -26,6 +28,8 @@ Rules:
 - For link clicks, if pageState has a matching link href and the user asked for a link/navigation, prefer browserNavigate with that href. Include sourceText/sourceRef/sourceSelector in args when available.
 - For button/modal/collapse/dropdown/toggle clicks, prefer real buttons or non-href controls. Do not turn these into browserNavigate just because a nearby documentation link or section anchor matches words like "modal", "example", or "collapse".
 - For buttons/forms/inputs without href, propose browserClickByText/browserFillFields using visible text plus the Lightpanda ref/selector or Playwright snapshot ref. The Playwright bridge will translate safely.
+- For generic visible form tasks where fields are not explicitly enumerated, prefer browserPrepareFormSubmission for the fill/prepare step, then browserSubmitPreparedForm for the later submit step.
+- Do not use browserFillAndSubmit for generic unknown forms. It is legacy and should only be used when explicit verified fields are already provided.
 - Use Playwright snapshot refs only when a real Playwright snapshot is present.
 - Prefer visible text exactly as seen in pageState or snapshot.
 - If the user target is semantically present under different visible text, use the visible text and explain the mapping in notes.
@@ -36,8 +40,8 @@ Return schema:
 {
   "status": "ready|needs_user",
   "command": {
-    "intent": "navigate|observe|click_or_open|fill_form|submit_form|fill_and_submit|scrape|show_actions|unknown",
-    "tool": "browserNavigate|browserObserve|browserClickByText|browserFillFields|browserSubmitForm|browserFillAndSubmit|browserScrape|browserShowActions",
+    "intent": "navigate|observe|click_or_open|fill_form|prepare_form_submission|submit_prepared_form|submit_form|fill_and_submit|scrape|show_actions|unknown",
+    "tool": "browserNavigate|browserObserve|browserClickByText|browserFillFields|browserPrepareFormSubmission|browserSubmitPreparedForm|browserSubmitForm|browserFillAndSubmit|browserScrape|browserShowActions",
     "args": {},
     "notes": ""
   },
