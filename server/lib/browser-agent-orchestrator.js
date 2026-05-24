@@ -98,6 +98,81 @@ function isReportOnlyStep(step = {}) {
   return action === "report" || /\b(report|tell me|summarize|final state|final url|final title)\b/.test(text);
 }
 
+function fieldIdentityKeyForDefaultMerge(field = {}) {
+  return String(
+    field.actionId ||
+    field.selector ||
+    field.name ||
+    field.id ||
+    field.label ||
+    ""
+  ).toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function commandFillFieldsForDefaultMerge(command = {}) {
+  const args = command?.args && typeof command.args === "object" && !Array.isArray(command.args)
+    ? command.args
+    : {};
+
+  if (Array.isArray(args.fields)) return args.fields;
+  if (Array.isArray(args.requestedValues)) return args.requestedValues;
+  if (Array.isArray(args.values)) return args.values;
+  return [];
+}
+
+function commandWithMissingRegistryDefaultFields(command = {}, defaultCommand = null, step = {}, instruction = "") {
+  if (!defaultCommand?.args || !Array.isArray(defaultCommand.args.fields)) return command;
+
+  const tool = String(command?.tool || "");
+  if (!["browserFillFields", "browserFillAndSubmit"].includes(tool)) return command;
+
+  const stepText = [
+    instruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ");
+
+  // Only auto-complete fields when the user asked broadly for editable/visible/all fields.
+  // Do not add extra fields to exact small forms unless the prompt asked for broad filling.
+  if (!/\b(all|editable|visible fields|all fields|every field|each field)\b/i.test(stepText)) {
+    return command;
+  }
+
+  const args = command.args && typeof command.args === "object" && !Array.isArray(command.args)
+    ? command.args
+    : {};
+
+  const existingFields = commandFillFieldsForDefaultMerge(command);
+  const existingKeys = new Set(
+    existingFields
+      .map(fieldIdentityKeyForDefaultMerge)
+      .filter(Boolean)
+  );
+
+  const missingDefaults = defaultCommand.args.fields.filter((field) => {
+    const key = fieldIdentityKeyForDefaultMerge(field);
+    return key && !existingKeys.has(key);
+  });
+
+  if (!missingDefaults.length) return command;
+
+  return {
+    ...command,
+    args: {
+      ...args,
+      fields: [
+        ...existingFields,
+        ...missingDefaults,
+      ],
+    },
+    notes: [
+      command.notes || "",
+      "Completed missing editable visible fields from Playwright action registry defaults.",
+    ].filter(Boolean).join(" "),
+  };
+}
+
 function compactFormValueHintsForModel(values = []) {
   return (Array.isArray(values) ? values : [])
     .map((field) => ({
@@ -4631,6 +4706,45 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         tool: registryDefaultFillCommand.tool || "",
         ok: true,
       }));
+    }
+
+    if (
+      registryDefaultFillCommand &&
+      checker?.approved === true &&
+      ["browserFillFields", "browserFillAndSubmit"].includes(String(checker?.command?.tool || ""))
+    ) {
+      const completedCommand = commandWithMissingRegistryDefaultFields(
+        checker.command,
+        registryDefaultFillCommand,
+        step,
+        instruction
+      );
+
+      if (JSON.stringify(completedCommand) !== JSON.stringify(checker.command)) {
+        checker = {
+          ...checker,
+          command: completedCommand,
+          reason: [
+            checker.reason || "",
+            "Pipeline completed missing editable visible fields from the Playwright action registry.",
+          ].filter(Boolean).join(" "),
+        };
+
+        trace.push(traceEntry({
+          role: "pipeline_supervisor",
+          title: "Registry default field completion",
+          step: stepNumber,
+          status: "completed_missing_registry_fields",
+          input: {
+            approvedCommand: checker.command,
+            defaultCommand: registryDefaultFillCommand,
+          },
+          output: completedCommand,
+          summary: "Added missing editable visible fields from registry defaults without replacing explicit user values.",
+          tool: completedCommand.tool || "",
+          ok: true,
+        }));
+      }
     }
 
     const checkerDecision = checkerDecisionForExecution(checker, checkerCall);
