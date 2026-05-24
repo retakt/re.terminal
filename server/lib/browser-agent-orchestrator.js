@@ -39,6 +39,10 @@ import {
   normalizeBrowserRepairResult,
 } from "./browser-agent-repair-schema.js";
 import {
+  compactActionRegistryForClient,
+  compactActionRegistryForModel,
+} from "./browser-action-registry-contract.js";
+import {
   buildBrowserRepairPlan,
   shouldUseBrowserRepairPlan,
 } from "./browser-agent-repair-controller.js";
@@ -87,31 +91,15 @@ function isReportOnlyStep(step = {}) {
   return action === "report" || /\b(report|tell me|summarize|final state|final url|final title)\b/.test(text);
 }
 
-function compactActionRegistryForModel(registry = {}) {
-  const actions = Array.isArray(registry?.actions) ? registry.actions : [];
-
-  return {
-    ok: registry?.ok === true,
-    engine: registry?.engine || "playwright_mcp",
-    url: registry?.url || "",
-    title: registry?.title || "",
-    stats: registry?.stats || {},
-    actions: actions.slice(0, 60).map((action) => ({
-      actionId: action.actionId || "",
-      kind: action.kind || "",
-      tag: action.tag || "",
-      type: action.type || "",
-      label: safeText(action.label || action.text || "", 180),
-      selector: safeText(action.selector || "", 220),
-      name: safeText(action.name || "", 120),
-      id: safeText(action.id || "", 120),
-      role: safeText(action.role || "", 80),
-      required: Boolean(action.required),
-      disabled: Boolean(action.disabled),
-      readonly: Boolean(action.readonly),
-      href: safeText(action.href || "", 220),
-    })),
-  };
+function compactFormValueHintsForModel(values = []) {
+  return (Array.isArray(values) ? values : [])
+    .map((field) => ({
+      label: safeText(field.label || field.name || field.field || "", 120),
+      value: field.secret ? "[redacted]" : safeText(field.value || "", 240),
+      type: safeText(field.type || "", 80),
+      secret: Boolean(field.secret),
+    }))
+    .filter((field) => field.label && field.value);
 }
 
 function normalizeHttpUrl(value = "") {
@@ -3956,7 +3944,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           currentUrl,
           lightpandaUrl: beforeState?.url || "",
         },
-        output: compactActionRegistryForModel(actionRegistry),
+        output: compactActionRegistryForClient(actionRegistry),
         summary: actionRegistry?.ok === true
           ? `Playwright action registry ready: ${actionRegistry.stats?.fields || 0} fields, ${actionRegistry.stats?.buttons || 0} buttons, ${actionRegistry.stats?.links || 0} links.`
           : `Playwright action registry failed: ${actionRegistry?.error || ""}`,
@@ -3964,6 +3952,10 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         ok: actionRegistry?.ok === true,
       }));
     }
+
+    const formValueHints = compactFormValueHintsForModel(
+      explicitFormValuesFromInstructionV1(instruction)
+    );
 
     if (envFlag("BROWSER_AGENT_REPORT_STEP_FAST_PATH", true) && isReportOnlyStep(step)) {
       const observation = observationFromPageState(beforeState) || before?.observation || observationFromExecution(null, before);
@@ -4073,6 +4065,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           }),
           snapshot: compactSnapshotForModel(before?.snapshot),
           actionRegistry: compactActionRegistryForModel(actionRegistry),
+          formValueHints,
         },
       }));
 
@@ -4346,6 +4339,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           pageState: compactBeforeState,
           snapshot: compactSnapshotForModel(before?.snapshot),
           actionRegistry: compactActionRegistryForModel(actionRegistry),
+          formValueHints,
           proposedCommand: stepPlan.command || null,
         },
       }));
@@ -4368,6 +4362,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             }),
             snapshot: compactSnapshotForModel(before?.snapshot),
           actionRegistry: compactActionRegistryForModel(actionRegistry),
+          formValueHints,
             proposedCommand: stepPlan.command || null,
             retryReason: "Previous checker call returned invalid JSON. Return only strict JSON matching the checker schema.",
           },

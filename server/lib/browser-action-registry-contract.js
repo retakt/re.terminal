@@ -37,6 +37,13 @@ export function normalizeBrowserAction(action = {}) {
     required: Boolean(action.required),
 
     lightpandaEvidence: safeText(action.lightpandaEvidence || "", 160),
+    options: Array.isArray(action.options)
+      ? action.options.slice(0, 40).map((option) => ({
+          value: safeText(option.value || "", 160),
+          text: safeText(option.text || "", 200),
+          disabled: Boolean(option.disabled),
+        }))
+      : [],
   };
 }
 
@@ -85,7 +92,11 @@ export function compactActionRegistryForModel(registry = {}, limit = 80) {
       required: action.required,
       disabled: action.disabled,
       readonly: action.readonly,
+      value: action.value,
+      checked: action.checked,
+      selector: action.selector,
       lightpandaEvidence: action.lightpandaEvidence,
+      options: action.options,
     })),
     error: normalized.error,
   };
@@ -116,7 +127,9 @@ export function compactActionRegistryForClient(registry = {}, limit = 200) {
       value: action.value,
       checked: action.checked,
       href: action.href,
+      selector: action.selector,
       lightpandaEvidence: action.lightpandaEvidence,
+      options: action.options,
     })),
     error: normalized.error,
   };

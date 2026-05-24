@@ -27,23 +27,20 @@ Allowed tools:
 - browserShowActions: { "currentUrl": "...", "instruction": "..." }
 
 Rules:
-- For any real action, prefer actionRegistry over pageState.
-- actionRegistry is the executable Playwright source of truth.
-- pageState/Lightpanda is semantic evidence only. It helps you understand labels, text, forms, and page meaning.
-- Never output lp_input_*, lp_button_*, or any Lightpanda ref as an executable ref/action target.
-- If actionRegistry has matching fields/buttons, use actionId in the command.
-- For form tasks, match user-requested values to actionRegistry fields by label/name/id/type.
-- If the user provided exact values, copy them exactly.
-- If the user asks for realistic fake data but gives no exact values, choose safe realistic fake values yourself.
-- For fill-only steps, use browserFillFields. Do not submit.
-- For explicit submit/register/send steps, use browserSubmitForm.
-- Use browserFillAndSubmit only when the current step itself says to fill and submit in one step.
-- Use browserPrepareFormSubmission only as fallback when actionRegistry is missing/failed and the form is otherwise safe.
+- For any real action, actionRegistry is the executable source of truth.
+- Use pageState/Lightpanda only to understand semantics, text, and page meaning.
+- Never output lp_input_*, lp_button_*, or Lightpanda refs as executable targets.
+- For form filling, map formValueHints to actionRegistry fields by label/name/id/type/options.
+- Output actionId for every field whenever actionRegistry has a matching field.
+- Exact user values from formValueHints must be preserved.
+- For select/dropdown fields, use actionRegistry.options to choose the best option value/text.
+- Fill-only step: browserFillFields only. Do not submit.
+- Submit-only step: browserSubmitForm only.
+- Fill+submit in one current step: browserFillAndSubmit.
+- browserPrepareFormSubmission is fallback only when actionRegistry is missing/failed.
 - If actionRegistry and pageState disagree, trust actionRegistry for action targets and pageState for semantic labels.
-- If no safe Playwright-backed action target exists, return status "needs_user".
-- Prefer visible text exactly as seen in actionRegistry/pageState.
-- If multiple candidates match, choose the safest obvious match and explain why. If ambiguous, return status "needs_user".
-- If the step cannot be done, return status "needs_user".
+- If no safe Playwright-backed target exists, return status "needs_user".
+- If multiple actionRegistry candidates match, choose the safest obvious one and explain why.
 
 Return schema:
 {
