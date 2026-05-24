@@ -2991,6 +2991,17 @@ function submitCommandFromPreviousFill(lastFillCommand = null, step = {}, curren
   };
 }
 
+function isStateChangingBrowserCommand(command = {}) {
+  return [
+    "browserClickByText",
+    "browserFillFields",
+    "browserSubmitForm",
+    "browserFillAndSubmit",
+    "browserPrepareFormSubmission",
+    "browserSubmitPreparedForm",
+  ].includes(String(command?.tool || ""));
+}
+
 function isObservationOnlyBrowserCommand(command = {}) {
   return ["browserObserve", "browserScrape", "browserShowActions"].includes(String(command?.tool || ""));
 }
@@ -4753,6 +4764,43 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       command: executionCommand,
       beforeState,
     });
+
+    if (
+      execution.ok !== true &&
+      isStateChangingBrowserCommand(executionCommand)
+    ) {
+      resultCheck = normalizeWatcherRepairResult({
+        status: "failed",
+        success: false,
+        summary: execution.error || execution.actionResult?.text || "State-changing browser action failed.",
+        evidence: execution.actionResult?.text || resultCheck.evidence || "",
+        failureKind: "field_value_not_confirmed",
+        repairInstruction: resultCheck.repairInstruction || "",
+        messageToUser: "",
+        confidence: 0.2,
+      }, {
+        execution,
+        step,
+        command: executionCommand,
+        beforeState,
+      });
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Executor failure guard",
+        step: stepNumber,
+        status: "blocked_watcher_false_pass",
+        input: {
+          command: executionCommand,
+          executionOk: execution.ok,
+          watcherResult: resultCheck,
+        },
+        output: resultCheck,
+        summary: "Watcher cannot pass a failed state-changing executor action.",
+        tool: executionCommand.tool || "",
+        ok: false,
+      }));
+    }
 
     let repaired = false;
     let finalSatisfactionCommand = executionCommand;
