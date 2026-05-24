@@ -14,7 +14,7 @@ const PLAYWRIGHT_MCP_DIR = path.resolve(process.env.PLAYWRIGHT_MCP_OUTPUT_DIR ||
 const preparedFormSessionsV1 = new Map();
 
 function safeText(value = "", limit = 4000) {
-  return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+  return String(value || "").replace(/\\s+/g, " ").trim().slice(0, limit);
 }
 
 
@@ -339,7 +339,7 @@ function scoutControlScript(targetText = "", intent = "") {
     const coreTarget = (value) => norm(value)
       .replace(/\b(click|press|tap|select|choose|open|launch)\b/g, " ")
       .replace(/\b(button|link|control|element|field|item|option)\b/g, " ")
-      .replace(/\s+/g, " ")
+      .replace(/\\s+/g, " ")
       .trim();
 
     const wanted = norm(targetRaw);
@@ -2484,15 +2484,26 @@ async function tryDomFillFields(fields = []) {
     function setNativeValue(el, value) {
       if (el.tagName.toLowerCase() === "select") {
         const wanted = norm(value);
+        const isPlaceholderOption = (option) => {
+          const text = String(option.textContent || option.value || "").trim();
+          return !String(option.value || "").trim() ||
+            /^(choose|select|open this|open this select menu|select an option|please select)$/i.test(text);
+        };
+
         const options = Array.from(el.options || []).filter((option) => !option.disabled);
-        const option = options.find((item) => {
+        const usableOptions = options.filter((option) => !isPlaceholderOption(option));
+
+        const wantedIsPlaceholder = /choose|select|openthis|menu|placeholder/.test(wanted);
+
+        const option = usableOptions.find((item) => {
             const hay = norm(String(item.value || "") + " " + String(item.textContent || ""));
-            return wanted && hay.includes(wanted);
+            return wanted && !wantedIsPlaceholder && hay.includes(wanted);
           }) ||
-          options.find((item) => item.value && !/choose|select|open this/i.test(item.textContent || "")) ||
+          usableOptions.find((item) => item.value) ||
+          usableOptions[0] ||
           options.find((item) => item.value) ||
-          options[0] ||
           null;
+
         if (option) el.value = option.value;
       } else if (el.isContentEditable) {
         el.focus();
@@ -2754,12 +2765,17 @@ async function verifyFilledFields(fields = []) {
         } else if (tag === "select") {
           const actualText = selectedOptionText;
           const actualCandidates = [actual, actualText].filter(Boolean);
-          ok = actualCandidates.some((candidate) =>
-            lower(candidate) === lower(expected) ||
-            compact(candidate) === compact(expected) ||
-            compact(candidate).includes(compact(expected)) ||
-            compact(expected).includes(compact(candidate))
-          );
+          const expectedLooksPlaceholder = /choose|select|openthis|menu|placeholder/.test(compact(expected));
+          const actualLooksPlaceholder = /choose|select|openthis|menu|placeholder/.test(compact(actualText || actual));
+
+          ok = expectedLooksPlaceholder
+            ? Boolean(actual || actualText) && !actualLooksPlaceholder
+            : actualCandidates.some((candidate) =>
+                lower(candidate) === lower(expected) ||
+                compact(candidate) === compact(expected) ||
+                compact(candidate).includes(compact(expected)) ||
+                compact(expected).includes(compact(candidate))
+              );
         } else if (type === "color") {
           ok = lower(actual) === lower(expected);
         } else if (type === "range" || type === "number") {
@@ -3267,7 +3283,7 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
         if (setter) setter.call(el, value);
         else el.value = value;
 
-        if (typeOf(el) === "date" && !el.value && /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) {
+        if (typeOf(el) === "date" && !el.value && /^\\d{4}-\\d{2}-\\d{2}$/.test(String(value || ""))) {
           try {
             const [year, month, day] = String(value).split("-").map(Number);
             el.valueAsDate = new Date(Date.UTC(year, month - 1, day));
@@ -3762,7 +3778,7 @@ export async function buildPlaywrightActionRegistry({
         options: tag === "select"
           ? Array.from(el.options || []).map((option) => ({
               value: String(option.value || ""),
-              text: String(option.textContent || "").replace(/\s+/g, " ").trim(),
+              text: String(option.textContent || "").replace(/\\s+/g, " ").trim(),
               disabled: Boolean(option.disabled)
             }))
           : []
