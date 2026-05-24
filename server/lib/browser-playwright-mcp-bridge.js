@@ -2725,13 +2725,8 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
   }
 
   const script = `() => {
-    const decodePayload = (payload) => {
-      const bytes = Uint8Array.from(atob(String(payload || "")), (ch) => ch.charCodeAt(0));
-      return JSON.parse(new TextDecoder("utf-8").decode(bytes));
-    };
-
-    const formIntent = decodePayload("${formIntentPayload}");
-    const requestedValues = decodePayload("${requestedValuesPayload}");
+    const formIntent = JSON.parse(atob("${formIntentPayload}"));
+    const requestedValues = JSON.parse(atob("${requestedValuesPayload}"));
 
     const norm = (value) => String(value || "")
       .toLowerCase()
