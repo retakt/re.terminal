@@ -3960,13 +3960,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     let resultCheck = null;
 
     if (
-      ["browserPrepareFormSubmission", "browserSubmitPreparedForm"].includes(String(executionCommand.tool || "")) &&
+      String(executionCommand.tool || "") === "browserPrepareFormSubmission" &&
       execution.ok === true
     ) {
       resultCheck = {
         status: "passed",
         success: true,
-        summary: execution.actionResult?.text || "Generic form tool completed.",
+        summary: execution.actionResult?.text || "Generic form preparation completed.",
         evidence: execution.actionResult?.text || "",
         repairInstruction: "",
         messageToUser: "",
@@ -3977,9 +3977,9 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
       trace.push(traceEntry({
         role: "gemma_result_checker",
-        title: "Generic form tool result checker",
+        title: "Generic form prepare result checker",
         step: stepNumber,
-        status: "auto_passed_form_tool",
+        status: "auto_passed_form_prepare",
         input: {
           step,
           command: executionCommand,
