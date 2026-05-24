@@ -129,8 +129,8 @@ function scoreFieldMatch(field = {}, action = {}) {
   }
 
   if (fieldLooksLike(field, /contactnumber|contact no|phone|mobile|tel|telephone/)) {
-    if (actionType === "tel" || /contactnumber|contact|phone|mobile|tel/.test(actionText)) score += 220;
-    if (/pickup|date|payment/.test(actionText)) score -= 240;
+    if (actionType === "tel" || /contactnumber|contactno|phone|mobile|tel|telephone/.test(actionText)) score += 260;
+    if (/contactname|fullname|firstname|lastname|\bname\b|pickup|date|payment/.test(actionText)) score -= 260;
   }
 
   if (fieldLooksLike(field, /payment|method|card|cash/)) {
