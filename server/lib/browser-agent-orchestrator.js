@@ -2676,6 +2676,84 @@ function syntheticStepPlanForGenericFormToolV1({ step = {}, currentUrl = "", ori
   return null;
 }
 
+function fieldsArrayFromLooseFormArgs(rawArgs = {}) {
+  const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
+    ? rawArgs
+    : {};
+
+  if (Array.isArray(args.fields)) return args.fields;
+  if (Array.isArray(args.requestedValues)) return args.requestedValues;
+  if (Array.isArray(args.values)) return args.values;
+
+  const reserved = new Set([
+    "currentUrl",
+    "formIntent",
+    "stepInstruction",
+    "explicitSubmit",
+    "submit",
+    "text",
+    "ref",
+    "selector",
+    "notes",
+  ]);
+
+  return Object.entries(args)
+    .filter(([key, value]) =>
+      !reserved.has(key) &&
+      typeof value !== "object" &&
+      value !== undefined &&
+      value !== null &&
+      String(value).trim()
+    )
+    .map(([label, value]) => ({
+      label,
+      value: String(value),
+      secret: /password|passcode|token|secret/i.test(label),
+    }));
+}
+
+function commandWithGenericFormPreparedValues(command = {}, step = {}, originalInstruction = "") {
+  const tool = String(command.tool || "");
+  const args = command.args && typeof command.args === "object" && !Array.isArray(command.args)
+    ? command.args
+    : {};
+
+  const text = [
+    originalInstruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+    command.intent,
+  ].map((value) => String(value || "")).join(" ");
+
+  if (!/\b(form|field|fields|fill|submit|register|registration|contact|payment|pickup|test data|fake data)\b/i.test(text)) {
+    return command;
+  }
+
+  if (!["browserFillAndSubmit", "browserFillFields"].includes(tool)) {
+    return command;
+  }
+
+  const requestedValues = fieldsArrayFromLooseFormArgs(args);
+  if (!requestedValues.length) return command;
+
+  return {
+    ...command,
+    intent: "prepare_form_submission",
+    tool: "browserPrepareFormSubmission",
+    args: {
+      currentUrl: args.currentUrl || "",
+      formIntent: originalInstruction || step.instruction || "",
+      stepInstruction: step.instruction || "",
+      requestedValues,
+    },
+    notes: [
+      command.notes || "",
+      "Normalized LLM-selected form values into prepared-form flow.",
+    ].filter(Boolean).join(" "),
+  };
+}
+
 function normalizeCommandArgsForTool(tool = "", rawArgs = {}, currentUrl = "") {
   const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
     ? { ...rawArgs }
@@ -2693,6 +2771,16 @@ function normalizeCommandArgsForTool(tool = "", rawArgs = {}, currentUrl = "") {
     if (!args.text && args.buttonText) args.text = args.buttonText;
     if (!args.ref && args.sourceRef) args.ref = args.sourceRef;
     if (!args.selector && args.sourceSelector) args.selector = args.sourceSelector;
+  }
+
+  if (["browserFillFields", "browserFillAndSubmit"].includes(tool)) {
+    const fields = fieldsArrayFromLooseFormArgs(args);
+    if (fields.length) args.fields = fields;
+  }
+
+  if (tool === "browserPrepareFormSubmission") {
+    const requestedValues = fieldsArrayFromLooseFormArgs(args);
+    if (requestedValues.length) args.requestedValues = requestedValues;
   }
 
   if (currentUrl && tool !== "browserNavigate") {
@@ -3930,7 +4018,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       break;
     }
 
-    const normalized = normalizeCommand(checker.command || stepPlan.command, currentUrl);
+    const commandBeforeNormalize = commandWithGenericFormPreparedValues(
+      checker.command || stepPlan.command,
+      step,
+      instruction
+    );
+
+    const normalized = normalizeCommand(commandBeforeNormalize, currentUrl);
     if (!normalized.ok) {
       stoppedReason = normalized.error;
       stepResults.push({ stepNumber, step, ok: false, status: "bad_command", summary: normalized.error });
