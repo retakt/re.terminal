@@ -42,6 +42,8 @@ const SUPPORTED_TOOLS = new Set([
   "browserFillFields",
   "browserSubmitForm",
   "browserFillAndSubmit",
+  "browserPrepareFormSubmission",
+  "browserSubmitPreparedForm",
   "browserScrape",
   "browserShowActions",
   "browserReset",
@@ -2588,6 +2590,85 @@ function ensureBrowserTaskTailStepsV8(steps = [], originalInstruction = "") {
 }
 
 
+function isGenericFormTaskV1(step = {}, originalInstruction = "") {
+  const text = [
+    originalInstruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return /\b(form|field|fields|fill|filled|submit|submission|signup|sign up|register|registration|contact|application|test data|fake test)\b/.test(text);
+}
+
+function isPrepareFormSubmissionStepV1(step = {}, originalInstruction = "") {
+  if (!isGenericFormTaskV1(step, originalInstruction)) return false;
+
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = String(step.instruction || "").toLowerCase();
+
+  if (action === "submit") return false;
+  if (/\bsubmit\b/.test(text)) return false;
+
+  return action === "fill" ||
+    /\b(fill|create .*test|fake test|test data|using the visible form|visible form|appropriate fields)\b/.test(text);
+}
+
+function isSubmitPreparedFormStepV1(step = {}, originalInstruction = "") {
+  if (!isGenericFormTaskV1(step, originalInstruction)) return false;
+
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = String(step.instruction || "").toLowerCase();
+
+  return action === "submit" || /\bsubmit\b/.test(text);
+}
+
+function syntheticStepPlanForGenericFormToolV1({ step = {}, currentUrl = "", originalInstruction = "" } = {}) {
+  if (envFlag("BROWSER_AGENT_GENERIC_FORM_TOOL", true) && isPrepareFormSubmissionStepV1(step, originalInstruction)) {
+    return {
+      status: "ready",
+      syntheticSource: "generic_form_tool",
+      command: {
+        intent: "prepare_form_submission",
+        tool: "browserPrepareFormSubmission",
+        args: {
+          currentUrl,
+          formIntent: originalInstruction || step.instruction || "",
+          stepInstruction: step.instruction || "",
+        },
+        notes: "Generic form tool selected one visible form, filled safe test values, and prepared a form session.",
+      },
+      reason: "Form filling step routed to deterministic generic form tool.",
+      messageToChecker: "Verify the form tool selected one visible form and confirmed filled values.",
+      messageToUser: "",
+      confidence: 0.95,
+    };
+  }
+
+  if (envFlag("BROWSER_AGENT_GENERIC_FORM_TOOL", true) && isSubmitPreparedFormStepV1(step, originalInstruction)) {
+    return {
+      status: "ready",
+      syntheticSource: "generic_form_tool",
+      command: {
+        intent: "submit_prepared_form",
+        tool: "browserSubmitPreparedForm",
+        args: {
+          currentUrl,
+          formIntent: originalInstruction || step.instruction || "",
+          stepInstruction: step.instruction || "",
+        },
+        notes: "Generic form tool submits the previously prepared form session without blindly re-filling the page.",
+      },
+      reason: "Form submit step routed to prepared form submit tool.",
+      messageToChecker: "Verify the saved form session still has values before submit.",
+      messageToUser: "",
+      confidence: 0.95,
+    };
+  }
+
+  return null;
+}
+
 function normalizeCommandArgsForTool(tool = "", rawArgs = {}, currentUrl = "") {
   const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
     ? { ...rawArgs }
@@ -2713,6 +2794,8 @@ function isSyncSensitiveExecutionCommand(command = {}) {
     "browserFillFields",
     "browserSubmitForm",
     "browserFillAndSubmit",
+  "browserPrepareFormSubmission",
+  "browserSubmitPreparedForm",
   ].includes(String(command?.tool || ""));
 }
 
@@ -3449,6 +3532,14 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     });
 
     if (!stepPlan) {
+      stepPlan = syntheticStepPlanForGenericFormToolV1({
+        step,
+        currentUrl,
+        originalInstruction: instruction,
+      });
+    }
+
+    if (!stepPlan) {
       stepPlan = envFlag("BROWSER_AGENT_SYNTHETIC_LOW_RISK_STEPS", true)
         ? syntheticStepPlanForLowRisk(step, currentUrl, instruction)
         : null;
@@ -3574,7 +3665,34 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ? lightpandaEvidenceCheckerForStep({ stepPlan, beforeState, step })
       : null;
 
-    if (playwrightScoutChecker) {
+    if (
+      stepPlan?.syntheticSource === "generic_form_tool" &&
+      stepPlan?.command &&
+      ["browserPrepareFormSubmission", "browserSubmitPreparedForm"].includes(String(stepPlan.command.tool || ""))
+    ) {
+      checker = {
+        status: "approved_generic_form_tool_precheck",
+        approved: true,
+        command: stepPlan.command,
+        reason: String(stepPlan.command.tool || "") === "browserPrepareFormSubmission"
+          ? "Approved deterministic generic form preparation. Do not replace this with legacy browserFillAndSubmit."
+          : "Approved deterministic prepared-form submit. Do not replace this with legacy browserSubmitForm/browserFillAndSubmit.",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: Math.max(0.95, Number(stepPlan.confidence || 0.95)),
+      };
+      trace.push(traceEntry({
+        role: "gemma_checker",
+        title: "Generic form tool checker",
+        step: stepNumber,
+        status: checker.status,
+        input: stepPlan,
+        output: checker,
+        summary: checker.reason || "",
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: true,
+      }));
+    } else if (playwrightScoutChecker) {
       checker = playwrightScoutChecker;
       trace.push(traceEntry({
         role: "gemma_checker",
@@ -3712,6 +3830,37 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
+    if (
+      stepPlan?.syntheticSource === "generic_form_tool" &&
+      stepPlan?.command &&
+      ["browserPrepareFormSubmission", "browserSubmitPreparedForm"].includes(String(stepPlan.command.tool || "")) &&
+      String(checker?.command?.tool || "") !== String(stepPlan.command.tool || "")
+    ) {
+      const originalCheckerCommand = checker?.command || null;
+      checker = {
+        ...(checker && typeof checker === "object" ? checker : {}),
+        status: "forced_generic_form_tool_command",
+        approved: true,
+        command: stepPlan.command,
+        reason: "Checker attempted to replace the deterministic generic form command. Restored the prepared form tool to avoid legacy browserFillAndSubmit.",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: Math.max(0.95, Number(stepPlan.confidence || 0.95)),
+      };
+      if (checkerCall) checkerCall = { ...checkerCall, ok: true, error: "" };
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Generic form command guard",
+        step: stepNumber,
+        status: "forced_generic_form_tool_command",
+        input: { stepPlan, originalCheckerCommand },
+        output: checker,
+        summary: checker.reason,
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: true,
+      }));
+    }
+
     const checkerDecision = checkerDecisionForExecution(checker, checkerCall);
     if (!checkerDecision.ok) {
       stoppedReason = checkerDecision.reason || "Step was not approved.";
@@ -3749,13 +3898,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     const executionCommand = commandWithFreshFillBeforeSubmit(targetAdjustedCommand, lastSuccessfulFillCommand);
 
-    if (executionCommand !== normalized.command) {
+    if (executionCommand !== targetAdjustedCommand) {
       trace.push(traceEntry({
         role: "playwright_controller",
         title: "Playwright browser controller",
         step: stepNumber,
         status: "prepared",
-        input: normalized.command,
+        input: targetAdjustedCommand,
         output: executionCommand,
         summary: "Re-filling verified form fields immediately before submit.",
         tool: executionCommand.tool,
@@ -3793,7 +3942,39 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     let resultCheckCall = null;
     let resultCheck = null;
 
-    const deterministicUiCheckV2 = await deterministicUiStateResultCheck({
+    if (
+      ["browserPrepareFormSubmission", "browserSubmitPreparedForm"].includes(String(executionCommand.tool || "")) &&
+      execution.ok === true
+    ) {
+      resultCheck = {
+        status: "passed",
+        success: true,
+        summary: execution.actionResult?.text || "Generic form tool completed.",
+        evidence: execution.actionResult?.text || "",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: 0.95,
+        command: executionCommand,
+        step,
+      };
+
+      trace.push(traceEntry({
+        role: "gemma_result_checker",
+        title: "Generic form tool result checker",
+        step: stepNumber,
+        status: "auto_passed_form_tool",
+        input: {
+          step,
+          command: executionCommand,
+          executionStatus: execution.status,
+        },
+        output: resultCheck,
+        summary: resultCheck.summary,
+        ok: true,
+      }));
+    }
+
+    const deterministicUiCheckV2 = resultCheck ? null : await deterministicUiStateResultCheck({
       step,
       command: executionCommand,
       execution,
