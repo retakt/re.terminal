@@ -160,9 +160,11 @@ export function buildBrowserRepairPlan(context = {}) {
       retryOriginal: false,
       requiresWatcherVerification: true,
       reason: "Form fields or validation state were not confirmed.",
-      commands: original.tool === "browserSubmitPreparedForm"
-        ? commandList(prepareCommand(context), original, observe)
-        : commandList(prepareCommand(context), observe),
+      commands: ["browserFillFields", "browserFillAndSubmit"].includes(original.tool)
+        ? commandList(original, observe)
+        : original.tool === "browserSubmitPreparedForm"
+          ? commandList(prepareCommand(context), original, observe)
+          : commandList(prepareCommand(context), observe),
     };
   }
 
