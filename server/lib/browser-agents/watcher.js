@@ -26,6 +26,8 @@ Your job:
   SYNC_PLAYWRIGHT_TO_LIGHTPANDA_AND_RETRY: <beforeState.url>
 - if failed for any other reason, provide one concrete repairInstruction
 - if a click/navigation caused the final URL/title/page to change in the expected direction, mark success true
+- for browserPrepareFormSubmission, pass when execution confirms a prepared form session and verified filled values.
+- for browserSubmitPreparedForm, pass when execution confirms submit was requested and the URL/title/page changed or submission evidence is visible.
 
 Return schema:
 {
