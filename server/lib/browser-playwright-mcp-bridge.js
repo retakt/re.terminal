@@ -2479,6 +2479,15 @@ async function tryDomFillFields(fields = []) {
         const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
         el.focus();
+
+        // Exact replace, never append. Clear first so prefilled fields like
+        // "Alex Morgan" do not become "Alex MAlex Morganorgan".
+        if (setter) setter.call(el, "");
+        else el.value = "";
+
+        el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward", data: null }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+
         if (setter) setter.call(el, value);
         else el.value = value;
 
