@@ -2707,6 +2707,11 @@ function formSessionKeyV1(command = {}, args = {}, state = {}) {
 async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {}) {
   const commandArgs = command.args || {};
   const formIntent = safeText(commandArgs.formIntent || args.instruction || "", 1200);
+  const requestedValues = Array.isArray(commandArgs.requestedValues)
+    ? commandArgs.requestedValues
+    : Array.isArray(commandArgs.fields)
+      ? commandArgs.fields
+      : [];
   const currentUrl = currentUrlFromInput({ ...args, ...commandArgs }, state);
 
   // Generic form preparation must operate on the live Playwright page.
@@ -2719,6 +2724,7 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
 
   const script = `() => {
     const formIntent = ${JSON.stringify(formIntent)};
+    const requestedValues = ${JSON.stringify(requestedValues)};
 
     const norm = (value) => String(value || "")
       .toLowerCase()
@@ -2794,38 +2800,150 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
       return false;
     };
 
-    const valueFor = (el, uniqueSeed) => {
+    const requestedValueFor = (el, label, type) => {
+      const key = compact(label);
+      const selector = selectorFor(el);
+      const id = el.getAttribute("id") || "";
+      const name = el.getAttribute("name") || "";
+      const placeholder = el.getAttribute("placeholder") || "";
+
+      const scoreRequest = (entry) => {
+        if (!entry || typeof entry !== "object") return 0;
+
+        const rawLabel = compact(entry.label || entry.name || entry.field || entry.selector || "");
+        const rawValue = String(entry.value ?? entry.text ?? "").trim();
+        if (!rawValue) return 0;
+
+        let score = 0;
+        if (entry.selector && String(entry.selector) === selector) score += 100;
+        if (entry.name && String(entry.name) === name) score += 90;
+        if (entry.id && String(entry.id) === id) score += 90;
+
+        if (rawLabel) {
+          if (key === rawLabel) score += 80;
+          else if (key.includes(rawLabel) || rawLabel.includes(key)) score += 55;
+        }
+
+        const combined = compact([label, id, name, placeholder, type].join(" "));
+        if (rawLabel && combined.includes(rawLabel)) score += 35;
+
+        return score;
+      };
+
+      const requested = Array.isArray(requestedValues)
+        ? requestedValues
+            .map((entry) => ({ entry, score: scoreRequest(entry) }))
+            .filter((item) => item.score > 0)
+            .sort((a, b) => b.score - a.score)[0]?.entry
+        : null;
+
+      if (requested) {
+        return String(requested.value ?? requested.text ?? "").trim();
+      }
+
+      return "";
+    };
+
+    const cleanExtractedValue = (value) => String(value || "")
+      .replace(/^[\s,:;=.-]+/, "")
+      .replace(/[\s,:;=.-]+$/g, "")
+      .trim();
+
+    const extractAfterPhrase = (phrases, stops) => {
+      const source = String(formIntent || "");
+      const lower = source.toLowerCase();
+
+      for (const phrase of phrases) {
+        const needle = String(phrase || "").toLowerCase();
+        const index = lower.indexOf(needle);
+        if (index < 0) continue;
+
+        let value = source.slice(index + needle.length);
+        const valueLower = value.toLowerCase();
+        let cut = value.length;
+
+        for (const stop of stops) {
+          const stopIndex = valueLower.indexOf(String(stop || "").toLowerCase());
+          if (stopIndex >= 0 && stopIndex < cut) cut = stopIndex;
+        }
+
+        return cleanExtractedValue(value.slice(0, cut));
+      }
+
+      return "";
+    };
+
+    const explicitInstructionValueFor = (label, type) => {
+      const key = compact(label);
+
+      if (/contactname|fullname|name/.test(key)) {
+        return extractAfterPhrase(
+          ["contact name", "full name", "name"],
+          [", contact number", ", pickup", ", pick up", ", payment", ". after", ". submit", "\n"]
+        );
+      }
+
+      if (/contactnumber|contactno|phone|mobile|telephone|tel/.test(key) || type === "tel") {
+        return extractAfterPhrase(
+          ["contact number", "contact no", "phone", "mobile", "telephone"],
+          [", pickup", ", pick up", ", payment", ". after", ". submit", "\n"]
+        );
+      }
+
+      if (/pickupdate|pickup|date/.test(key) || type === "date") {
+        return extractAfterPhrase(
+          ["pickup date", "pick up date", "date"],
+          [", payment", ", contact", ". after", ". submit", "\n"]
+        );
+      }
+
+      if (/payment|method/.test(key)) {
+        return extractAfterPhrase(
+          ["payment method", "payment"],
+          [". after", ". submit", "\n"]
+        );
+      }
+
+      return "";
+    };
+
+    const generatedFallbackValueFor = (el, uniqueSeed) => {
       const tag = el.tagName.toLowerCase();
       const type = typeOf(el);
       const label = labelFor(el);
       const key = compact(label);
-      const email = "test-" + uniqueSeed + "@example.test";
-      const password = "Test-" + uniqueSeed + "-Pass123";
 
-      if (tag === "textarea") return "Harmless automated test submission";
+      if (tag === "textarea") return "automated-safe-note-" + uniqueSeed;
       if (tag === "select") return "";
-
-      if (type === "password") return password;
-      if (type === "email" || /email/.test(key)) return email;
-      if (type === "tel" || /phone|mobile|telephone|tel/.test(key)) return "5550100";
+      if (type === "password") return "safe-pass-" + uniqueSeed;
+      if (type === "email" || /email/.test(key)) return "autofill-" + uniqueSeed + "@example.test";
+      if (type === "tel" || /phone|mobile|telephone|tel|contactnumber|contactno/.test(key)) return "0000000000";
       if (type === "url" || /website|url/.test(key)) return "https://example.test";
-      if (type === "number" || /age|count|quantity|amount|number/.test(key)) return "42";
-      if (type === "date") return "2026-01-01";
-
-      if (/firstname|givenname|first/.test(key)) return "Test";
-      if (/lastname|surname|familyname|last/.test(key)) return "User";
-      if (/fullname|name/.test(key)) return "Test User";
-      if (/address|street/.test(key)) return "123 Test Street";
-      if (/city/.test(key)) return "Testville";
-      if (/state|province|region/.test(key)) return "CA";
-      if (/zip|postal|postcode/.test(key)) return "90210";
+      if (type === "number" || /age|count|quantity|amount|number/.test(key)) return "1";
+      if (type === "date" || /pickupdate|pickup|date/.test(key)) return "2026-01-15";
+      if (/firstname|givenname|first/.test(key)) return "first-" + uniqueSeed;
+      if (/lastname|surname|familyname|last/.test(key)) return "last-" + uniqueSeed;
+      if (/fullname|contactname|name/.test(key)) return "person-" + uniqueSeed;
+      if (/address|street/.test(key)) return "address-" + uniqueSeed;
+      if (/city/.test(key)) return "city-" + uniqueSeed;
+      if (/state|province|region/.test(key)) return "region-" + uniqueSeed;
+      if (/zip|postal|postcode/.test(key)) return "00000";
       if (/country/.test(key)) return "US";
-      if (/user(name)?|login/.test(key)) return "testuser" + uniqueSeed;
-      if (/company|organization|organisation/.test(key)) return "Example Test Co";
-      if (/subject|title/.test(key)) return "Test submission";
-      if (/message|comment|description|notes?/.test(key)) return "Harmless automated test submission";
+      if (/user(name)?|login/.test(key)) return "user-" + uniqueSeed;
+      if (/company|organization|organisation/.test(key)) return "company-" + uniqueSeed;
+      if (/subject|title/.test(key)) return "subject-" + uniqueSeed;
+      if (/message|comment|description|notes?/.test(key)) return "automated-safe-note-" + uniqueSeed;
 
-      return "Test value";
+      return "value-" + uniqueSeed;
+    };
+
+    const valueFor = (el, uniqueSeed) => {
+      const type = typeOf(el);
+      const label = labelFor(el);
+
+      return requestedValueFor(el, label, type) ||
+        explicitInstructionValueFor(label, type) ||
+        generatedFallbackValueFor(el, uniqueSeed);
     };
 
     const readValue = (el) => {
@@ -2841,8 +2959,13 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
       try { el.focus?.(); } catch {}
 
       if (tag === "select") {
+        const wanted = norm(value);
         const options = Array.from(el.options || []).filter((option) => !option.disabled);
-        const option = options.find((item) => item.value && !/choose|select|open this/i.test(item.textContent || "")) ||
+        const option = options.find((item) => {
+            const hay = norm(String(item.value || "") + " " + String(item.textContent || ""));
+            return wanted && hay.includes(wanted);
+          }) ||
+          options.find((item) => item.value && !/choose|select|open this/i.test(item.textContent || "")) ||
           options.find((item) => item.value) ||
           options[0] ||
           null;
@@ -2854,6 +2977,13 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
         const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
         if (setter) setter.call(el, value);
         else el.value = value;
+
+        if (typeOf(el) === "date" && !el.value && /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) {
+          try {
+            const [year, month, day] = String(value).split("-").map(Number);
+            el.valueAsDate = new Date(Date.UTC(year, month - 1, day));
+          } catch {}
+        }
       }
 
       try { el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value })); }
@@ -2921,7 +3051,8 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
       const value = valueFor(el, uniqueSeed);
       setValue(el, value);
       const actual = readValue(el);
-      const ok = tag === "select" ? Boolean(actual) : actual.trim().length > 0;
+      const expected = String(value || "").trim();
+      const ok = tag === "select" ? Boolean(actual) : actual.trim() === expected;
 
       if (ok) {
         filled.push({
@@ -2942,9 +3073,20 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
       selected.submitButtons[0] ||
       null;
 
+    const hardSkipped = skipped.filter((item) => {
+      const reason = String(item.reason || "").toLowerCase();
+      const type = String(item.type || "").toLowerCase();
+      return reason !== "choice_control_left_as_is" &&
+        !["checkbox", "radio", "file", "color", "range"].includes(type);
+    });
+
+    const prepareOk = filled.length > 0 && hardSkipped.length === 0;
+
     return JSON.stringify({
-      ok: filled.length > 0,
-      reason: filled.length > 0 ? "prepared_form_submission" : "no_fields_filled",
+      ok: prepareOk,
+      reason: prepareOk
+        ? "prepared_form_submission"
+        : (filled.length > 0 ? "prepared_form_required_values_not_confirmed" : "no_fields_filled"),
       session: {
         url: location.href,
         title: document.title,
@@ -2954,6 +3096,8 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
         submitSelector: submit ? selectorFor(submit, selected.form) : "",
         fields: filled,
         skipped,
+        hardSkipped,
+        requestedValues,
       },
       url: location.href,
       title: document.title,
