@@ -3882,9 +3882,11 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
         domFallback,
         verify: verifyAfterDom,
         error: verifyAfterDom.error || "Registry-backed DOM fill failed verification.",
+        verification: verifyAfterDom.verification || null,
         text: [
           domFallback.text || domFallback.error || "",
           verifyAfterDom.text || verifyAfterDom.error || "",
+          verifyAfterDom.verification ? "Verification details: " + safeText(JSON.stringify(verifyAfterDom.verification), 3000) : "",
           "Registry-backed fill failed verification; skipped legacy browser_type fallback to avoid appending into existing fields.",
         ].filter(Boolean).join("\n"),
       };
