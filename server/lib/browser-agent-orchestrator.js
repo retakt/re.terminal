@@ -2869,6 +2869,20 @@ function submitCommandFromPreviousFill(lastFillCommand = null, step = {}, curren
   };
 }
 
+function isObservationOnlyBrowserCommand(command = {}) {
+  return ["browserObserve", "browserScrape", "browserShowActions"].includes(String(command?.tool || ""));
+}
+
+function stepRequiresRealBrowserAction(step = {}) {
+  const text = [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return /\b(fill|enter|type|input|submit|register|send|save|continue|next|click|press)\b/.test(text);
+}
+
 function normalizeCommandArgsForTool(tool = "", rawArgs = {}, currentUrl = "") {
   const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
     ? { ...rawArgs }
@@ -4535,6 +4549,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     });
 
     let repaired = false;
+    let finalSatisfactionCommand = executionCommand;
     const initialSyncRepair = parseWatcherSyncRepairInstruction(resultCheck?.repairInstruction || "");
     const initialStructuredRepairPlan = resultCheck.success === true ? null : buildBrowserRepairPlan({
       resultCheck,
@@ -4697,6 +4712,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         }
 
         execution = repairExecution;
+        finalSatisfactionCommand = lastRepairCommand || finalSatisfactionCommand;
 
         const structuredRepairCheckCall = await safeRole("gemma_result_checker_repair", () => runWatcherAgent({
           schemaName: "gemma_result_checker_repair",
@@ -4940,6 +4956,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         state: currentState,
         beforeSnapshot: execution.afterSnapshot || null,
       });
+      finalSatisfactionCommand = repairCommand.command;
 
       const repairCheckCall = await safeRole("gemma_result_checker_repair", () => runWatcherAgent({
         schemaName: "gemma_result_checker_repair",
@@ -4996,6 +5013,42 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         ok: resultCheck.success === true,
         usage: usageOf(repairCheckCall),
         reasoning: thinkingOf(repairCheckCall),
+      }));
+    }
+
+    if (
+      resultCheck?.success === true &&
+      stepRequiresRealBrowserAction(step) &&
+      isObservationOnlyBrowserCommand(finalSatisfactionCommand)
+    ) {
+      resultCheck = normalizeWatcherRepairResult({
+        status: "failed",
+        success: false,
+        summary: "Observation-only repair cannot satisfy a fill/submit/click step.",
+        evidence: resultCheck.evidence || resultCheck.summary || "",
+        failureKind: "field_value_not_confirmed",
+        repairInstruction: "",
+        confidence: 0.2,
+      }, {
+        execution,
+        step,
+        command: finalSatisfactionCommand,
+        beforeState,
+      });
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Action satisfaction guard",
+        step: stepNumber,
+        status: "blocked_observe_only_success",
+        input: {
+          step,
+          finalSatisfactionCommand,
+        },
+        output: resultCheck,
+        summary: resultCheck.summary,
+        tool: finalSatisfactionCommand?.tool || "",
+        ok: false,
       }));
     }
 
