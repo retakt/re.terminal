@@ -92,11 +92,25 @@ function textFromResult({ result = {}, execution = {}, command = {} } = {}) {
 export function inferBrowserFailureKind({ result = {}, execution = {}, command = {}, beforeState = null } = {}) {
   if (result?.success === true) return "none";
 
-  const explicit = normalizeBrowserFailureKind(result?.failureKind || "");
-  if (explicit !== "unknown") return explicit;
-
   const text = textFromResult({ result, execution, command });
   const tool = String(command?.tool || "");
+
+  const explicit = normalizeBrowserFailureKind(result?.failureKind || "");
+  if (explicit !== "unknown") {
+    if (
+      explicit === "tool_script_error" &&
+      !/syntaxerror|referenceerror|typeerror|invalid regular expression|tool script|evaluate.*failed/.test(text)
+    ) {
+      // Watchers sometimes over-label normal fill verification failures as tool code errors.
+      // Only preserve tool_script_error for actual executor/code/evaluate failures.
+    } else {
+      return explicit;
+    }
+  }
+
+  if (/fill failed verification|field verification failed|fill failed|missing values|field_empty|not filled/.test(text)) {
+    return "field_value_not_confirmed";
+  }
 
   if (/sync_playwright_to_lightpanda_and_retry|playwright.*sync|out of sync|browser context was not on/.test(text)) {
     return "playwright_out_of_sync";

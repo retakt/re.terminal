@@ -2712,6 +2712,109 @@ function fieldsArrayFromLooseFormArgs(rawArgs = {}) {
     }));
 }
 
+function cleanExplicitFormValueV1(value = "") {
+  return String(value || "")
+    .replace(/^[\s,:;=.-]+/, "")
+    .replace(/[\s,:;=.-]+$/g, "")
+    .trim();
+}
+
+function extractExplicitAfterPhraseV1(source = "", phrases = [], stops = []) {
+  const raw = String(source || "");
+  const lower = raw.toLowerCase();
+
+  for (const phrase of phrases) {
+    const needle = String(phrase || "").toLowerCase();
+    const index = lower.indexOf(needle);
+    if (index < 0) continue;
+
+    let value = raw.slice(index + needle.length);
+    const valueLower = value.toLowerCase();
+    let cut = value.length;
+
+    for (const stop of stops) {
+      const stopIndex = valueLower.indexOf(String(stop || "").toLowerCase());
+      if (stopIndex >= 0 && stopIndex < cut) cut = stopIndex;
+    }
+
+    return cleanExplicitFormValueV1(value.slice(0, cut));
+  }
+
+  return "";
+}
+
+function explicitFormValuesFromInstructionV1(instruction = "") {
+  const source = String(instruction || "");
+  const values = [];
+
+  const contactName = extractExplicitAfterPhraseV1(
+    source,
+    ["contact name", "full name", "name"],
+    [", contact number", ", pickup", ", pick up", ", payment", ". after", ". submit", "\n"]
+  );
+  if (contactName) values.push({ label: "ContactName", value: contactName, secret: false });
+
+  const contactNumber = extractExplicitAfterPhraseV1(
+    source,
+    ["contact number", "contact no", "phone", "mobile", "telephone"],
+    [", pickup", ", pick up", ", payment", ". after", ". submit", "\n"]
+  );
+  if (contactNumber) values.push({ label: "contactnumber", value: contactNumber, secret: false });
+
+  const pickupDate = extractExplicitAfterPhraseV1(
+    source,
+    ["pickup date", "pick up date", "pickupdate"],
+    [", payment", ", contact", ". after", ". submit", "\n"]
+  );
+  if (pickupDate) values.push({ label: "pickupdate", value: pickupDate, secret: false, type: "date" });
+
+  const payment = extractExplicitAfterPhraseV1(
+    source,
+    ["payment method", "payment"],
+    [". after", ". submit", "\n"]
+  );
+  if (payment) values.push({ label: "payment", value: payment, secret: false });
+
+  return values;
+}
+
+function mergeRequiredExplicitFormValuesV1(fields = [], required = []) {
+  const out = Array.isArray(fields) ? [...fields] : [];
+
+  for (const requiredField of required || []) {
+    const requiredKey = compactFormFieldKey(
+      requiredField.label || requiredField.name || requiredField.field || ""
+    );
+
+    const index = out.findIndex((field) => {
+      const fieldKey = compactFormFieldKey(
+        field.label || field.name || field.field || field.selector || field.ref || ""
+      );
+
+      return requiredKey &&
+        fieldKey &&
+        (
+          fieldKey === requiredKey ||
+          fieldKey.includes(requiredKey) ||
+          requiredKey.includes(fieldKey)
+        );
+    });
+
+    if (index >= 0) {
+      out[index] = {
+        ...out[index],
+        value: requiredField.value,
+        secret: Boolean(requiredField.secret || out[index].secret),
+        type: requiredField.type || out[index].type || "",
+      };
+    } else {
+      out.push(requiredField);
+    }
+  }
+
+  return out;
+}
+
 function compactFormFieldKey(value = "") {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
@@ -2792,9 +2895,18 @@ function commandWithGenericFormPreparedValues(command = {}, step = {}, originalI
   }
 
   const requestedValues = fieldsArrayFromLooseFormArgs(args);
-  if (!requestedValues.length) return command;
+  const requiredExplicitValues = explicitFormValuesFromInstructionV1(originalInstruction);
+  const valuesWithRequiredExplicitFields = mergeRequiredExplicitFormValuesV1(
+    requestedValues,
+    requiredExplicitValues
+  );
 
-  const normalizedValues = mergeFormFieldTargetsFromTemplate(requestedValues, templateCommand);
+  if (!valuesWithRequiredExplicitFields.length) return command;
+
+  const normalizedValues = mergeFormFieldTargetsFromTemplate(
+    valuesWithRequiredExplicitFields,
+    templateCommand
+  );
 
   const wantsSubmit =
     tool === "browserFillAndSubmit" ||
