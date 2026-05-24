@@ -4402,6 +4402,18 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     for (let repairAttempt = 0; repairAttempt < effectiveRepairAttempts; repairAttempt += 1) {
       if (resultCheck.success === true) break;
+      if (String(resultCheck.failureKind || "") === "tool_script_error") {
+        trace.push(traceEntry({
+          role: "repair_loop",
+          title: "Repair skipped",
+          step: stepNumber,
+          status: "blocked_tool_script_error",
+          input: resultCheck,
+          summary: "Executor script failed; skipping blind retry of the same broken tool code.",
+          ok: false,
+        }));
+        break;
+      }
 
       const structuredRepairPlan = buildBrowserRepairPlan({
         resultCheck,
