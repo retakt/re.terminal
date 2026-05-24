@@ -16,6 +16,36 @@ function cleanFieldValue(value = "") {
     .trim();
 }
 
+function unsupportedFillType(type = "") {
+  return ["hidden", "file", "submit", "button", "reset", "checkbox", "radio"]
+    .includes(String(type || "").toLowerCase());
+}
+
+function shouldSkipRegistryFillAction(action = {}) {
+  const tag = String(action.tag || "").toLowerCase();
+  const type = String(action.type || "").toLowerCase();
+
+  if (action.disabled || action.readonly) return true;
+  if (!["input", "textarea", "select"].includes(tag)) return true;
+  if (unsupportedFillType(type)) return true;
+
+  return false;
+}
+
+function looseFieldLooksUnsupported(field = {}) {
+  const text = [
+    field.actionId,
+    field.label,
+    field.name,
+    field.id,
+    field.selector,
+    field.type,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return /disabled|read.?only|file|checkbox|radio/.test(text) ||
+    unsupportedFillType(field.type);
+}
+
 function fieldsFromArgs(args = {}) {
   if (Array.isArray(args.fields)) return args.fields;
   if (Array.isArray(args.requestedValues)) return args.requestedValues;
@@ -249,7 +279,14 @@ export function withActionRegistryFieldTargets(command = {}, registry = {}) {
 
   const resolvedFields = fields.map((field) => {
     const match = findRegistryField(field, registry);
+
+    if (match && shouldSkipRegistryFillAction(match)) {
+      return null;
+    }
+
     if (!match) {
+      if (looseFieldLooksUnsupported(field)) return null;
+
       return {
         ...field,
         value: cleanFieldValue(field.value ?? ""),
@@ -268,7 +305,7 @@ export function withActionRegistryFieldTargets(command = {}, registry = {}) {
       options: Array.isArray(match.options) ? match.options : field.options,
       registryMatched: true,
     };
-  });
+  }).filter(Boolean);
 
   return {
     ...command,
