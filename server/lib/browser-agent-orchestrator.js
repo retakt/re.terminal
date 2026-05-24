@@ -4227,7 +4227,24 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     let repaired = false;
     const initialSyncRepair = parseWatcherSyncRepairInstruction(resultCheck?.repairInstruction || "");
-    const effectiveRepairAttempts = initialSyncRepair ? Math.max(1, maxRepairAttempts) : maxRepairAttempts;
+    const initialStructuredRepairPlan = resultCheck.success === true ? null : buildBrowserRepairPlan({
+      resultCheck,
+      execution,
+      command: executionCommand,
+      step,
+      beforeState,
+      currentUrl: execution.observation?.url || currentUrl,
+      originalInstruction: instruction,
+    });
+
+    const structuredRepairAttempts = shouldUseBrowserRepairPlan(initialStructuredRepairPlan)
+      ? Math.max(1, Math.min(Number(initialStructuredRepairPlan.maxAttempts || 1), 2))
+      : 0;
+
+    const effectiveRepairAttempts = Math.max(
+      initialSyncRepair ? Math.max(1, maxRepairAttempts) : maxRepairAttempts,
+      structuredRepairAttempts
+    );
 
     for (let repairAttempt = 0; repairAttempt < effectiveRepairAttempts; repairAttempt += 1) {
       if (resultCheck.success === true) break;
