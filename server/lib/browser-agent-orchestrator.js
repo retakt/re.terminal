@@ -2997,6 +2997,11 @@ function mergeFormFieldTargetsFromTemplate(fields = [], templateCommand = null) 
   });
 }
 
+function hasNegativeSubmitIntentText(value = "") {
+  return /\b(do\s+not\s+submit|don't\s+submit|dont\s+submit|without\s+submitting|not\s+submit|not\s+submitted|has\s+not\s+been\s+submitted|must\s+not\s+submit|avoid\s+submitting|do\s+not\s+send|don't\s+send|dont\s+send)\b/i
+    .test(String(value || ""));
+}
+
 function commandWithGenericFormPreparedValues(command = {}, step = {}, originalInstruction = "", templateCommand = null) {
   const tool = String(command.tool || "");
   const args = command.args && typeof command.args === "object" && !Array.isArray(command.args)
@@ -3040,13 +3045,26 @@ function commandWithGenericFormPreparedValues(command = {}, step = {}, originalI
     command.intent,
   ].map((value) => String(value || "")).join(" ");
 
-  const wantsSubmit =
+  const negativeSubmitIntent = hasNegativeSubmitIntentText([
+    originalInstruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+    command.intent,
+    args.text,
+    args.submitText,
+    args.buttonText,
+  ].join(" "));
+
+  const positiveSubmitIntent =
     (
       tool === "browserFillAndSubmit" &&
-      /\b(submit|submitted|register|registration|send|save|continue)\b/i.test(stepText)
+      /\b(submit|register|registration|send|save|continue)\b/i.test(stepText)
     ) ||
     String(step.expectedAction || "").toLowerCase() === "submit" ||
-    /\b(submit|submitted|register|registration|send|save|continue)\b/i.test(stepText);
+    /\b(submit|register|registration|send|save|continue)\b/i.test(stepText);
+
+  const wantsSubmit = positiveSubmitIntent && !negativeSubmitIntent;
 
   const submitText =
     args.text ||
