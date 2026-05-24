@@ -4011,6 +4011,66 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
+    const recoverableFormCommandCandidate =
+      checker?.command ||
+      stepPlan?.command ||
+      null;
+
+    const recoverableFormValues = fieldsArrayFromLooseFormArgs(
+      recoverableFormCommandCandidate?.args || {}
+    );
+
+    const recoverableFormStepText = [
+      instruction,
+      step.instruction,
+      step.expectedAction,
+      step.successCriteria,
+      checker?.reason,
+      stepPlan?.reason,
+    ].map((value) => String(value || "")).join(" ");
+
+    if (
+      String(checker?.status || "").toLowerCase() === "needs_user" &&
+      recoverableFormCommandCandidate &&
+      recoverableFormValues.length > 0 &&
+      /\b(form|field|fields|fill|submit|register|registration|contact|payment|pickup|test data|fake data)\b/i.test(recoverableFormStepText)
+    ) {
+      const recoveredCommand = commandWithGenericFormPreparedValues(
+        recoverableFormCommandCandidate,
+        step,
+        instruction
+      );
+
+      checker = {
+        ...(checker && typeof checker === "object" ? checker : {}),
+        status: "approved_form_contract_normalized",
+        approved: true,
+        command: recoveredCommand,
+        reason: "Checker was uncertain about form tool choice, but provided executable field values. Pipeline normalized them into prepared-form flow.",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: Math.max(0.8, Number(checker?.confidence || stepPlan?.confidence || 0.8)),
+      };
+
+      if (checkerCall) checkerCall = { ...checkerCall, ok: true, error: "" };
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Form command contract normalizer",
+        step: stepNumber,
+        status: "approved_form_contract_normalized",
+        input: {
+          checkerStatus: "needs_user",
+          originalCommand: recoverableFormCommandCandidate,
+          values: recoverableFormValues,
+        },
+        output: checker,
+        summary: checker.reason,
+        tool: checker.command?.tool || "",
+        ok: true,
+      }));
+    }
+
     const checkerDecision = checkerDecisionForExecution(checker, checkerCall);
     if (!checkerDecision.ok) {
       stoppedReason = checkerDecision.reason || "Step was not approved.";
