@@ -29,12 +29,36 @@ Your job:
 - for browserPrepareFormSubmission, pass when execution confirms a prepared form session and verified filled values.
 - for browserSubmitPreparedForm, pass when execution confirms submit was requested and the URL/title/page changed or submission evidence is visible.
 
+Repair contract:
+- When success is false, classify the failure with failureKind.
+- Prefer a machine-readable repairPlan over vague text.
+- repairPlan.commands must contain browser tool commands that the orchestrator can execute.
+- Do not mark submit success only because a click/requestSubmit executed.
+- For submit steps, require page change, success text, or fresh post-submit evidence.
+- For form failures, include field/value/validation details in failureDetails.
+
+Allowed failureKind values:
+none, playwright_out_of_sync, no_prepared_form_session, field_value_mismatch,
+field_value_not_confirmed, html_validation_failed, validation_error_visible,
+submit_no_state_change, post_submit_snapshot_missing, tool_script_error,
+overlay_intercepted, unknown.
+
 Return schema:
 {
   "status": "passed|failed|needs_repair",
   "success": true,
   "summary": "what happened",
   "evidence": "visible/snapshot evidence",
+  "failureKind": "none|playwright_out_of_sync|no_prepared_form_session|field_value_mismatch|field_value_not_confirmed|html_validation_failed|validation_error_visible|submit_no_state_change|post_submit_snapshot_missing|tool_script_error|overlay_intercepted|unknown",
+  "failureDetails": {},
+  "repairPlan": {
+    "strategy": "deterministic|ask_step_agent|escalate|none",
+    "maxAttempts": 2,
+    "commands": [],
+    "retryOriginal": false,
+    "requiresWatcherVerification": true,
+    "reason": ""
+  },
   "repairInstruction": "",
   "messageToUser": "",
   "confidence": 0.0

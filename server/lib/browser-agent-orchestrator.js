@@ -34,6 +34,13 @@ import {
   finalBrowserAgentUserSummary,
   pageSummaryFromObservation,
 } from "./browser-agent-watcher-spy.js";
+import {
+  normalizeBrowserRepairResult,
+} from "./browser-agent-repair-schema.js";
+import {
+  buildBrowserRepairPlan,
+  shouldUseBrowserRepairPlan,
+} from "./browser-agent-repair-controller.js";
 
 const SUPPORTED_TOOLS = new Set([
   "browserNavigate",
@@ -2891,6 +2898,16 @@ function watcherResultOrFallback({ resultCheck = {}, resultCheckCall = null, exe
 }
 
 
+function normalizeWatcherRepairResult(resultCheck = {}, { execution = {}, step = {}, command = {}, beforeState = null } = {}) {
+  return normalizeBrowserRepairResult({
+    result: resultCheck || {},
+    execution,
+    step,
+    command,
+    beforeState,
+  });
+}
+
 function observationFromExecution(execution = null, fallback = {}) {
   return execution?.observation || {
     ok: Boolean(fallback?.snapshot),
@@ -2922,7 +2939,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   const state = args.state || {};
   const runtime = browserAgentRuntimeConfig({ display: true });
   const maxSteps = Math.max(1, Math.min(envInt("BROWSER_AGENT_MAX_SEQUENCE_STEPS", 8), 12));
-  const maxRepairAttempts = Math.max(0, Math.min(envInt("BROWSER_AGENT_REPAIR_ATTEMPTS", 1), 3));
+  const maxRepairAttempts = Math.max(0, Math.min(envInt("BROWSER_AGENT_REPAIR_ATTEMPTS", 2), 3));
 
   const trace = [];
   const stepResults = [];
@@ -4111,13 +4128,32 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
 
     }
+
+    resultCheck = normalizeWatcherRepairResult(resultCheck, {
+      execution,
+      step,
+      command: executionCommand,
+      beforeState,
+    });
+
     let repaired = false;
     const initialSyncRepair = parseWatcherSyncRepairInstruction(resultCheck?.repairInstruction || "");
     const effectiveRepairAttempts = initialSyncRepair ? Math.max(1, maxRepairAttempts) : maxRepairAttempts;
 
     for (let repairAttempt = 0; repairAttempt < effectiveRepairAttempts; repairAttempt += 1) {
       if (resultCheck.success === true) break;
-      if (!resultCheck.repairInstruction) break;
+
+      const structuredRepairPlan = buildBrowserRepairPlan({
+        resultCheck,
+        execution,
+        command: executionCommand,
+        step,
+        beforeState,
+        currentUrl: execution.observation?.url || currentUrl,
+        originalInstruction: instruction,
+      });
+
+      if (!resultCheck.repairInstruction && !shouldUseBrowserRepairPlan(structuredRepairPlan)) break;
 
       repaired = true;
       trace.push(traceEntry({
@@ -4125,10 +4161,158 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         title: `Repair attempt ${repairAttempt + 1}`,
         step: stepNumber,
         status: "started",
-        input: resultCheck.repairInstruction,
-        summary: resultCheck.repairInstruction,
+        input: {
+          repairInstruction: resultCheck.repairInstruction || "",
+          failureKind: resultCheck.failureKind || "",
+          repairPlan: structuredRepairPlan,
+        },
+        summary: structuredRepairPlan?.reason || resultCheck.repairInstruction || resultCheck.summary || "",
         ok: null,
       }));
+
+      if (shouldUseBrowserRepairPlan(structuredRepairPlan)) {
+        trace.push(traceEntry({
+          role: "repair_controller",
+          title: "Browser repair controller",
+          step: stepNumber,
+          status: "planned",
+          input: resultCheck,
+          output: structuredRepairPlan,
+          summary: `${structuredRepairPlan.strategy || "repair"}: ${structuredRepairPlan.reason || ""}`,
+          ok: null,
+        }));
+
+        let repairExecution = execution;
+        let lastRepairCommand = null;
+        let repairCommandFailed = false;
+
+        for (const rawRepairCommand of structuredRepairPlan.commands || []) {
+          const normalizedRepairCommand = normalizeCommand(
+            rawRepairCommand,
+            repairExecution.observation?.url || currentUrl
+          );
+
+          if (!normalizedRepairCommand.ok) {
+            repairCommandFailed = true;
+            resultCheck = normalizeWatcherRepairResult({
+              status: "failed",
+              success: false,
+              summary: normalizedRepairCommand.error,
+              evidence: "",
+              failureKind: "unknown",
+              repairInstruction: "",
+              confidence: 0.1,
+            }, {
+              execution: repairExecution,
+              step,
+              command: rawRepairCommand,
+              beforeState,
+            });
+            break;
+          }
+
+          lastRepairCommand = normalizedRepairCommand.command;
+
+          repairExecution = await executePlaywrightMcpBrowserCommand({
+            command: lastRepairCommand,
+            args: {
+              ...args,
+              currentUrl: repairExecution.observation?.url || currentUrl,
+            },
+            state: currentState,
+            beforeSnapshot: repairExecution.afterSnapshot || null,
+            beforeObservation: observationFromPageState(beforeState),
+          });
+
+          trace.push(traceEntry({
+            role: "playwright_controller",
+            title: "Playwright repair controller",
+            step: stepNumber,
+            status: repairExecution.status || "repaired",
+            input: lastRepairCommand,
+            output: {
+              url: repairExecution.observation?.url || "",
+              title: repairExecution.observation?.title || "",
+              error: repairExecution.error || "",
+              summary: repairExecution.actionResult?.text || "",
+              actionDetails: browserExecutionUiDetails(lastRepairCommand, repairExecution),
+            },
+            summary: "Repair command: " + browserExecutionTraceSummary(lastRepairCommand, repairExecution),
+            tool: lastRepairCommand.tool,
+            ok: repairExecution.ok === true,
+          }));
+        }
+
+        if (repairCommandFailed || !lastRepairCommand) {
+          continue;
+        }
+
+        execution = repairExecution;
+
+        const structuredRepairCheckCall = await safeRole("gemma_result_checker_repair", () => runWatcherAgent({
+          schemaName: "gemma_result_checker_repair",
+          images: snapshotImagesForModel(execution.beforeSnapshot, execution.afterSnapshot),
+          context: {
+            originalInstruction: instruction,
+            fullPlan: { ...orchestratorPlan, steps },
+            stepNumber,
+            step,
+            command: lastRepairCommand,
+            browserExecution: {
+              ok: execution.ok,
+              status: execution.status,
+              error: execution.error || "",
+              observation: observationFromExecution(execution),
+            },
+            beforeState: compactBeforeState,
+            watcherContext: watcherHybridContext({
+              stepResults,
+              trace,
+              beforeState,
+              currentUrl: execution.observation?.url || currentUrl,
+              currentTitle: execution.observation?.title || currentTitle,
+            }),
+            beforeSnapshot: compactSnapshotForModel(execution.beforeSnapshot),
+            afterSnapshot: compactSnapshotForModel(execution.afterSnapshot),
+            repairKind: structuredRepairPlan.strategy || "structured_repair",
+            repairPlan: structuredRepairPlan,
+          },
+        }));
+
+        resultCheckCall = structuredRepairCheckCall;
+        resultCheck = watcherResultOrFallback({
+          resultCheck: structuredRepairCheckCall.call?.data || {},
+          resultCheckCall: structuredRepairCheckCall,
+          execution,
+          step,
+          command: lastRepairCommand,
+          beforeState,
+        });
+        resultCheck = normalizeWatcherRepairResult(resultCheck, {
+          execution,
+          step,
+          command: lastRepairCommand,
+          beforeState,
+        });
+
+        trace.push(traceEntry({
+          role: "gemma_result_checker_repair",
+          title: "Watcher structured repair checker",
+          step: stepNumber,
+          status: resultCheck.status || (structuredRepairCheckCall.ok ? "checked" : "failed"),
+          input: {
+            repairPlan: structuredRepairPlan,
+            command: lastRepairCommand,
+          },
+          output: resultCheck,
+          summary: resultCheck.summary || resultCheck.evidence || resultCheck.repairInstruction || "",
+          ok: resultCheck.success === true,
+          usage: usageOf(structuredRepairCheckCall),
+          reasoning: thinkingOf(structuredRepairCheckCall),
+        }));
+
+        continue;
+      }
 
       const syncRepair = parseWatcherSyncRepairInstruction(resultCheck.repairInstruction);
       if (syncRepair) {
@@ -4242,6 +4426,12 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           command: executionCommand,
           beforeState,
         });
+        resultCheck = normalizeWatcherRepairResult(resultCheck, {
+          execution,
+          step,
+          command: executionCommand,
+          beforeState,
+        });
 
         trace.push(traceEntry({
           role: "gemma_result_checker_repair",
@@ -4334,6 +4524,12 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       resultCheck = watcherResultOrFallback({
         resultCheck: repairCheckCall.call?.data || {},
         resultCheckCall: repairCheckCall,
+        execution,
+        step,
+        command: repairCommand.command,
+        beforeState,
+      });
+      resultCheck = normalizeWatcherRepairResult(resultCheck, {
         execution,
         step,
         command: repairCommand.command,
