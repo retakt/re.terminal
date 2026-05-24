@@ -1,0 +1,225 @@
+function safeText(value = "", limit = 1000) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+function key(value = "") {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function cleanFieldValue(value = "") {
+  return String(value || "")
+    .replace(/,?\s+but\s+do\s+not\s+submit.*$/i, "")
+    .replace(/,?\s+do\s+not\s+submit.*$/i, "")
+    .replace(/\.\s+after.*$/i, "")
+    .replace(/\.\s+submit.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fieldsFromArgs(args = {}) {
+  if (Array.isArray(args.fields)) return args.fields;
+  if (Array.isArray(args.requestedValues)) return args.requestedValues;
+  if (Array.isArray(args.values)) return args.values;
+
+  const reserved = new Set([
+    "currentUrl",
+    "formIntent",
+    "stepInstruction",
+    "explicitSubmit",
+    "submit",
+    "text",
+    "submitText",
+    "buttonText",
+    "ref",
+    "selector",
+    "target",
+    "notes",
+  ]);
+
+  return Object.entries(args)
+    .filter(([name, value]) =>
+      !reserved.has(name) &&
+      value !== undefined &&
+      value !== null &&
+      typeof value !== "object" &&
+      String(value).trim()
+    )
+    .map(([label, value]) => ({
+      label,
+      value: String(value),
+      secret: false,
+    }));
+}
+
+function fieldLooksLike(field = {}, pattern) {
+  const text = [
+    field.actionId,
+    field.label,
+    field.name,
+    field.id,
+    field.selector,
+    field.type,
+    field.value,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return pattern.test(text);
+}
+
+function scoreFieldMatch(field = {}, action = {}) {
+  if (!action || action.kind !== "field") return 0;
+
+  const fieldKeys = [
+    field.actionId,
+    field.label,
+    field.name,
+    field.id,
+    field.selector,
+    field.type,
+  ].map(key).filter(Boolean);
+
+  const actionKeys = [
+    action.actionId,
+    action.label,
+    action.name,
+    action.id,
+    action.selector,
+    action.type,
+  ].map(key).filter(Boolean);
+
+  let score = 0;
+
+  for (const left of fieldKeys) {
+    for (const right of actionKeys) {
+      if (left === right) score = Math.max(score, 240);
+      else if (left.includes(right) || right.includes(left)) score = Math.max(score, 140);
+    }
+  }
+
+  const actionText = actionKeys.join(" ");
+  const actionType = String(action.type || "").toLowerCase();
+  const actionTag = String(action.tag || "").toLowerCase();
+
+  if (fieldLooksLike(field, /pickup|pickupdate|date|\d{4}-\d{2}-\d{2}/)) {
+    if (actionType === "date" || /pickup|pickupdate|date/.test(actionText)) score += 220;
+    if (/contact|phone|tel|payment/.test(actionText)) score -= 240;
+  }
+
+  if (fieldLooksLike(field, /contactnumber|contact no|phone|mobile|tel|telephone/)) {
+    if (actionType === "tel" || /contactnumber|contact|phone|mobile|tel/.test(actionText)) score += 220;
+    if (/pickup|date|payment/.test(actionText)) score -= 240;
+  }
+
+  if (fieldLooksLike(field, /payment|method|card|cash/)) {
+    if (actionTag === "select" || /payment|method/.test(actionText)) score += 220;
+    if (/pickup|date|contact|phone|tel/.test(actionText)) score -= 240;
+  }
+
+  return score;
+}
+
+function findRegistryField(field = {}, registry = {}) {
+  const actions = Array.isArray(registry?.actions)
+    ? registry.actions.filter((action) => action.kind === "field")
+    : [];
+
+  if (!actions.length) return null;
+
+  const requestedActionId = String(field.actionId || "").trim();
+  if (requestedActionId) {
+    const exact = actions.find((action) => String(action.actionId || "") === requestedActionId);
+    if (exact) return exact;
+
+    const requestedKey = key(requestedActionId);
+    const identity = actions.find((action) =>
+      [action.id, action.name, action.selector, action.label]
+        .map(key)
+        .some((candidate) =>
+          candidate &&
+          requestedKey &&
+          (candidate === requestedKey || candidate.includes(requestedKey) || requestedKey.includes(candidate))
+        )
+    );
+    if (identity) return identity;
+  }
+
+  const best = actions
+    .map((action) => ({ action, score: scoreFieldMatch(field, action) }))
+    .sort((a, b) => b.score - a.score)[0];
+
+  return best && best.score >= 120 ? best.action : null;
+}
+
+function normalizeValueForAction(field = {}, action = {}) {
+  const value = cleanFieldValue(field.value ?? "");
+
+  if (String(action.tag || "").toLowerCase() !== "select") {
+    return value;
+  }
+
+  const options = Array.isArray(action.options) ? action.options : [];
+  const wanted = key(value);
+
+  const match = options.find((option) => {
+    const optionValue = key(option.value);
+    const optionText = key(option.text);
+    return wanted &&
+      (optionValue === wanted ||
+       optionText === wanted ||
+       optionValue.includes(wanted) ||
+       optionText.includes(wanted) ||
+       wanted.includes(optionValue) ||
+       wanted.includes(optionText));
+  });
+
+  return match ? String(match.value || match.text || value) : value;
+}
+
+export function withActionRegistryFieldTargets(command = {}, registry = {}) {
+  const tool = String(command?.tool || "");
+
+  if (!["browserFillFields", "browserFillAndSubmit", "browserPrepareFormSubmission"].includes(tool)) {
+    return command;
+  }
+
+  const args = command.args && typeof command.args === "object" && !Array.isArray(command.args)
+    ? command.args
+    : {};
+
+  const fields = fieldsFromArgs(args);
+  if (!fields.length) return command;
+
+  const resolvedFields = fields.map((field) => {
+    const match = findRegistryField(field, registry);
+    if (!match) {
+      return {
+        ...field,
+        value: cleanFieldValue(field.value ?? ""),
+      };
+    }
+
+    return {
+      ...field,
+      actionId: match.actionId || field.actionId || "",
+      label: field.label || match.label || field.name || field.field || "",
+      value: normalizeValueForAction(field, match),
+      selector: match.selector || field.selector || "",
+      name: match.name || field.name || "",
+      id: match.id || field.id || "",
+      type: match.type || field.type || "",
+      options: Array.isArray(match.options) ? match.options : field.options,
+      registryMatched: true,
+    };
+  });
+
+  return {
+    ...command,
+    args: {
+      ...args,
+      fields: resolvedFields,
+    },
+    notes: [
+      command.notes || "",
+      "Resolved form fields against Playwright action registry before execution.",
+    ].filter(Boolean).join(" "),
+  };
+}

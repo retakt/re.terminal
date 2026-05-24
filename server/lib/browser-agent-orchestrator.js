@@ -43,6 +43,9 @@ import {
   compactActionRegistryForModel,
 } from "./browser-action-registry-contract.js";
 import {
+  withActionRegistryFieldTargets,
+} from "./browser-action-registry-resolver.js";
+import {
   buildBrowserRepairPlan,
   shouldUseBrowserRepairPlan,
 } from "./browser-agent-repair-controller.js";
@@ -2787,7 +2790,7 @@ function explicitFormValuesFromInstructionV1(instruction = "") {
   const payment = extractExplicitAfterPhraseV1(
     source,
     ["payment method", "payment"],
-    [". after", ". submit", "\n"]
+    [", but", ", do not", ". after", ". submit", "\n"]
   );
   if (payment) values.push({ label: "payment", value: payment, secret: false });
 
@@ -4539,7 +4542,26 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       stepPlan?.command
     );
 
-    const normalized = normalizeCommand(commandBeforeNormalize, currentUrl);
+    const registryResolvedCommand = withActionRegistryFieldTargets(
+      commandBeforeNormalize,
+      actionRegistry
+    );
+
+    if (JSON.stringify(registryResolvedCommand) !== JSON.stringify(commandBeforeNormalize)) {
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Action registry target resolver",
+        step: stepNumber,
+        status: "resolved_action_registry_targets",
+        input: commandBeforeNormalize,
+        output: registryResolvedCommand,
+        summary: "Resolved LLM/checker form fields to Playwright-backed action registry targets.",
+        tool: registryResolvedCommand.tool || "",
+        ok: true,
+      }));
+    }
+
+    const normalized = normalizeCommand(registryResolvedCommand, currentUrl);
     if (!normalized.ok) {
       stoppedReason = normalized.error;
       stepResults.push({ stepNumber, step, ok: false, status: "bad_command", summary: normalized.error });
