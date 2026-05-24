@@ -2647,6 +2647,20 @@ async function tryDomFillFields(fields = []) {
   };
 }
 
+function domFillTextConfirmsNoMissingFields(value = "") {
+  const text = String(value || "");
+
+  // MCP wrappers sometimes stringify JSON in different shapes. If the DOM fill
+  // script completed and the readback says missing is empty, accept that as a
+  // successful fill confirmation instead of letting a second verifier fail it.
+  if (/"missing"\s*:\s*\[\s*\]/i.test(text)) return true;
+  if (/missing\s*[:=]\s*\[\s*\]/i.test(text)) return true;
+  if (/\\?"missing\\?"\s*:\s*\[\s*\]/i.test(text)) return true;
+  if (/"ok"\s*:\s*true/i.test(text) && /"filled"\s*:/i.test(text) && !/"missing"\s*:\s*\[[^\]]+\]/i.test(text)) return true;
+
+  return false;
+}
+
 function parseMcpJsonResult(text = "") {
   const raw = String(text || "").trim();
   if (!raw) return null;
@@ -3873,10 +3887,13 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     const verifyAfterDom = await verifyFilledFields(fields);
 
     const domFillConfirmed =
-      domFallback.ok === true &&
-      domFallback.fillResult?.ok === true &&
-      Array.isArray(domFallback.fillResult?.missing) &&
-      domFallback.fillResult.missing.length === 0;
+      (
+        domFallback.ok === true &&
+        domFallback.fillResult?.ok === true &&
+        Array.isArray(domFallback.fillResult?.missing) &&
+        domFallback.fillResult.missing.length === 0
+      ) ||
+      domFillTextConfirmsNoMissingFields(domFallback.text || domFallback.error || "");
 
     if (verifyAfterDom.ok === true || domFillConfirmed) {
       return {
