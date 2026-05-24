@@ -159,17 +159,19 @@ function normalizeValueForAction(field = {}, action = {}) {
   const options = Array.isArray(action.options) ? action.options : [];
   const wanted = key(value);
 
-  const match = options.find((option) => {
-    const optionValue = key(option.value);
-    const optionText = key(option.text);
-    return wanted &&
-      (optionValue === wanted ||
-       optionText === wanted ||
-       optionValue.includes(wanted) ||
-       optionText.includes(wanted) ||
-       wanted.includes(optionValue) ||
-       wanted.includes(optionText));
-  });
+  const match = options
+    .filter((option) => !option.disabled)
+    .find((option) => {
+      const optionValue = key(option.value);
+      const optionText = key(option.text);
+      const candidates = [optionValue, optionText].filter(Boolean);
+
+      return wanted && candidates.some((candidate) =>
+        candidate === wanted ||
+        candidate.includes(wanted) ||
+        wanted.includes(candidate)
+      );
+    });
 
   return match ? String(match.value || match.text || value) : value;
 }

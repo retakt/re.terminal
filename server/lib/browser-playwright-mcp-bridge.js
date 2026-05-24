@@ -714,7 +714,12 @@ export async function scoutPlaywrightControlTarget(args = {}, state = {}) {
 
     const selectorFor = (el) => {
       const tag = el.tagName.toLowerCase();
-      if (el.id) return "#" + esc(el.id);
+      if (el.id) {
+        const idSelector = "#" + esc(el.id);
+        try {
+          if (document.querySelectorAll(idSelector).length === 1) return idSelector;
+        } catch {}
+      }
 
       for (const attr of ["data-bs-target", "data-target", "aria-controls", "aria-label", "name", "type", "role"]) {
         const value = el.getAttribute(attr);
@@ -3774,6 +3779,26 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
         text: [
           domFallback.text || domFallback.error || "",
           verifyAfterDom.text || "",
+        ].filter(Boolean).join("\n"),
+      };
+    }
+
+    const hasRegistryBackedTargets = fields.some((field) =>
+      field.registryMatched ||
+      field.actionId ||
+      field.selector
+    );
+
+    if (hasRegistryBackedTargets) {
+      return {
+        ok: false,
+        domFallback,
+        verify: verifyAfterDom,
+        error: verifyAfterDom.error || "Registry-backed DOM fill failed verification.",
+        text: [
+          domFallback.text || domFallback.error || "",
+          verifyAfterDom.text || verifyAfterDom.error || "",
+          "Registry-backed fill failed verification; skipped legacy browser_type fallback to avoid appending into existing fields.",
         ].filter(Boolean).join("\n"),
       };
     }
