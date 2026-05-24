@@ -4040,7 +4040,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     const wantsActionRegistry =
       stepRequiresRealBrowserAction(step) ||
       /\b(action registry|form controls|available fields|editable fields|visible fields)\b/i.test(registryContextText) ||
-      (pageHasInteractiveFormControls && promptHasBrowserActionIntent);
+      promptHasBrowserActionIntent;
 
     let actionRegistry = null;
     if (
