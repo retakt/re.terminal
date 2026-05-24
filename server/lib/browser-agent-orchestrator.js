@@ -4579,9 +4579,29 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     });
 
     const checkerStatusForRegistryDefault = String(checker?.status || "").toLowerCase();
+    const checkerToolForRegistryDefault = String(checker?.command?.tool || "");
+    const registryDefaultStepText = [
+      instruction,
+      step.instruction,
+      step.expectedAction,
+      step.successCriteria,
+    ].map((value) => String(value || "")).join(" ");
+
+    const stepNeedsFillCommand =
+      /\b(fill|form|field|fields|editable|visible fields|fake data|test data)\b/i.test(registryDefaultStepText) &&
+      !/\b(report|observe|inspect|list|show action registry|available action registry)\b/i.test(registryDefaultStepText);
+
+    const checkerApprovedWrongNonFillCommand =
+      checker?.approved === true &&
+      stepNeedsFillCommand &&
+      !["browserFillFields", "browserFillAndSubmit"].includes(checkerToolForRegistryDefault);
+
     const checkerNeedsRegistryDefault =
-      checker?.approved !== true &&
-      ["", "needs_user", "rejected", "failed", "not_approved"].includes(checkerStatusForRegistryDefault);
+      (
+        checker?.approved !== true &&
+        ["", "needs_user", "rejected", "failed", "not_approved"].includes(checkerStatusForRegistryDefault)
+      ) ||
+      checkerApprovedWrongNonFillCommand;
 
     if (registryDefaultFillCommand && checkerNeedsRegistryDefault) {
       checker = {

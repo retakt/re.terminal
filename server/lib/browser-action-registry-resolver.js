@@ -154,7 +154,7 @@ function findRegistryField(field = {}, registry = {}) {
     if (exact) return exact;
 
     const requestedKey = key(requestedActionId);
-    const identity = actions.find((action) =>
+    const identityCandidates = actions.filter((action) =>
       [action.id, action.name, action.selector, action.label]
         .map(key)
         .some((candidate) =>
@@ -163,7 +163,19 @@ function findRegistryField(field = {}, registry = {}) {
           (candidate === requestedKey || candidate.includes(requestedKey) || requestedKey.includes(candidate))
         )
     );
-    if (identity) return identity;
+
+    if (identityCandidates.length === 1) return identityCandidates[0];
+
+    // Duplicate DOM ids are common on test pages. If multiple controls share the
+    // same id/name/selector identity, do not pick the first one blindly. Score
+    // them by semantic field intent, type, label, and value.
+    if (identityCandidates.length > 1) {
+      const bestIdentity = identityCandidates
+        .map((action) => ({ action, score: scoreFieldMatch(field, action) }))
+        .sort((a, b) => b.score - a.score)[0];
+
+      if (bestIdentity?.score >= 120) return bestIdentity.action;
+    }
   }
 
   const best = actions
