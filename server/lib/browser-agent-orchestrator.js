@@ -2631,7 +2631,7 @@ function isSubmitPreparedFormStepV1(step = {}, originalInstruction = "") {
 }
 
 function syntheticStepPlanForGenericFormToolV1({ step = {}, currentUrl = "", originalInstruction = "" } = {}) {
-  if (envFlag("BROWSER_AGENT_GENERIC_FORM_TOOL", true) && isPrepareFormSubmissionStepV1(step, originalInstruction)) {
+  if (envFlag("BROWSER_AGENT_GENERIC_FORM_SYNTHETIC_FALLBACK", false) && isPrepareFormSubmissionStepV1(step, originalInstruction)) {
     return {
       status: "ready",
       syntheticSource: "generic_form_tool",
@@ -2643,16 +2643,16 @@ function syntheticStepPlanForGenericFormToolV1({ step = {}, currentUrl = "", ori
           formIntent: originalInstruction || step.instruction || "",
           stepInstruction: step.instruction || "",
         },
-        notes: "Generic form tool selected one visible form, filled safe test values, and prepared a form session.",
+        notes: "Fallback generic form tool selected one visible form. Prefer Step Agent requestedValues when available.",
       },
-      reason: "Form filling step routed to deterministic generic form tool.",
+      reason: "Fallback form route used because synthetic fallback is enabled.",
       messageToChecker: "Verify the form tool selected one visible form and confirmed filled values.",
       messageToUser: "",
       confidence: 0.95,
     };
   }
 
-  if (envFlag("BROWSER_AGENT_GENERIC_FORM_TOOL", true) && isSubmitPreparedFormStepV1(step, originalInstruction)) {
+  if (envFlag("BROWSER_AGENT_GENERIC_FORM_SYNTHETIC_FALLBACK", false) && isSubmitPreparedFormStepV1(step, originalInstruction)) {
     return {
       status: "ready",
       syntheticSource: "generic_form_tool",

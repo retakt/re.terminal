@@ -16,7 +16,7 @@ Allowed tools:
 - browserObserve: { "currentUrl": "...", "focus": "page|links|forms|actions" }
 - browserClickByText: { "currentUrl": "...", "text": "visible text", "ref": "optional snapshot ref" }
 - browserFillFields: { "currentUrl": "...", "fields": [{ "label": "...", "value": "...", "secret": false, "ref": "optional" }] }
-- browserPrepareFormSubmission: { "currentUrl": "...", "formIntent": "user form goal", "stepInstruction": "fill/prepare instruction" }
+- browserPrepareFormSubmission: { "currentUrl": "...", "formIntent": "user form goal", "stepInstruction": "fill/prepare instruction", "requestedValues": [{ "label": "visible field label", "value": "exact value to enter", "secret": false }] }
 - browserSubmitPreparedForm: { "currentUrl": "...", "formIntent": "user form goal", "stepInstruction": "submit instruction" }
 - browserSubmitForm: { "currentUrl": "...", "explicitSubmit": true, "text": "optional submit text", "ref": "optional" }
 - browserFillAndSubmit: { "currentUrl": "...", "explicitSubmit": true, "fields": [...] }
@@ -28,7 +28,11 @@ Rules:
 - For link clicks, if pageState has a matching link href and the user asked for a link/navigation, prefer browserNavigate with that href. Include sourceText/sourceRef/sourceSelector in args when available.
 - For button/modal/collapse/dropdown/toggle clicks, prefer real buttons or non-href controls. Do not turn these into browserNavigate just because a nearby documentation link or section anchor matches words like "modal", "example", or "collapse".
 - For buttons/forms/inputs without href, propose browserClickByText/browserFillFields using visible text plus the Lightpanda ref/selector or Playwright snapshot ref. The Playwright bridge will translate safely.
-- For generic visible form tasks where fields are not explicitly enumerated, prefer browserPrepareFormSubmission for the fill/prepare step, then browserSubmitPreparedForm for the later submit step.
+- For form tasks, YOU decide the intended field values from the user request plus pageState inputs/forms/snapshot evidence.
+- If the user provided exact values, copy them exactly into browserPrepareFormSubmission.args.requestedValues. Do not let the executor invent replacements.
+- If the user asks for realistic fake data but gives no exact values, choose safe realistic fake values yourself and include them in requestedValues.
+- Use visible field labels from pageState/snapshot for requestedValues.label, such as "Contact Name", "Contact number", "PickUp Date", "Payment Method".
+- For generic visible form tasks, prefer browserPrepareFormSubmission for the fill/prepare step, then browserSubmitPreparedForm for the later submit step.
 - Do not use browserFillAndSubmit for generic unknown forms. It is legacy and should only be used when explicit verified fields are already provided.
 - Use Playwright snapshot refs only when a real Playwright snapshot is present.
 - Prefer visible text exactly as seen in pageState or snapshot.

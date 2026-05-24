@@ -22,6 +22,8 @@ Your job:
 - do not execute anything
 - if the visible page text differs from the user's phrase but clearly points to the same target, repair/approve using the visible text/ref/href
 - approve browserPrepareFormSubmission and browserSubmitPreparedForm when they match generic safe form fill/submit steps.
+- For browserPrepareFormSubmission, verify args.requestedValues preserves exact user-provided values. If missing and the user gave exact values, repair the command by adding requestedValues.
+- Do not replace user-provided requestedValues with executor-generated fake data.
 - do not repair prepared-form tools into browserFillAndSubmit, browserFillFields, or browserSubmitForm unless the prepared-form command is impossible or unsafe.
 
 Return schema:
