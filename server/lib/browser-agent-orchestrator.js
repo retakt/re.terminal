@@ -2908,16 +2908,26 @@ function commandWithGenericFormPreparedValues(command = {}, step = {}, originalI
     templateCommand
   );
 
+  const stepText = [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+    command.intent,
+  ].map((value) => String(value || "")).join(" ");
+
   const wantsSubmit =
-    tool === "browserFillAndSubmit" ||
+    (
+      tool === "browserFillAndSubmit" &&
+      /\b(submit|submitted|register|registration|send|save|continue)\b/i.test(stepText)
+    ) ||
     String(step.expectedAction || "").toLowerCase() === "submit" ||
-    /\b(submit|submitted|register|registration|send|save|continue)\b/i.test(text);
+    /\b(submit|submitted|register|registration|send|save|continue)\b/i.test(stepText);
 
   const submitText =
     args.text ||
     args.submitText ||
     args.buttonText ||
-    (/\b(register|registration)\b/i.test(text) ? "Register" : "");
+    (/\b(register|registration)\b/i.test(stepText) ? "Register" : "");
 
   return {
     ...command,
