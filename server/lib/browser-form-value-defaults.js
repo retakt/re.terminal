@@ -171,9 +171,12 @@ export function buildRegistryFormFillCommandFromInstruction({
 
   if (!commandFields.length) return null;
 
+  const hasNegativeSubmitIntent =
+    /\b(do\s+not\s+submit|don't\s+submit|dont\s+submit|without\s+submitting|not\s+submit|not\s+submitted|has\s+not\s+been\s+submitted|must\s+not\s+submit|avoid\s+submitting|do\s+not\s+send|don't\s+send|dont\s+send)\b/i.test(text);
+
   const wantsSubmit =
-    /\b(fill\s+.*submit|submit\s+.*form|then submit|register)\b/i.test(text) &&
-    !/\bdo not submit|without submitting|not submit\b/i.test(text);
+    !hasNegativeSubmitIntent &&
+    /\b(fill\s+.*submit|submit\s+.*form|then submit|register)\b/i.test(text);
 
   return {
     intent: wantsSubmit ? "fill_and_submit" : "fill_form",
