@@ -3396,6 +3396,81 @@ function parseWatcherSyncRepairInstruction(value = "") {
   return match?.[1] ? { url: match[1].replace(/[.,;:!?]+$/g, "") } : null;
 }
 
+function commandFillFieldsForExecution(command = {}) {
+  const args = command?.args && typeof command.args === "object" && !Array.isArray(command.args)
+    ? command.args
+    : {};
+
+  if (Array.isArray(args.fields)) return args.fields;
+  if (Array.isArray(args.requestedValues)) return args.requestedValues;
+  if (Array.isArray(args.values)) return args.values;
+  return [];
+}
+
+function fillReadbackObjectConfirmed(value = null) {
+  if (!value || typeof value !== "object") return false;
+
+  if (value.ok === true && Array.isArray(value.missing) && value.missing.length === 0) {
+    return true;
+  }
+
+  if (value.verification && typeof value.verification === "object") {
+    return fillReadbackObjectConfirmed(value.verification);
+  }
+
+  if (value.fillResult && typeof value.fillResult === "object") {
+    return fillReadbackObjectConfirmed(value.fillResult);
+  }
+
+  if (value.domFallback && typeof value.domFallback === "object") {
+    return fillReadbackObjectConfirmed(value.domFallback);
+  }
+
+  if (value.verify && typeof value.verify === "object") {
+    return fillReadbackObjectConfirmed(value.verify);
+  }
+
+  return false;
+}
+
+function fillReadbackTextConfirmed(value = "") {
+  const text = String(value || "");
+
+  return (
+    /DOM fill readback passed/i.test(text) &&
+    (
+      /"missing"\s*:\s*\[\s*\]/i.test(text) ||
+      /missing\s*[:=]\s*\[\s*\]/i.test(text) ||
+      /\\?"missing\\?"\s*:\s*\[\s*\]/i.test(text)
+    )
+  ) || /Field verification passed/i.test(text);
+}
+
+function browserFillFieldsConfirmedByExecutor(command = {}, execution = {}) {
+  if (String(command?.tool || "") !== "browserFillFields") return false;
+
+  const fields = commandFillFieldsForExecution(command);
+  if (!fields.length) return false;
+
+  const actionResult = execution?.actionResult || {};
+
+  if (
+    fillReadbackObjectConfirmed(actionResult) ||
+    fillReadbackObjectConfirmed(execution) ||
+    fillReadbackObjectConfirmed(actionResult.domFallback) ||
+    fillReadbackObjectConfirmed(actionResult.verify) ||
+    fillReadbackObjectConfirmed(actionResult.fillResult)
+  ) {
+    return true;
+  }
+
+  return fillReadbackTextConfirmed([
+    actionResult.text,
+    actionResult.error,
+    execution.error,
+  ].filter(Boolean).join("\n"));
+}
+
 function watcherResultOrFallback({ resultCheck = {}, resultCheckCall = null, execution = {}, step = {}, command = {}, beforeState = null } = {}) {
   const hasData = resultCheck && typeof resultCheck === "object" && Object.keys(resultCheck).length > 0;
   if (hasData) return resultCheck;
@@ -5185,6 +5260,47 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       command: executionCommand,
       beforeState,
     });
+
+    if (browserFillFieldsConfirmedByExecutor(executionCommand, execution)) {
+      execution = {
+        ...execution,
+        ok: true,
+        status: execution.status === "failed" ? "filled_confirmed" : (execution.status || "filled_confirmed"),
+        error: "",
+      };
+
+      resultCheck = normalizeWatcherRepairResult({
+        status: "passed",
+        success: true,
+        summary: "Executor DOM readback confirmed all requested fields were filled.",
+        evidence: execution.actionResult?.text || "",
+        failureKind: "",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: 0.98,
+      }, {
+        execution,
+        step,
+        command: executionCommand,
+        beforeState,
+      });
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Confirmed fill readback guard",
+        step: stepNumber,
+        status: "passed_confirmed_fill_readback",
+        input: {
+          command: executionCommand,
+          previousExecutionOk: execution.ok,
+          previousResultCheck: resultCheck,
+        },
+        output: resultCheck,
+        summary: resultCheck.summary,
+        tool: executionCommand.tool || "",
+        ok: true,
+      }));
+    }
 
     if (
       execution.ok !== true &&
