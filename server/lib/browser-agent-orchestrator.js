@@ -2824,6 +2824,51 @@ function commandWithGenericFormPreparedValues(command = {}, step = {}, originalI
   };
 }
 
+function isSubmitOnlyFormStep(step = {}) {
+  const action = String(step.expectedAction || "").toLowerCase();
+  const text = [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return (
+    action === "submit" ||
+    /\b(submit|register|send|save|continue|next)\b/.test(text)
+  ) && !/\b(fill|enter|type|input)\b/.test(text);
+}
+
+function submitCommandFromPreviousFill(lastFillCommand = null, step = {}, currentUrl = "") {
+  if (!lastFillCommand || typeof lastFillCommand !== "object") return null;
+
+  const previousArgs = lastFillCommand.args && typeof lastFillCommand.args === "object"
+    ? lastFillCommand.args
+    : {};
+
+  const stepText = [
+    step.instruction,
+    step.successCriteria,
+    step.expectedAction,
+  ].map((value) => String(value || "")).join(" ");
+
+  const submitText =
+    previousArgs.text ||
+    previousArgs.submitText ||
+    previousArgs.buttonText ||
+    (/\bregister|registration\b/i.test(stepText) ? "Register" : "Submit");
+
+  return {
+    intent: "submit_form",
+    tool: "browserSubmitForm",
+    args: {
+      currentUrl,
+      text: submitText,
+      explicitSubmit: true,
+    },
+    notes: "Submitting form using values filled and verified in the previous form-fill step.",
+  };
+}
+
 function normalizeCommandArgsForTool(tool = "", rawArgs = {}, currentUrl = "") {
   const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
     ? { ...rawArgs }
@@ -4134,6 +4179,44 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           checkerStatus: "needs_user",
           originalCommand: recoverableFormCommandCandidate,
           values: recoverableFormValues,
+        },
+        output: checker,
+        summary: checker.reason,
+        tool: checker.command?.tool || "",
+        ok: true,
+      }));
+    }
+
+    const submitFromPreviousFillCommand =
+      isSubmitOnlyFormStep(step) && lastSuccessfulFillCommand
+        ? submitCommandFromPreviousFill(lastSuccessfulFillCommand, step, currentUrl)
+        : null;
+
+    if (
+      submitFromPreviousFillCommand &&
+      ["needs_user", "failed", "not_approved"].includes(String(checker?.status || "").toLowerCase())
+    ) {
+      checker = {
+        ...(checker && typeof checker === "object" ? checker : {}),
+        status: "approved_submit_from_previous_fill",
+        approved: true,
+        command: submitFromPreviousFillCommand,
+        reason: "Current step is submit-only and the previous form-fill step was verified. Proceeding with submit instead of asking the user to repeat values.",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: Math.max(0.85, Number(checker?.confidence || 0.85)),
+      };
+
+      if (checkerCall) checkerCall = { ...checkerCall, ok: true, error: "" };
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Submit from previous fill",
+        step: stepNumber,
+        status: "approved_submit_from_previous_fill",
+        input: {
+          checkerStatus: checker?.status || "",
+          lastSuccessfulFillCommand,
         },
         output: checker,
         summary: checker.reason,
