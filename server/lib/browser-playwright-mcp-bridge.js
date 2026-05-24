@@ -2713,6 +2713,8 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
       ? commandArgs.fields
       : [];
   const currentUrl = currentUrlFromInput({ ...args, ...commandArgs }, state);
+  const formIntentPayload = Buffer.from(JSON.stringify(formIntent), "utf8").toString("base64");
+  const requestedValuesPayload = Buffer.from(JSON.stringify(requestedValues), "utf8").toString("base64");
 
   // Generic form preparation must operate on the live Playwright page.
   // Lightpanda may have already read the correct URL while Playwright is still elsewhere.
@@ -2723,8 +2725,13 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
   }
 
   const script = `() => {
-    const formIntent = ${JSON.stringify(formIntent)};
-    const requestedValues = ${JSON.stringify(requestedValues)};
+    const decodePayload = (payload) => {
+      const bytes = Uint8Array.from(atob(String(payload || "")), (ch) => ch.charCodeAt(0));
+      return JSON.parse(new TextDecoder("utf-8").decode(bytes));
+    };
+
+    const formIntent = decodePayload("${formIntentPayload}");
+    const requestedValues = decodePayload("${requestedValuesPayload}");
 
     const norm = (value) => String(value || "")
       .toLowerCase()
