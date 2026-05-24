@@ -3683,6 +3683,13 @@ export async function buildPlaywrightActionRegistry({
         required: Boolean(el.required || el.getAttribute("aria-required") === "true"),
         href: tag === "a" ? attr(el, "href") : "",
         text: label,
+        options: tag === "select"
+          ? Array.from(el.options || []).map((option) => ({
+              value: String(option.value || ""),
+              text: String(option.textContent || "").replace(/\s+/g, " ").trim(),
+              disabled: Boolean(option.disabled)
+            }))
+          : []
       };
     });
 
