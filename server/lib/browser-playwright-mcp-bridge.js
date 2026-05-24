@@ -3514,6 +3514,218 @@ async function submitPreparedFormV1(command = {}, args = {}, state = {}) {
 }
 
 
+
+export async function buildPlaywrightActionRegistry({
+  args = {},
+  state = {},
+  currentUrl = "",
+  lightpandaState = null,
+} = {}) {
+  const url = normalizeUrl(currentUrl || currentUrlFromInput(args, state));
+
+  if (url) {
+    await callPlaywrightTool(["browser_navigate", "navigate"], { url }).catch(() => null);
+  }
+
+  const script = `() => {
+    const norm = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim();
+
+    const slug = (value) => norm(value)
+      .replace(/\\s+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 64);
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom >= 0 &&
+        rect.right >= 0;
+    };
+
+    const attr = (el, name) => el.getAttribute(name) || "";
+
+    const cssEscape = (value) => {
+      try { return CSS.escape(String(value || "")); }
+      catch { return String(value || "").replace(/["\\\\]/g, "\\\\$&"); }
+    };
+
+    const cssQuoted = (value) => String(value || "").replace(/["\\\\]/g, "\\\\$&");
+
+    const selectorFor = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const id = attr(el, "id");
+      if (id) return "#" + cssEscape(id);
+
+      for (const name of [
+        "data-testid",
+        "data-test",
+        "data-cy",
+        "aria-label",
+        "name",
+        "type",
+        "role"
+      ]) {
+        const value = attr(el, name);
+        if (!value) continue;
+        const selector = tag + "[" + name + "=\\"" + cssQuoted(value) + "\\"]";
+        try {
+          if (document.querySelectorAll(selector).length === 1) return selector;
+        } catch {}
+      }
+
+      const parent = el.parentElement;
+      if (!parent) return tag;
+      const siblings = Array.from(parent.children).filter((child) => child.tagName === el.tagName);
+      return tag + ":nth-of-type(" + Math.max(siblings.indexOf(el) + 1, 1) + ")";
+    };
+
+    const labelFor = (el) => {
+      const parts = [];
+      const id = attr(el, "id");
+
+      if (id) {
+        document.querySelectorAll('label[for="' + cssEscape(id) + '"]').forEach((label) => {
+          parts.push(label.textContent || "");
+        });
+      }
+
+      const parentLabel = el.closest("label");
+      if (parentLabel) parts.push(parentLabel.textContent || "");
+
+      parts.push(
+        attr(el, "aria-label"),
+        attr(el, "placeholder"),
+        attr(el, "title"),
+        attr(el, "name"),
+        attr(el, "id"),
+        attr(el, "value"),
+        el.innerText || el.textContent || ""
+      );
+
+      return parts
+        .map((value) => String(value || "").replace(/\\s+/g, " ").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+    };
+
+    const controls = Array.from(document.querySelectorAll([
+      "input",
+      "textarea",
+      "select",
+      "button",
+      "[role='button']",
+      "summary",
+      "a[href]",
+      "[contenteditable=true]"
+    ].join(",")))
+      .filter(visible)
+      .filter((el) => {
+        const tag = el.tagName.toLowerCase();
+        const type = String(attr(el, "type")).toLowerCase();
+        if (tag === "input" && type === "hidden") return false;
+        return true;
+      });
+
+    const used = new Map();
+
+    const uniqueActionId = (kind, label, fallback) => {
+      const base = slug(kind + " " + (label || fallback || "control")) || kind + "_control";
+      const count = used.get(base) || 0;
+      used.set(base, count + 1);
+      return count ? base + "_" + (count + 1) : base;
+    };
+
+    const actions = controls.map((el, index) => {
+      const tag = el.tagName.toLowerCase();
+      const type = String(attr(el, "type") || tag).toLowerCase();
+      const label = labelFor(el);
+      const name = attr(el, "name");
+      const id = attr(el, "id");
+      const role = attr(el, "role");
+
+      const isField =
+        tag === "textarea" ||
+        tag === "select" ||
+        tag === "input" && !["button", "submit", "reset"].includes(type) ||
+        el.isContentEditable;
+
+      const kind = isField ? "field" : tag === "a" ? "link" : "button";
+
+      return {
+        actionId: uniqueActionId(kind, label, name || id || type || String(index + 1)),
+        source: "playwright_dom_probe",
+        kind,
+        tag,
+        type,
+        label,
+        selector: selectorFor(el),
+        name,
+        id,
+        role,
+        value: tag === "select"
+          ? String(el.value || el.options?.[el.selectedIndex]?.textContent || "")
+          : el.isContentEditable
+            ? String(el.textContent || "")
+            : String(el.value || ""),
+        checked: typeof el.checked === "boolean" ? Boolean(el.checked) : null,
+        disabled: Boolean(el.disabled || el.getAttribute("aria-disabled") === "true"),
+        readonly: Boolean(el.readOnly || el.getAttribute("readonly") !== null),
+        required: Boolean(el.required || el.getAttribute("aria-required") === "true"),
+        href: tag === "a" ? attr(el, "href") : "",
+        text: label,
+      };
+    });
+
+    return JSON.stringify({
+      ok: true,
+      engine: "playwright_mcp",
+      url: location.href,
+      title: document.title,
+      actions,
+      stats: {
+        total: actions.length,
+        fields: actions.filter((item) => item.kind === "field").length,
+        buttons: actions.filter((item) => item.kind === "button").length,
+        links: actions.filter((item) => item.kind === "link").length
+      }
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+
+  return {
+    ok: parsed?.ok === true,
+    status: parsed?.ok === true ? "ready" : "failed",
+    engine: "playwright_mcp",
+    url: parsed?.url || url || "",
+    title: parsed?.title || "",
+    actions: Array.isArray(parsed?.actions) ? parsed.actions : [],
+    stats: parsed?.stats || {},
+    lightpandaUrl: lightpandaState?.url || "",
+    lightpandaTitle: lightpandaState?.title || "",
+    error: parsed?.ok === true ? "" : result.error || result.text || "Could not build Playwright action registry.",
+    rawText: safeText(result.text || result.error || "", 2000),
+  };
+}
+
+
+
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";
   const commandArgs = command.args || {};

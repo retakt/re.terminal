@@ -4,6 +4,7 @@ import {
   emptyBrowserAgentTokenUsage,
 } from "./browser-llm-runtime.js";
 import {
+  buildPlaywrightActionRegistry,
   capturePlaywrightMcpSnapshot,
   compactSnapshotForModel,
   executePlaywrightMcpBrowserCommand,
@@ -84,6 +85,33 @@ function isReportOnlyStep(step = {}) {
   const action = String(step.expectedAction || "").toLowerCase();
   const text = String(step.instruction || "").toLowerCase();
   return action === "report" || /\b(report|tell me|summarize|final state|final url|final title)\b/.test(text);
+}
+
+function compactActionRegistryForModel(registry = {}) {
+  const actions = Array.isArray(registry?.actions) ? registry.actions : [];
+
+  return {
+    ok: registry?.ok === true,
+    engine: registry?.engine || "playwright_mcp",
+    url: registry?.url || "",
+    title: registry?.title || "",
+    stats: registry?.stats || {},
+    actions: actions.slice(0, 60).map((action) => ({
+      actionId: action.actionId || "",
+      kind: action.kind || "",
+      tag: action.tag || "",
+      type: action.type || "",
+      label: safeText(action.label || action.text || "", 180),
+      selector: safeText(action.selector || "", 220),
+      name: safeText(action.name || "", 120),
+      id: safeText(action.id || "", 120),
+      role: safeText(action.role || "", 80),
+      required: Boolean(action.required),
+      disabled: Boolean(action.disabled),
+      readonly: Boolean(action.readonly),
+      href: safeText(action.href || "", 220),
+    })),
+  };
 }
 
 function normalizeHttpUrl(value = "") {
@@ -3894,6 +3922,49 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     const beforeImages = snapshotImagesForModel(before?.snapshot);
     const compactBeforeState = compactBrowserStateForModel(beforeState);
 
+    let actionRegistry = null;
+    if (
+      envFlag("BROWSER_AGENT_PLAYWRIGHT_ACTION_REGISTRY", true) &&
+      stepRequiresRealBrowserAction(step)
+    ) {
+      try {
+        actionRegistry = await buildPlaywrightActionRegistry({
+          args: { ...args, currentUrl },
+          state: currentState,
+          currentUrl,
+          lightpandaState: beforeState,
+        });
+      } catch (err) {
+        actionRegistry = {
+          ok: false,
+          status: "failed",
+          engine: "playwright_mcp",
+          url: currentUrl,
+          title: currentTitle,
+          actions: [],
+          stats: {},
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+
+      trace.push(traceEntry({
+        role: "playwright_action_registry",
+        title: "Playwright action registry",
+        step: stepNumber,
+        status: actionRegistry?.ok === true ? "ready" : "failed",
+        input: {
+          currentUrl,
+          lightpandaUrl: beforeState?.url || "",
+        },
+        output: compactActionRegistryForModel(actionRegistry),
+        summary: actionRegistry?.ok === true
+          ? `Playwright action registry ready: ${actionRegistry.stats?.fields || 0} fields, ${actionRegistry.stats?.buttons || 0} buttons, ${actionRegistry.stats?.links || 0} links.`
+          : `Playwright action registry failed: ${actionRegistry?.error || ""}`,
+        tool: "browserObserve",
+        ok: actionRegistry?.ok === true,
+      }));
+    }
+
     if (envFlag("BROWSER_AGENT_REPORT_STEP_FAST_PATH", true) && isReportOnlyStep(step)) {
       const observation = observationFromPageState(beforeState) || before?.observation || observationFromExecution(null, before);
       currentUrl = observation.url || currentUrl;
@@ -4001,6 +4072,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             originalInstruction: instruction,
           }),
           snapshot: compactSnapshotForModel(before?.snapshot),
+          actionRegistry: compactActionRegistryForModel(actionRegistry),
         },
       }));
 
@@ -4273,6 +4345,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           currentTitle,
           pageState: compactBeforeState,
           snapshot: compactSnapshotForModel(before?.snapshot),
+          actionRegistry: compactActionRegistryForModel(actionRegistry),
           proposedCommand: stepPlan.command || null,
         },
       }));
@@ -4294,6 +4367,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
               originalInstruction: instruction,
             }),
             snapshot: compactSnapshotForModel(before?.snapshot),
+          actionRegistry: compactActionRegistryForModel(actionRegistry),
             proposedCommand: stepPlan.command || null,
             retryReason: "Previous checker call returned invalid JSON. Return only strict JSON matching the checker schema.",
           },
