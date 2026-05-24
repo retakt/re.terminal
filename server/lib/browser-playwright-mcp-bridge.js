@@ -730,10 +730,32 @@ export async function scoutPlaywrightControlTarget(args = {}, state = {}) {
         } catch {}
       }
 
-      const parent = el.parentElement;
-      if (!parent) return tag;
-      const siblings = Array.from(parent.children).filter((child) => child.tagName === el.tagName);
-      return tag + ":nth-of-type(" + Math.max(siblings.indexOf(el) + 1, 1) + ")";
+      const uniquePathFor = (target) => {
+        const parts = [];
+        let node = target;
+
+        while (node && node.nodeType === 1 && node !== document.documentElement) {
+          const nodeTag = node.tagName.toLowerCase();
+          const parentNode = node.parentElement;
+          if (!parentNode) break;
+
+          const sameTagSiblings = Array.from(parentNode.children)
+            .filter((child) => child.tagName === node.tagName);
+          const index = Math.max(sameTagSiblings.indexOf(node) + 1, 1);
+          parts.unshift(nodeTag + ":nth-of-type(" + index + ")");
+
+          const candidate = parts.join(" > ");
+          try {
+            if (document.querySelectorAll(candidate).length === 1) return candidate;
+          } catch {}
+
+          node = parentNode;
+        }
+
+        return parts.join(" > ") || tag;
+      };
+
+      return uniquePathFor(el);
     };
 
     const controls = Array.from(document.querySelectorAll([
