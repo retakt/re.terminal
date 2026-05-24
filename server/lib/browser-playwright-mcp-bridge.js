@@ -3577,7 +3577,12 @@ export async function buildPlaywrightActionRegistry({
     const selectorFor = (el) => {
       const tag = el.tagName.toLowerCase();
       const id = attr(el, "id");
-      if (id) return "#" + cssEscape(id);
+      if (id) {
+        const idSelector = "#" + cssEscape(id);
+        try {
+          if (document.querySelectorAll(idSelector).length === 1) return idSelector;
+        } catch {}
+      }
 
       for (const name of [
         "data-testid",
