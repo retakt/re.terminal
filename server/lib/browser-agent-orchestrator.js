@@ -3002,6 +3002,36 @@ function hasNegativeSubmitIntentText(value = "") {
     .test(String(value || ""));
 }
 
+function positiveSubmitIntentText(value = "") {
+  return /\b(submit|register|registration|send|save|continue|next)\b/i.test(String(value || ""));
+}
+
+function stepSatisfiedByPreviousVerifiedFill(step = {}, originalInstruction = "") {
+  const stepText = [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ");
+
+  if (!stepText.trim()) return false;
+
+  // A negative submit instruction after a verified fill is a no-op guard.
+  // It must not trigger another fill or submit.
+  if (hasNegativeSubmitIntentText(stepText)) return true;
+
+  // Positive submit steps must not be skipped; submit-from-previous-fill handles those.
+  if (positiveSubmitIntentText(stepText) && !hasNegativeSubmitIntentText(stepText)) {
+    return false;
+  }
+
+  // Planner often splits one user request into:
+  // "fill fields", "use these values", "do not submit".
+  // Once a fill using the full original instruction has been verified, those follow-up
+  // value-detail steps are already satisfied and should not clear/refill the same fields.
+  return /\b(fill|field|fields|editable|visible fields|all fields|every field|fake data|test data|use text input|text input|password|textarea|date|color|range|dropdown|select|payment|contact|phone|name)\b/i
+    .test(stepText);
+}
+
 function commandWithGenericFormPreparedValues(command = {}, step = {}, originalInstruction = "", templateCommand = null) {
   const tool = String(command.tool || "");
   const args = command.args && typeof command.args === "object" && !Array.isArray(command.args)
@@ -4036,6 +4066,57 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     const beforeImages = snapshotImagesForModel(before?.snapshot);
     const compactBeforeState = compactBrowserStateForModel(beforeState);
+
+    if (
+      lastSuccessfulFillCommand &&
+      stepSatisfiedByPreviousVerifiedFill(step, instruction)
+    ) {
+      const summary = hasNegativeSubmitIntentText([
+        step.instruction,
+        step.expectedAction,
+        step.successCriteria,
+      ].join(" "))
+        ? "Previous verified fill already satisfies this no-submit step. Skipped re-filling and did not submit."
+        : "Previous verified fill already used the full user instruction. Skipped duplicate clear/refill.";
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Skip duplicate form fill",
+        step: stepNumber,
+        status: "skipped_duplicate_verified_fill",
+        input: {
+          step,
+          lastSuccessfulFillCommand,
+        },
+        output: {
+          decision: "skip_reexecution",
+          command: lastSuccessfulFillCommand,
+        },
+        summary,
+        tool: "browserFillFields",
+        ok: true,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: true,
+        repaired: false,
+        status: "passed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          ...(lastSuccessfulFillCommand || {}),
+          notes: [
+            lastSuccessfulFillCommand?.notes || "",
+            "Skipped duplicate execution because previous form fill was already verified.",
+          ].filter(Boolean).join(" "),
+        },
+      });
+
+      continue;
+    }
 
     const registryContextText = [
       instruction,
