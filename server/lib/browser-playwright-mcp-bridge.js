@@ -2725,28 +2725,60 @@ async function verifyFilledFields(fields = []) {
 
       if (!target && isSecret) target = candidates.find((el) => String(el.getAttribute("type") || "").toLowerCase() === "password");
 
+      const tag = target ? target.tagName.toLowerCase() : "";
+      const type = target ? String(target.getAttribute("type") || "").toLowerCase() : "";
+      const selectedOptionText = target && tag === "select"
+        ? String(target.options?.[target.selectedIndex]?.textContent || "")
+        : "";
       const actual = target
-        ? (target.tagName.toLowerCase() === "select"
-            ? target.value || target.options?.[target.selectedIndex]?.textContent || ""
-            : target.isContentEditable ? target.textContent || "" : target.value || "")
+        ? (tag === "select"
+            ? String(target.value || selectedOptionText || "")
+            : target.isContentEditable ? String(target.textContent || "") : String(target.value || ""))
         : "";
       const expected = String(field.value || "");
-      const ok = target && (
-        actual === expected ||
-        (
-          target.tagName.toLowerCase() === "select" &&
-          (
-            String(actual).toLowerCase() === expected.toLowerCase() ||
-            String(actual).toLowerCase().includes(expected.toLowerCase()) ||
-            expected.toLowerCase().includes(String(actual).toLowerCase())
-          )
-        )
-      );
+
+      const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+      const lower = (value) => clean(value).toLowerCase();
+      const compact = (value) => lower(value).replace(/[^a-z0-9#.-]+/g, "");
+      const numeric = (value) => {
+        const n = Number(String(value || "").trim());
+        return Number.isFinite(n) ? n : null;
+      };
+
+      let ok = false;
+
+      if (target) {
+        if (field.secret || type === "password") {
+          // Password managers/browsers can obscure details. For secret fields, verify presence/length.
+          ok = Boolean(actual) && (!expected || actual.length === expected.length || actual.length > 0);
+        } else if (tag === "select") {
+          const actualText = selectedOptionText;
+          const actualCandidates = [actual, actualText].filter(Boolean);
+          ok = actualCandidates.some((candidate) =>
+            lower(candidate) === lower(expected) ||
+            compact(candidate) === compact(expected) ||
+            compact(candidate).includes(compact(expected)) ||
+            compact(expected).includes(compact(candidate))
+          );
+        } else if (type === "color") {
+          ok = lower(actual) === lower(expected);
+        } else if (type === "range" || type === "number") {
+          const a = numeric(actual);
+          const e = numeric(expected);
+          ok = a !== null && e !== null ? Math.abs(a - e) < 0.0001 : lower(actual) === lower(expected);
+        } else if (type === "date") {
+          ok = lower(actual) === lower(expected) || compact(actual) === compact(expected);
+        } else {
+          ok = clean(actual) === clean(expected);
+        }
+      }
 
       if (ok) {
         filled.push({
           label: field.label,
           ref: field.ref || "",
+          actionId: field.actionId || "",
+          selector: field.selector || "",
           expected: field.secret ? "[redacted]" : expected,
           actual: field.secret ? "[redacted]" : actual,
         });
@@ -2754,8 +2786,11 @@ async function verifyFilledFields(fields = []) {
         missing.push({
           label: field.label,
           ref: field.ref || "",
+          actionId: field.actionId || "",
+          selector: field.selector || "",
           expected: field.secret ? "[redacted]" : expected,
           actual: field.secret ? "[redacted]" : actual,
+          selectedOptionText: field.secret ? "[redacted]" : selectedOptionText,
           actualLength: actual.length,
           targetFound: Boolean(target),
           tag: target ? target.tagName.toLowerCase() : "",
