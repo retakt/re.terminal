@@ -2707,6 +2707,15 @@ function formSessionKeyV1(command = {}, args = {}, state = {}) {
 async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {}) {
   const commandArgs = command.args || {};
   const formIntent = safeText(commandArgs.formIntent || args.instruction || "", 1200);
+  const currentUrl = currentUrlFromInput({ ...args, ...commandArgs }, state);
+
+  // Generic form preparation must operate on the live Playwright page.
+  // Lightpanda may have already read the correct URL while Playwright is still elsewhere.
+  // Sync here so the deterministic form tool succeeds on the first attempt instead of
+  // depending on the watcher repair loop to navigate and retry.
+  if (currentUrl && envFlag("BROWSER_AGENT_GENERIC_FORM_SYNC_BEFORE_PREPARE", true)) {
+    await callPlaywrightTool(["browser_navigate", "navigate"], { url: currentUrl }).catch(() => null);
+  }
 
   const script = `() => {
     const formIntent = ${JSON.stringify(formIntent)};
