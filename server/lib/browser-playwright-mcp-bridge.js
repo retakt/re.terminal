@@ -1848,7 +1848,43 @@ export async function togglePlaywrightOpenCollapse(args = {}, state = {}) {
 
 
 function fieldsFromCommand(command = {}) {
-  return Array.isArray(command.args?.fields) ? command.args.fields : Array.isArray(command.fields) ? command.fields : [];
+  const args = command.args && typeof command.args === "object" && !Array.isArray(command.args)
+    ? command.args
+    : {};
+
+  if (Array.isArray(args.fields)) return args.fields;
+  if (Array.isArray(args.requestedValues)) return args.requestedValues;
+  if (Array.isArray(args.values)) return args.values;
+  if (Array.isArray(command.fields)) return command.fields;
+
+  const reserved = new Set([
+    "currentUrl",
+    "formIntent",
+    "stepInstruction",
+    "explicitSubmit",
+    "submit",
+    "text",
+    "submitText",
+    "buttonText",
+    "ref",
+    "selector",
+    "target",
+    "notes",
+  ]);
+
+  return Object.entries(args)
+    .filter(([key, value]) =>
+      !reserved.has(key) &&
+      value !== undefined &&
+      value !== null &&
+      typeof value !== "object" &&
+      String(value).trim()
+    )
+    .map(([label, value]) => ({
+      label,
+      value: String(value),
+      secret: /password|passcode|pin|otp|token|secret/i.test(label),
+    }));
 }
 
 function cleanDuplicatedWords(value = "") {
