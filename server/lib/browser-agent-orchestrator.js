@@ -4026,9 +4026,21 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       step.successCriteria,
     ].map((value) => String(value || "")).join(" ");
 
+    const pageHasInteractiveFormControls =
+      Number(beforeState?.forms || 0) > 0 ||
+      Number(beforeState?.inputs || 0) > 0 ||
+      Number(beforeState?.buttons || 0) > 0 ||
+      Array.isArray(beforeState?.forms) && beforeState.forms.length > 0 ||
+      Array.isArray(beforeState?.inputs) && beforeState.inputs.length > 0 ||
+      Array.isArray(beforeState?.buttons) && beforeState.buttons.length > 0;
+
+    const promptHasBrowserActionIntent =
+      /\b(fill|type|enter|input|submit|register|send|save|continue|click|press|select|choose|form|field|fields|editable|visible fields|fake data|test data|contact|payment|pickup|date|password|textarea|range|color)\b/i.test(registryContextText);
+
     const wantsActionRegistry =
       stepRequiresRealBrowserAction(step) ||
-      /\b(action registry|form controls|available fields|editable fields|visible fields)\b/i.test(registryContextText);
+      /\b(action registry|form controls|available fields|editable fields|visible fields)\b/i.test(registryContextText) ||
+      (pageHasInteractiveFormControls && promptHasBrowserActionIntent);
 
     let actionRegistry = null;
     if (
