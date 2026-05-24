@@ -15,6 +15,29 @@ const FAILURE_KIND_VALUES = [
 
 export const BROWSER_FAILURE_KINDS = new Set(FAILURE_KIND_VALUES);
 
+const REPAIR_TOOL_VALUES = new Set([
+  "browserNavigate",
+  "browserObserve",
+  "browserClickByText",
+  "browserFillFields",
+  "browserSubmitForm",
+  "browserFillAndSubmit",
+  "browserPrepareFormSubmission",
+  "browserSubmitPreparedForm",
+  "browserScrape",
+  "browserShowActions",
+]);
+
+export function isExecutableBrowserRepairCommand(command = null) {
+  return Boolean(
+    command &&
+    typeof command === "object" &&
+    !Array.isArray(command) &&
+    typeof command.tool === "string" &&
+    REPAIR_TOOL_VALUES.has(command.tool)
+  );
+}
+
 export function normalizeBrowserFailureKind(value = "") {
   const kind = String(value || "").trim().toLowerCase();
   return BROWSER_FAILURE_KINDS.has(kind) ? kind : "unknown";
@@ -124,12 +147,15 @@ export function inferBrowserFailureKind({ result = {}, execution = {}, command =
 
 export function normalizeBrowserRepairPlan(plan = null, fallback = {}) {
   const raw = asObject(plan);
-  const commands = Array.isArray(raw.commands) ? raw.commands.filter(Boolean) : [];
+  const rawCommands = Array.isArray(raw.commands) ? raw.commands.filter(Boolean) : [];
+  const commands = rawCommands.filter(isExecutableBrowserRepairCommand);
+  const invalidCommands = rawCommands.filter((command) => !isExecutableBrowserRepairCommand(command));
   const strategy = safeText(raw.strategy || fallback.strategy || (commands.length ? "deterministic" : "escalate"), 80);
   return {
     strategy,
     maxAttempts: Math.max(0, Math.min(2, Number(raw.maxAttempts ?? fallback.maxAttempts ?? 2))),
     commands,
+    invalidCommands,
     retryOriginal: Boolean(raw.retryOriginal ?? fallback.retryOriginal ?? false),
     requiresWatcherVerification: raw.requiresWatcherVerification !== false,
     reason: safeText(raw.reason || fallback.reason || "", 500),
@@ -170,5 +196,6 @@ export function normalizeBrowserRepairResult({ result = {}, execution = {}, comm
 }
 
 export function hasBrowserRepairCommands(plan = null) {
-  return Array.isArray(plan?.commands) && plan.commands.length > 0;
+  return Array.isArray(plan?.commands) &&
+    plan.commands.some((command) => isExecutableBrowserRepairCommand(command));
 }

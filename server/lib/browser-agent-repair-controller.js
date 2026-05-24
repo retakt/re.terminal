@@ -126,15 +126,23 @@ export function buildBrowserRepairPlan(context = {}) {
   }
 
   if (failureKind === "no_prepared_form_session") {
+    const commands = original.tool === "browserPrepareFormSubmission"
+      ? commandList(sync, original)
+      : commandList(prepareCommand(context), original);
+
     return {
       failureKind,
       source: "deterministic_repair_controller",
-      strategy: "prepare_form_then_retry_submit",
+      strategy: original.tool === "browserPrepareFormSubmission"
+        ? "sync_and_retry_prepare_form"
+        : "prepare_form_then_retry_submit",
       maxAttempts: 2,
       retryOriginal: false,
       requiresWatcherVerification: true,
-      reason: "Submit was requested before a prepared form session existed.",
-      commands: commandList(prepareCommand(context), original),
+      reason: original.tool === "browserPrepareFormSubmission"
+        ? "Form prepare did not produce a usable session; sync and retry prepare."
+        : "Submit was requested before a prepared form session existed.",
+      commands,
     };
   }
 
