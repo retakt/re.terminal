@@ -2626,10 +2626,24 @@ async function tryDomFillFields(fields = []) {
     };
   }
 
+  const parsed =
+    parseMcpWrappedJsonSafe(result.text || result.error || "") ||
+    parseMcpJsonResult(result.text || result.error || "");
+
+  const parsedObject = typeof parsed === "string"
+    ? (parseMcpWrappedJsonSafe(parsed) || parseMcpJsonResult(parsed))
+    : parsed;
+
   return {
     ...result,
-    ok: true,
-    text: ["DOM fill fallback executed.", result.text].filter(Boolean).join("\n"),
+    ok: parsedObject?.ok === true,
+    fillResult: parsedObject || null,
+    text: [
+      "DOM fill fallback executed.",
+      parsedObject ? "DOM fill readback " + (parsedObject.ok ? "passed" : "failed") + ". " + safeText(JSON.stringify(parsedObject), 3000) : "",
+      result.text,
+    ].filter(Boolean).join("\n"),
+    error: parsedObject?.ok === true ? "" : result.error || "DOM fill fallback did not confirm all fields.",
   };
 }
 
@@ -3858,14 +3872,24 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     const domFallback = await tryDomFillFields(fields);
     const verifyAfterDom = await verifyFilledFields(fields);
 
-    if (verifyAfterDom.ok === true) {
+    const domFillConfirmed =
+      domFallback.ok === true &&
+      domFallback.fillResult?.ok === true &&
+      Array.isArray(domFallback.fillResult?.missing) &&
+      domFallback.fillResult.missing.length === 0;
+
+    if (verifyAfterDom.ok === true || domFillConfirmed) {
       return {
         ok: true,
         domFallback,
         verify: verifyAfterDom,
+        fillResult: domFallback.fillResult || null,
         text: [
           domFallback.text || domFallback.error || "",
           verifyAfterDom.text || "",
+          domFillConfirmed && verifyAfterDom.ok !== true
+            ? "Accepted DOM fill readback as verification because all requested fields were filled and missing=[]."
+            : "",
         ].filter(Boolean).join("\n"),
       };
     }
