@@ -2898,6 +2898,51 @@ function watcherResultOrFallback({ resultCheck = {}, resultCheckCall = null, exe
 }
 
 
+function genericPrepareFailureFromExecution(execution = {}, step = {}) {
+  const text = String(execution?.actionResult?.text || execution?.error || "").toLowerCase();
+  const formTool = execution?.actionResult?.formTool || execution?.formTool || null;
+  const session = formTool?.session || null;
+  const fields = Array.isArray(session?.fields) ? session.fields : [];
+  const skipped = Array.isArray(session?.skipped) ? session.skipped : [];
+
+  const hardSkipped = skipped.filter((item) => {
+    const reason = String(item?.reason || "").toLowerCase();
+    const type = String(item?.type || "").toLowerCase();
+    return reason !== "choice_control_left_as_is" &&
+      !["checkbox", "radio", "file", "color", "range"].includes(type);
+  });
+
+  const emptyPrepared = fields.filter((field) => {
+    const type = String(field?.type || "").toLowerCase();
+    const value = String(field?.value ?? "");
+    if (type === "password") return false;
+    return value.trim().length === 0;
+  });
+
+  if (/value_not_confirmed|field_value_mismatch|validation_failed|required_values_not_confirmed/.test(text)) {
+    return {
+      failureKind: "field_value_not_confirmed",
+      summary: execution?.actionResult?.text || "Form preparation did not confirm field values.",
+    };
+  }
+
+  if (hardSkipped.length > 0) {
+    return {
+      failureKind: "field_value_not_confirmed",
+      summary: "Form preparation skipped required fields: " + hardSkipped.map((item) => item.label || item.type || "field").join(", "),
+    };
+  }
+
+  if (emptyPrepared.length > 0) {
+    return {
+      failureKind: "field_value_mismatch",
+      summary: "Form preparation produced empty prepared values: " + emptyPrepared.map((item) => item.label || item.type || "field").join(", "),
+    };
+  }
+
+  return null;
+}
+
 function normalizeWatcherRepairResult(resultCheck = {}, { execution = {}, step = {}, command = {}, beforeState = null } = {}) {
   return normalizeBrowserRepairResult({
     result: resultCheck || {},
@@ -3963,32 +4008,76 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       String(executionCommand.tool || "") === "browserPrepareFormSubmission" &&
       execution.ok === true
     ) {
-      resultCheck = {
-        status: "passed",
-        success: true,
-        summary: execution.actionResult?.text || "Generic form preparation completed.",
-        evidence: execution.actionResult?.text || "",
-        repairInstruction: "",
-        messageToUser: "",
-        confidence: 0.95,
-        command: executionCommand,
-        step,
-      };
+      const prepareFailure = genericPrepareFailureFromExecution(execution, step);
 
-      trace.push(traceEntry({
-        role: "gemma_result_checker",
-        title: "Generic form prepare result checker",
-        step: stepNumber,
-        status: "auto_passed_form_prepare",
-        input: {
-          step,
+      if (prepareFailure) {
+        resultCheck = {
+          status: "needs_repair",
+          success: false,
+          summary: prepareFailure.summary,
+          evidence: execution.actionResult?.text || "",
+          failureKind: prepareFailure.failureKind,
+          failureDetails: {
+            tool: executionCommand.tool,
+            actionText: execution.actionResult?.text || "",
+          },
+          repairPlan: {
+            strategy: "deterministic",
+            maxAttempts: 1,
+            commands: [],
+            retryOriginal: false,
+            requiresWatcherVerification: true,
+            reason: "Prepared form values were not confirmed.",
+          },
+          repairInstruction: "",
+          messageToUser: "",
+          confidence: 0.9,
           command: executionCommand,
-          executionStatus: execution.status,
-        },
-        output: resultCheck,
-        summary: resultCheck.summary,
-        ok: true,
-      }));
+          step,
+        };
+
+        trace.push(traceEntry({
+          role: "gemma_result_checker",
+          title: "Generic form prepare result checker",
+          step: stepNumber,
+          status: "failed_form_prepare_contract",
+          input: {
+            step,
+            command: executionCommand,
+            executionStatus: execution.status,
+          },
+          output: resultCheck,
+          summary: resultCheck.summary,
+          ok: false,
+        }));
+      } else {
+        resultCheck = {
+          status: "passed",
+          success: true,
+          summary: execution.actionResult?.text || "Generic form preparation completed.",
+          evidence: execution.actionResult?.text || "",
+          repairInstruction: "",
+          messageToUser: "",
+          confidence: 0.95,
+          command: executionCommand,
+          step,
+        };
+
+        trace.push(traceEntry({
+          role: "gemma_result_checker",
+          title: "Generic form prepare result checker",
+          step: stepNumber,
+          status: "auto_passed_form_prepare",
+          input: {
+            step,
+            command: executionCommand,
+            executionStatus: execution.status,
+          },
+          output: resultCheck,
+          summary: resultCheck.summary,
+          ok: true,
+        }));
+      }
     }
 
     const deterministicUiCheckV2 = resultCheck ? null : await deterministicUiStateResultCheck({
