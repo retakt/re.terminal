@@ -185,6 +185,12 @@ function findRegistryField(field = {}, registry = {}) {
   return best && best.score >= 120 ? best.action : null;
 }
 
+function looksLikePlaceholderOption(option = {}) {
+  const text = String(option.text || option.value || "").trim();
+  return !String(option.value || "").trim() ||
+    /^(choose|select|open this|open this select menu|select an option|please select)$/i.test(text);
+}
+
 function normalizeValueForAction(field = {}, action = {}) {
   const value = cleanFieldValue(field.value ?? "");
 
@@ -194,22 +200,37 @@ function normalizeValueForAction(field = {}, action = {}) {
 
   const options = Array.isArray(action.options) ? action.options : [];
   const wanted = key(value);
+  const wantedIsPlaceholder = /choose|select|openthis|menu|placeholder/.test(wanted);
 
-  const match = options
-    .filter((option) => !option.disabled)
-    .find((option) => {
-      const optionValue = key(option.value);
-      const optionText = key(option.text);
-      const candidates = [optionValue, optionText].filter(Boolean);
+  const usableOptions = options.filter((option) =>
+    !option.disabled &&
+    !looksLikePlaceholderOption(option)
+  );
 
-      return wanted && candidates.some((candidate) =>
+  const match = usableOptions.find((option) => {
+    const optionValue = key(option.value);
+    const optionText = key(option.text);
+    const candidates = [optionValue, optionText].filter(Boolean);
+
+    return wanted &&
+      !wantedIsPlaceholder &&
+      candidates.some((candidate) =>
         candidate === wanted ||
         candidate.includes(wanted) ||
         wanted.includes(candidate)
       );
-    });
+  });
 
-  return match ? String(match.value || match.text || value) : value;
+  const fallback = usableOptions[0] || options.find((option) => !option.disabled) || null;
+
+  return String(
+    match?.value ||
+    match?.text ||
+    fallback?.value ||
+    fallback?.text ||
+    value ||
+    ""
+  );
 }
 
 export function withActionRegistryFieldTargets(command = {}, registry = {}) {
