@@ -11,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SERVER_ROOT = path.resolve(__dirname, "..");
 const PLAYWRIGHT_MCP_DIR = path.resolve(process.env.PLAYWRIGHT_MCP_OUTPUT_DIR || path.join(SERVER_ROOT, "playwright-mcp"));
+const preparedFormSessionsV1 = new Map();
 
 function safeText(value = "", limit = 4000) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
@@ -1451,7 +1452,6 @@ export async function dismissPlaywrightBlockingUi(args = {}, state = {}) {
 }
 
 
-
 export async function activatePlaywrightControlByText(args = {}, state = {}) {
   const currentUrl = currentUrlFromInput(args, state);
   const targetText = safeText(args.targetText || args.text || "", 240);
@@ -2693,6 +2693,455 @@ export async function probePlaywrightUiState(args = {}, state = {}) {
 }
 
 
+function formSessionKeyV1(command = {}, args = {}, state = {}) {
+  return safeText(
+    command.args?.sessionId ||
+    args.sessionId ||
+    state.sessionId ||
+    currentUrlFromInput(args, state) ||
+    "default",
+    500
+  );
+}
+
+async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {}) {
+  const commandArgs = command.args || {};
+  const formIntent = safeText(commandArgs.formIntent || args.instruction || "", 1200);
+
+  const script = `() => {
+    const formIntent = ${JSON.stringify(formIntent)};
+
+    const norm = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+    const compact = (value) => norm(value).replace(/\\s+/g, "");
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const esc = (value) => {
+      try { return CSS.escape(String(value || "")); }
+      catch { return String(value || "").replace(/["\\\\]/g, "\\\\$&"); }
+    };
+
+    const selectorFor = (el, root = document) => {
+      const id = el.getAttribute("id");
+      if (id) return "#" + esc(id);
+
+      const name = el.getAttribute("name");
+      const tag = el.tagName.toLowerCase();
+      if (name) return tag + "[name='" + esc(name) + "']";
+
+      const aria = el.getAttribute("aria-label");
+      if (aria) return tag + "[aria-label='" + esc(aria) + "']";
+
+      const all = Array.from(root.querySelectorAll(tag));
+      const index = all.indexOf(el);
+      return index >= 0 ? tag + ":nth-of-type(" + (index + 1) + ")" : tag;
+    };
+
+    const labelFor = (el) => {
+      const parts = [];
+      const id = el.getAttribute("id") || "";
+
+      if (id) {
+        document.querySelectorAll("label[for='" + esc(id) + "']").forEach((label) => {
+          parts.push(label.innerText || label.textContent || "");
+        });
+      }
+
+      const parentLabel = el.closest("label");
+      if (parentLabel) parts.push(parentLabel.innerText || parentLabel.textContent || "");
+
+      parts.push(
+        el.getAttribute("aria-label") || "",
+        el.getAttribute("placeholder") || "",
+        el.getAttribute("autocomplete") || "",
+        el.getAttribute("name") || "",
+        el.getAttribute("id") || "",
+        el.getAttribute("type") || ""
+      );
+
+      return parts.join(" ").replace(/\\s+/g, " ").trim();
+    };
+
+    const typeOf = (el) => String(el.getAttribute("type") || "text").toLowerCase();
+
+    const skipControl = (el) => {
+      const tag = el.tagName.toLowerCase();
+      const type = typeOf(el);
+      if (!visible(el)) return true;
+      if (el.disabled || el.readOnly) return true;
+      if (tag === "input" && ["hidden", "submit", "button", "reset", "file", "image", "color", "range"].includes(type)) return true;
+      return false;
+    };
+
+    const valueFor = (el, uniqueSeed) => {
+      const tag = el.tagName.toLowerCase();
+      const type = typeOf(el);
+      const label = labelFor(el);
+      const key = compact(label);
+      const email = "test-" + uniqueSeed + "@example.test";
+      const password = "Test-" + uniqueSeed + "-Pass123";
+
+      if (tag === "textarea") return "Harmless automated test submission";
+      if (tag === "select") return "";
+
+      if (type === "password") return password;
+      if (type === "email" || /email/.test(key)) return email;
+      if (type === "tel" || /phone|mobile|telephone|tel/.test(key)) return "5550100";
+      if (type === "url" || /website|url/.test(key)) return "https://example.test";
+      if (type === "number" || /age|count|quantity|amount|number/.test(key)) return "42";
+      if (type === "date") return "2026-01-01";
+
+      if (/firstname|givenname|first/.test(key)) return "Test";
+      if (/lastname|surname|familyname|last/.test(key)) return "User";
+      if (/fullname|name/.test(key)) return "Test User";
+      if (/address|street/.test(key)) return "123 Test Street";
+      if (/city/.test(key)) return "Testville";
+      if (/state|province|region/.test(key)) return "CA";
+      if (/zip|postal|postcode/.test(key)) return "90210";
+      if (/country/.test(key)) return "US";
+      if (/user(name)?|login/.test(key)) return "testuser" + uniqueSeed;
+      if (/company|organization|organisation/.test(key)) return "Example Test Co";
+      if (/subject|title/.test(key)) return "Test submission";
+      if (/message|comment|description|notes?/.test(key)) return "Harmless automated test submission";
+
+      return "Test value";
+    };
+
+    const readValue = (el) => {
+      if (el.tagName.toLowerCase() === "select") return el.value || "";
+      if (el.isContentEditable) return el.textContent || "";
+      return el.value || "";
+    };
+
+    const setValue = (el, value) => {
+      const tag = el.tagName.toLowerCase();
+
+      el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      try { el.focus?.(); } catch {}
+
+      if (tag === "select") {
+        const options = Array.from(el.options || []).filter((option) => !option.disabled);
+        const option = options.find((item) => item.value && !/choose|select|open this/i.test(item.textContent || "")) ||
+          options.find((item) => item.value) ||
+          options[0] ||
+          null;
+        if (option) el.value = option.value;
+      } else if (el.isContentEditable) {
+        el.textContent = value;
+      } else {
+        const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        if (setter) setter.call(el, value);
+        else el.value = value;
+      }
+
+      try { el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value })); }
+      catch { el.dispatchEvent(new Event("input", { bubbles: true })); }
+
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      el.dispatchEvent(new Event("blur", { bubbles: true }));
+    };
+
+    const forms = Array.from(document.querySelectorAll("form")).filter(visible);
+    const syntheticForm = document.body;
+
+    const formRecords = (forms.length ? forms : [syntheticForm]).map((form, index) => {
+      const controls = Array.from(form.querySelectorAll("input, textarea, select, [contenteditable=true]")).filter((el) => !skipControl(el));
+      const submitButtons = Array.from(form.querySelectorAll("button, input[type='submit'], input[type='button']"))
+        .filter(visible);
+
+      const formText = [
+        form.getAttribute?.("id") || "",
+        form.getAttribute?.("name") || "",
+        form.getAttribute?.("aria-label") || "",
+        form.innerText || "",
+        ...controls.map(labelFor),
+        ...submitButtons.map((btn) => btn.innerText || btn.value || btn.textContent || "")
+      ].join(" ");
+
+      const haystack = norm(formText + " " + formIntent);
+
+      let score = controls.length * 10;
+      if (/register|registration|sign up|signup|create account|new customer/.test(haystack)) score += 80;
+      if (/contact|message|comment|feedback/.test(haystack)) score += 45;
+      if (/login|log in|sign in/.test(haystack) && /register|signup|create account/.test(norm(formIntent))) score -= 80;
+      if (submitButtons.length) score += 15;
+      if (controls.some((el) => typeOf(el) === "password")) score += 10;
+      if (controls.some((el) => /textarea/i.test(el.tagName))) score += 8;
+
+      return { form, index, controls, submitButtons, score, text: formText };
+    }).filter((item) => item.controls.length > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const selected = formRecords[0] || null;
+    if (!selected) {
+      return JSON.stringify({
+        ok: false,
+        reason: "no_visible_fillable_form",
+        url: location.href,
+        title: document.title,
+      });
+    }
+
+    const uniqueSeed = String(Date.now()).slice(-6);
+    const filled = [];
+    const skipped = [];
+
+    for (const el of selected.controls) {
+      const tag = el.tagName.toLowerCase();
+      const type = typeOf(el);
+      const label = labelFor(el) || tag;
+
+      if (tag === "input" && ["checkbox", "radio"].includes(type)) {
+        skipped.push({ label, type, reason: "choice_control_left_as_is" });
+        continue;
+      }
+
+      const value = valueFor(el, uniqueSeed);
+      setValue(el, value);
+      const actual = readValue(el);
+      const ok = tag === "select" ? Boolean(actual) : actual.trim().length > 0;
+
+      if (ok) {
+        filled.push({
+          selector: selectorFor(el, selected.form),
+          label,
+          type: tag === "textarea" ? "textarea" : type,
+          value,
+          secret: type === "password",
+          valueLength: actual.length,
+        });
+      } else {
+        skipped.push({ label, type, reason: "value_not_confirmed" });
+      }
+    }
+
+    const submit =
+      selected.submitButtons.find((btn) => /submit|send|register|sign up|create|continue|next|save/i.test(btn.innerText || btn.value || btn.textContent || "")) ||
+      selected.submitButtons[0] ||
+      null;
+
+    return JSON.stringify({
+      ok: filled.length > 0,
+      reason: filled.length > 0 ? "prepared_form_submission" : "no_fields_filled",
+      session: {
+        url: location.href,
+        title: document.title,
+        formIndex: selected.index,
+        formSelector: selected.form === document.body ? "body" : selectorFor(selected.form),
+        formScore: selected.score,
+        submitSelector: submit ? selectorFor(submit, selected.form) : "",
+        fields: filled,
+        skipped,
+      },
+      url: location.href,
+      title: document.title,
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+
+  if (parsed?.ok === true && parsed.session) {
+    preparedFormSessionsV1.set(formSessionKeyV1(command, args, state), parsed.session);
+  }
+
+  return {
+    ...result,
+    ok: parsed?.ok === true,
+    formTool: parsed || null,
+    error: parsed?.ok === true ? "" : parsed?.reason || result.error || "Could not prepare form submission.",
+    text: parsed
+      ? "Generic form preparation " + (parsed.ok ? "confirmed." : "failed.") + " " + safeText(JSON.stringify({
+        reason: parsed.reason,
+        filled: parsed.session?.fields?.map((field) => ({
+          label: field.label,
+          type: field.type,
+          value: field.secret ? "[redacted]" : field.value,
+        })) || [],
+        skipped: parsed.session?.skipped || [],
+        submitSelector: parsed.session?.submitSelector || "",
+      }), 1800)
+      : result.text,
+  };
+}
+
+async function submitPreparedFormV1(command = {}, args = {}, state = {}) {
+  const key = formSessionKeyV1(command, args, state);
+  const session = preparedFormSessionsV1.get(key);
+
+  if (!session) {
+    return {
+      ok: false,
+      error: "No prepared form session found. Run browserPrepareFormSubmission first.",
+      text: "No prepared form session found. Run browserPrepareFormSubmission first.",
+    };
+  }
+
+  const script = `() => {
+    const session = ${JSON.stringify(session)};
+
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const readValue = (el) => {
+      if (!el) return "";
+      if (el.tagName.toLowerCase() === "select") return el.value || "";
+      if (el.isContentEditable) return el.textContent || "";
+      return el.value || "";
+    };
+
+    const setValue = (el, value) => {
+      if (!el) return;
+      el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      try { el.focus?.(); } catch {}
+
+      if (el.tagName.toLowerCase() === "select") {
+        const options = Array.from(el.options || []).filter((option) => !option.disabled);
+        const option = options.find((item) => item.value) || options[0] || null;
+        if (option) el.value = option.value;
+      } else if (el.isContentEditable) {
+        el.textContent = value;
+      } else {
+        const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        if (setter) setter.call(el, value);
+        else el.value = value;
+      }
+
+      try { el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value })); }
+      catch { el.dispatchEvent(new Event("input", { bubbles: true })); }
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      el.dispatchEvent(new Event("blur", { bubbles: true }));
+    };
+
+    const form =
+      (session.formSelector && document.querySelector(session.formSelector)) ||
+      document.forms[session.formIndex] ||
+      null;
+
+    if (!form) {
+      return JSON.stringify({
+        ok: false,
+        reason: "prepared_form_not_found",
+        url: location.href,
+        title: document.title,
+      });
+    }
+
+    const missing = [];
+    const verified = [];
+
+    for (const field of session.fields || []) {
+      const el = field.selector ? form.querySelector(field.selector) || document.querySelector(field.selector) : null;
+      const value = readValue(el).trim();
+
+      if (!el || !visible(el)) {
+        missing.push({ label: field.label, reason: "field_not_found_or_hidden" });
+        continue;
+      }
+
+      if (!value) {
+        setValue(el, field.value || "");
+      }
+
+      const after = readValue(el).trim();
+      if (!after) {
+        missing.push({ label: field.label, reason: "field_empty" });
+      } else {
+        verified.push({ label: field.label, type: field.type, valueLength: after.length });
+      }
+    }
+
+    if (missing.length) {
+      return JSON.stringify({
+        ok: false,
+        reason: "prepared_form_missing_values_before_submit",
+        missing,
+        verified,
+        url: location.href,
+        title: document.title,
+      });
+    }
+
+    const submit =
+      (session.submitSelector && (form.querySelector(session.submitSelector) || document.querySelector(session.submitSelector))) ||
+      Array.from(form.querySelectorAll("button, input[type='submit'], input[type='button']")).filter(visible)[0] ||
+      null;
+
+    if (!submit) {
+      return JSON.stringify({
+        ok: false,
+        reason: "prepared_form_submit_button_not_found",
+        verified,
+        url: location.href,
+        title: document.title,
+      });
+    }
+
+    submit.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    try { submit.focus?.(); } catch {}
+
+    try {
+      if (form && typeof form.requestSubmit === "function") form.requestSubmit(submit);
+      else submit.click();
+    } catch {
+      try { submit.click(); } catch {}
+    }
+
+    return JSON.stringify({
+      ok: true,
+      reason: "prepared_form_submit_requested",
+      verified,
+      submitText: String(submit.innerText || submit.value || submit.textContent || "").trim(),
+      url: location.href,
+      title: document.title,
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+
+  return {
+    ...result,
+    ok: parsed?.ok === true,
+    formTool: parsed || null,
+    error: parsed?.ok === true ? "" : parsed?.reason || result.error || "Could not submit prepared form.",
+    text: parsed
+      ? "Prepared form submit " + (parsed.ok ? "requested." : "blocked.") + " " + safeText(JSON.stringify(parsed), 1800)
+      : result.text,
+  };
+}
+
 
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";
@@ -2710,6 +3159,14 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
 
   if (tool === "browserClickByText") {
     return tryPlaywrightClick(command, args, state);
+  }
+
+  if (tool === "browserPrepareFormSubmission") {
+    return prepareGenericFormSubmissionV1(command, args, state);
+  }
+
+  if (tool === "browserSubmitPreparedForm") {
+    return submitPreparedFormV1(command, args, state);
   }
 
   if (tool === "browserFillFields") {

@@ -9,6 +9,8 @@ const ALLOWED_TOOLS = new Set([
   "browserFillFields",
   "browserSubmitForm",
   "browserFillAndSubmit",
+  "browserPrepareFormSubmission",
+  "browserSubmitPreparedForm",
   "browserScrape",
   "browserShowActions",
   "browserReset",
