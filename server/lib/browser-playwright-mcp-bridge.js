@@ -2544,10 +2544,21 @@ async function tryDomFillFields(fields = []) {
       }
 
       setNativeValue(target, field.value);
+
+      const actual = target.tagName.toLowerCase() === "select"
+        ? target.value || target.options?.[target.selectedIndex]?.textContent || ""
+        : target.isContentEditable ? target.textContent || "" : target.value || "";
+
       filled.push({
         label: field.label,
-        secret: field.secret,
-        value: field.secret ? "[redacted]" : field.value,
+        ref: field.ref || "",
+        selector: field.selector || "",
+        expected: field.secret ? "[redacted]" : field.value,
+        actual: field.secret ? "[redacted]" : actual,
+        tag: target.tagName.toLowerCase(),
+        type: target.getAttribute("type") || "",
+        name: target.getAttribute("name") || "",
+        id: target.getAttribute("id") || "",
       });
     }
 
@@ -2683,8 +2694,40 @@ async function verifyFilledFields(fields = []) {
             ? target.value || target.options?.[target.selectedIndex]?.textContent || ""
             : target.isContentEditable ? target.textContent || "" : target.value || "")
         : "";
-      if (target && actual === field.value) filled.push({ label: field.label, secret: field.secret });
-      else missing.push({ label: field.label, actualLength: actual.length });
+      const expected = String(field.value || "");
+      const ok = target && (
+        actual === expected ||
+        (
+          target.tagName.toLowerCase() === "select" &&
+          (
+            String(actual).toLowerCase() === expected.toLowerCase() ||
+            String(actual).toLowerCase().includes(expected.toLowerCase()) ||
+            expected.toLowerCase().includes(String(actual).toLowerCase())
+          )
+        )
+      );
+
+      if (ok) {
+        filled.push({
+          label: field.label,
+          ref: field.ref || "",
+          expected: field.secret ? "[redacted]" : expected,
+          actual: field.secret ? "[redacted]" : actual,
+        });
+      } else {
+        missing.push({
+          label: field.label,
+          ref: field.ref || "",
+          expected: field.secret ? "[redacted]" : expected,
+          actual: field.secret ? "[redacted]" : actual,
+          actualLength: actual.length,
+          targetFound: Boolean(target),
+          tag: target ? target.tagName.toLowerCase() : "",
+          type: target ? target.getAttribute("type") || "" : "",
+          name: target ? target.getAttribute("name") || "" : "",
+          id: target ? target.getAttribute("id") || "" : "",
+        });
+      }
     }
     return { ok: missing.length === 0, filled, missing };
   }`;
@@ -2704,7 +2747,9 @@ async function verifyFilledFields(fields = []) {
     ...result,
     ok: parsed?.ok === true,
     verification: parsed || null,
-    text: parsed ? "Field verification " + (parsed.ok ? "passed" : "failed") + "." : result.text,
+    text: parsed
+      ? "Field verification " + (parsed.ok ? "passed" : "failed") + ". " + safeText(JSON.stringify(parsed), 1800)
+      : result.text,
   };
 }
 
