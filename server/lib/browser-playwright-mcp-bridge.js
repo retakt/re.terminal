@@ -2449,7 +2449,7 @@ async function tryDomFillFields(fields = []) {
       const type = String(el.getAttribute("type") || el.tagName || "").toLowerCase();
       const elText = norm(textFor(el));
 
-      const wantsDate = /pickupdate|pickup|date/.test(fieldText) || /^\d{4}-\d{2}-\d{2}$/.test(String(field.value || ""));
+      const wantsDate = /pickupdate|pickup|date/.test(fieldText) || /^\\d{4}-\\d{2}-\\d{2}$/.test(String(field.value || ""));
       const wantsPhone = /contactnumber|contactno|phone|mobile|telephone|tel/.test(fieldText);
       const wantsPayment = /payment|method/.test(fieldText);
 
@@ -2513,7 +2513,7 @@ async function tryDomFillFields(fields = []) {
         if (setter) setter.call(el, value);
         else el.value = value;
 
-        if (String(el.getAttribute("type") || "").toLowerCase() === "date" && /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) {
+        if (String(el.getAttribute("type") || "").toLowerCase() === "date" && /^\\d{4}-\\d{2}-\\d{2}$/.test(String(value || ""))) {
           try {
             const [year, month, day] = String(value).split("-").map(Number);
             el.valueAsDate = new Date(Date.UTC(year, month - 1, day));
@@ -2564,7 +2564,7 @@ async function tryDomFillFields(fields = []) {
         }) || null;
       }
 
-      const refMatch = String(field.ref || "").match(/^lp_input_(\d+)$/i);
+      const refMatch = String(field.ref || "").match(/^lp_input_(\\d+)$/i);
       if (!target && refMatch) {
         const byRef = candidates[Number(refMatch[1])] || null;
         if (byRef && compatible(byRef, field)) target = byRef;
@@ -2659,7 +2659,7 @@ async function verifyFilledFields(fields = []) {
       const type = String(el.getAttribute("type") || el.tagName || "").toLowerCase();
       const elText = norm(textFor(el));
 
-      const wantsDate = /pickupdate|pickup|date/.test(fieldText) || /^\d{4}-\d{2}-\d{2}$/.test(String(field.value || ""));
+      const wantsDate = /pickupdate|pickup|date/.test(fieldText) || /^\\d{4}-\\d{2}-\\d{2}$/.test(String(field.value || ""));
       const wantsPhone = /contactnumber|contactno|phone|mobile|telephone|tel/.test(fieldText);
       const wantsPayment = /payment|method/.test(fieldText);
 
@@ -2717,7 +2717,7 @@ async function verifyFilledFields(fields = []) {
         }) || null;
       }
 
-      const refMatch = String(field.ref || "").match(/^lp_input_(\d+)$/i);
+      const refMatch = String(field.ref || "").match(/^lp_input_(\\d+)$/i);
       if (!target && refMatch) {
         const byRef = candidates[Number(refMatch[1])] || null;
         if (byRef && compatible(byRef, field)) target = byRef;
@@ -2737,7 +2737,7 @@ async function verifyFilledFields(fields = []) {
         : "";
       const expected = String(field.value || "");
 
-      const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+      const clean = (value) => String(value || "").replace(/\\s+/g, " ").trim();
       const lower = (value) => clean(value).toLowerCase();
       const compact = (value) => lower(value).replace(/[^a-z0-9#.-]+/g, "");
       const numeric = (value) => {
