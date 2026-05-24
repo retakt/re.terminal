@@ -2513,14 +2513,8 @@ async function tryDomFillFields(fields = []) {
         const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
         el.focus();
 
-        // Exact replace, never append. Clear first so prefilled fields like
-        // "Alex Morgan" do not become "Alex MAlex Morganorgan".
-        if (setter) setter.call(el, "");
-        else el.value = "";
-
-        el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward", data: null }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-
+        // Exact replace, never append. Use the native setter once so the UI
+        // does not visibly clear and refill the field.
         if (setter) setter.call(el, value);
         else el.value = value;
 
