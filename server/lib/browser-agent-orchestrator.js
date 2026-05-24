@@ -2749,7 +2749,8 @@ function commandWithFreshFillBeforeSubmit(clickCommand = {}, lastFillCommand = n
         ...clickArgs,
         autoFillTestData: true,
         formIntent: lastArgs.formIntent || clickArgs.formIntent || "",
-        text: clickArgs.text || clickArgs.label || clickArgs.buttonText || "Submit",
+        text: clickArgs.text || clickArgs.label || clickArgs.buttonText ||
+          (/register|sign up|signup|new customer|create account/i.test(String(lastArgs.formIntent || clickArgs.formIntent || "")) ? "Register" : "Submit"),
       },
       notes: "Re-ran DOM-driven auto-fill immediately before submit.",
     };
@@ -2814,6 +2815,152 @@ function deterministicAutoFillCommandFromStepV3(step = {}, currentUrl = "", orig
       formIntent: safeText(originalInstruction || step.instruction || "", 700),
     },
     notes: "DOM-driven auto-fill: Playwright inspects the real visible form controls and fills safe test data only into actual fields.",
+  };
+}
+
+
+function browserStateIntentTextV1(state = {}) {
+  const pieces = [
+    state.url,
+    state.title,
+    state.text,
+    state.textPreview,
+    state.markdown,
+    ...(Array.isArray(state.links) ? state.links.flatMap((item) => [
+      item.text, item.label, item.name, item.href, item.url, item.title,
+    ]) : []),
+    ...(Array.isArray(state.buttons) ? state.buttons.flatMap((item) => [
+      item.text, item.label, item.name, item.value, item.title,
+    ]) : []),
+    ...(Array.isArray(state.inputs) ? state.inputs.flatMap((item) => [
+      item.label, item.name, item.id, item.placeholder, item.type,
+    ]) : []),
+    ...(Array.isArray(state.candidates) ? state.candidates.flatMap((item) => [
+      item.text, item.label, item.name, item.href, item.url, item.selector, item.role, item.kind,
+    ]) : []),
+    ...(Array.isArray(state.interactiveElements) ? state.interactiveElements.flatMap((item) => [
+      item.text, item.label, item.name, item.href, item.url, item.selector, item.role, item.kind,
+    ]) : []),
+  ];
+
+  return pieces.map((value) => String(value || "")).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function wantsRegistrationFlowV1(step = {}, originalInstruction = "") {
+  const text = [
+    originalInstruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return /\b(register|registration|sign up|signup|new customer|create account|test customer)\b/.test(text);
+}
+
+function isRegistrationNavigationStepV1(step = {}, originalInstruction = "") {
+  if (!wantsRegistrationFlowV1(step, originalInstruction)) return false;
+
+  const text = [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return /\b(navigate|open|go to|find where|using the page ui|page ui|register|sign up|signup|new customer)\b/.test(text) &&
+    !/\b(fill|submit)\b/.test(text);
+}
+
+function isRegistrationFillStepOnLoginPageV1(step = {}, state = {}, originalInstruction = "") {
+  if (!wantsRegistrationFlowV1(step, originalInstruction)) return false;
+
+  const action = String(step.expectedAction || "").toLowerCase();
+  const stepText = String(step.instruction || "").toLowerCase();
+
+  if (action !== "fill" && !/\b(fill|customer|test data)\b/.test(stepText)) return false;
+
+  return browserStateLooksLoginOnlyV1(state);
+}
+
+function browserStateLooksLoginOnlyV1(state = {}) {
+  const text = browserStateIntentTextV1(state).toLowerCase();
+
+  const inputs = Array.isArray(state.inputs) ? state.inputs : [];
+  const inputText = inputs.map((item) => [
+    item.label,
+    item.name,
+    item.id,
+    item.placeholder,
+    item.type,
+  ].map((value) => String(value || "")).join(" ")).join(" ").toLowerCase();
+
+  const hasLogin =
+    /\b(log in|login|sign in|username|password|forgot login)\b/.test(text) ||
+    /\b(username|password)\b/.test(inputText);
+
+  const hasRegisterForm =
+    /\b(first name|last name|address|city|state|zip code|ssn|confirm password|repeated password)\b/.test(text) ||
+    /\b(firstname|lastname|customer\.firstName|customer\.lastName|customer\.address|customer\.ssn|repeatedPassword)\b/i.test(inputText);
+
+  return hasLogin && !hasRegisterForm;
+}
+
+
+function browserStateLooksRegistrationFormV2(state = {}) {
+  const text = browserStateIntentTextV1(state).toLowerCase();
+  const url = String(state?.url || state?.requestedUrl || "").toLowerCase();
+
+  const inputs = Array.isArray(state.inputs) ? state.inputs : [];
+  const inputText = inputs.map((item) => [
+    item.label,
+    item.name,
+    item.id,
+    item.placeholder,
+    item.type,
+  ].map((value) => String(value || "")).join(" ")).join(" ").toLowerCase();
+
+  return /register\.htm|\/register/i.test(url) ||
+    /\b(first name|last name|address|city|state|zip code|ssn|confirm password|verify password|repeated password)\b/.test(text) ||
+    /\b(customer\.firstName|customer\.lastName|customer\.address|customer\.city|customer\.state|customer\.zipCode|customer\.ssn|repeatedPassword|confirm)\b/i.test(inputText);
+}
+
+function findRegistrationLinkCommandV1(state = {}, currentUrl = "") {
+  const all = [
+    ...(Array.isArray(state.links) ? state.links : []),
+    ...(Array.isArray(state.buttons) ? state.buttons : []),
+    ...(Array.isArray(state.candidates) ? state.candidates : []),
+    ...(Array.isArray(state.interactiveElements) ? state.interactiveElements : []),
+  ];
+
+  const candidates = all.map((item) => {
+    const label = safeText(item.text || item.label || item.name || item.title || item.value || "", 180);
+    const href = safeText(item.href || item.url || item.target || "", 500);
+    const haystack = [label, href, item.selector, item.role, item.kind].map((value) => String(value || "")).join(" ").toLowerCase();
+
+    let score = 0;
+    if (/\bregister\b/.test(haystack)) score += 200;
+    if (/\bsign\s*up\b|\bsignup\b/.test(haystack)) score += 180;
+    if (/\bnew customer\b|\bcreate account\b/.test(haystack)) score += 160;
+    if (label && /\bregister\b/i.test(label)) score += 120;
+    if (href && /register/i.test(href)) score += 100;
+
+    return { item, label, href, score };
+  }).filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const best = candidates[0];
+  if (!best) return null;
+
+  return {
+    intent: "click_register_link",
+    tool: "browserClickByText",
+    args: {
+      currentUrl,
+      text: best.label || "Register",
+      label: best.label || "Register",
+      href: best.href || "",
+      selector: safeText(best.item.selector || "", 500),
+    },
+    notes: "Deterministic registration navigation: clicked the visible Register/Sign up/New customer link before form fill.",
   };
 }
 
@@ -3138,6 +3285,180 @@ function mergeStickyFormStateV1(beforeState = {}, stickyState = {}) {
 }
 
 
+function navigationStepAlreadySatisfiedV5(step = {}, beforeState = {}, currentUrl = "", originalInstruction = "") {
+  const url = String(beforeState?.url || currentUrl || "");
+  const title = String(beforeState?.title || "");
+  const action = String(step.expectedAction || "").toLowerCase();
+  const instructionText = String(step.instruction || "").toLowerCase();
+  const criteria = String(step.successCriteria || "").toLowerCase();
+  const fullText = [
+    originalInstruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  if (!url) return null;
+
+  // This helper is only for real navigation/open/go-to steps.
+  // Never skip submit/fill/verify/report/observe.
+  if (["submit", "fill", "verify", "report", "observe"].includes(action)) return null;
+  if (/\b(submit|fill|verify|report|observe)\b/.test(instructionText)) return null;
+
+  const isExplicitNavigation =
+    action === "navigate" ||
+    /\b(navigate|go to|open|using the page ui)\b/.test(instructionText);
+
+  if (!isExplicitNavigation) return null;
+
+  // Do not satisfy success-page criteria just because we are on register.htm.
+  if (/(register|signup)\/success|successfully|completed|created/.test(criteria)) {
+    const hasSuccessUrl = /\/(?:register|signup)(?:\/success|success)|success/i.test(url);
+    if (!hasSuccessUrl) return null;
+  }
+
+  if (/\b(register|sign up|signup|new customer)\b/.test(fullText)) {
+    if (/\/register(?:\.htm)?/i.test(url) || /register for free online account access/i.test(title)) {
+      return {
+        ok: true,
+        reason: "Already on the registration page; skipped redundant navigation.",
+      };
+    }
+  }
+
+  const containsMatch = criteria.match(/currenturl\s+contains\s+['"]?([^'"\s]+)/i);
+  if (containsMatch?.[1]) {
+    const needle = containsMatch[1].replace(/[.,;]+$/g, "");
+    if (needle && url.toLowerCase().includes(needle.toLowerCase())) {
+      return {
+        ok: true,
+        reason: `Current URL already contains ${needle}; skipped redundant navigation.`,
+      };
+    }
+  }
+
+  return null;
+}
+
+function isRegistrationSubmitStepV5(step = {}, command = {}, originalInstruction = "") {
+  const text = [
+    originalInstruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+    command.intent,
+    command.tool,
+    command.args?.formIntent,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  const submitTool = /browserSubmitForm|browserFillAndSubmit/i.test(String(command.tool || ""));
+  const submitStep = /\bsubmit\b/.test(text) || String(step.expectedAction || "").toLowerCase() === "submit";
+  const registration = /\b(register|registration|sign up|signup|new customer|create account)\b/.test(text);
+
+  return submitTool && submitStep && registration;
+}
+
+function registrationSubmitStillOnFormV5(execution = {}) {
+  const observation = observationFromExecution(execution) || {};
+  const url = String(observation.url || "");
+  const title = String(observation.title || "");
+  const preview = String(observation.textPreview || observation.text || "");
+
+  const successText =
+    /\b(account created|registration successful|successfully registered|welcome\s+\w+|new account created)\b/i.test(preview);
+
+  const stillRegisterPage =
+    /\/register(?:\.htm)?/i.test(url) ||
+    /register for free online account access/i.test(title);
+
+  const stillHasRegisterForm =
+    /\b(first name|last name|address|city|state|zip code|ssn|username|confirm)\b/i.test(preview) ||
+    /register for free online account access/i.test(title);
+
+  return stillRegisterPage && stillHasRegisterForm && !successText;
+}
+
+function strictRegistrationSubmitResultV5({ step = {}, command = {}, execution = {}, originalInstruction = "" } = {}) {
+  if (!isRegistrationSubmitStepV5(step, command, originalInstruction)) return null;
+
+  if (registrationSubmitStillOnFormV5(execution)) {
+    const observation = observationFromExecution(execution) || {};
+    return {
+      status: "failed",
+      success: false,
+      summary: "Registration submit did not complete: browser is still on the registration form.",
+      evidence: `URL: ${observation.url || ""} — Title: ${observation.title || ""}`,
+      repairInstruction: "",
+      messageToUser: "Registration did not complete; the page remained on the registration form.",
+      confidence: 1,
+    };
+  }
+
+  return null;
+}
+
+function strictFinalRegistrationFlowV6({ instruction = "", stepResults = [], finalObservation = {}, final = {} } = {}) {
+  const goal = String(instruction || "").toLowerCase();
+  if (!/\b(register|registration|sign up|signup|new customer|create account)\b/.test(goal)) return null;
+  if (!/\bsubmit\b/.test(goal)) return null;
+
+  const realSubmit = stepResults.find((item) => {
+    const tool = String(item?.command?.tool || "");
+    const stepText = [
+      item?.step?.instruction,
+      item?.step?.expectedAction,
+      item?.step?.successCriteria,
+    ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+    return item?.ok === true &&
+      /\bsubmit\b/.test(stepText) &&
+      /browserSubmitForm|browserFillAndSubmit/i.test(tool);
+  });
+
+  const last = stepResults.at(-1) || {};
+  const url = String(finalObservation?.url || last.url || final?.summary || "");
+  const title = String(finalObservation?.title || last.title || "");
+  const text = [
+    finalObservation?.text,
+    finalObservation?.textPreview,
+    final?.summary,
+    last.summary,
+  ].map((value) => String(value || "")).join(" ");
+
+  const successEvidence =
+    /\b(account created|registration successful|successfully registered|new account created|welcome\s+\w+)\b/i.test(text) &&
+    !/register for free online account access/i.test(title);
+
+  const stillOnRegisterForm =
+    /\/register(?:\.htm)?/i.test(url) ||
+    /register for free online account access/i.test(title);
+
+  if (!realSubmit) {
+    return {
+      success: false,
+      summary: "Registration did not complete: submit step was not actually executed.",
+      needsUser: false,
+      nextSafeAction: null,
+      missingSteps: ["Submit the registration form"],
+      reason: "submit_not_executed",
+    };
+  }
+
+  if (stillOnRegisterForm && !successEvidence) {
+    return {
+      success: false,
+      summary: "Registration did not complete: browser is still on the registration form.",
+      needsUser: false,
+      nextSafeAction: null,
+      missingSteps: ["Verify successful registration page or success message"],
+      reason: "still_on_registration_form",
+    };
+  }
+
+  return null;
+}
+
+
 function tokenUsageFromTrace(trace = []) {
   const totalTokens = trace.reduce((sum, entry) => sum + Number(entry.tokens || 0), 0);
   return {
@@ -3420,6 +3741,119 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       });
 
       continue;
+    }
+
+    const registerLinkCommandV1 =
+      !browserStateLooksRegistrationFormV2(beforeState) &&
+      (isRegistrationNavigationStepV1(step, instruction) || isRegistrationFillStepOnLoginPageV1(step, beforeState, instruction))
+        ? findRegistrationLinkCommandV1(beforeState, currentUrl)
+        : null;
+
+    if (
+      envFlag("BROWSER_AGENT_REGISTER_LINK_BEFORE_FILL", true) &&
+      registerLinkCommandV1 &&
+      currentUrl
+    ) {
+      const beforeObservation = observationFromPageState(beforeState);
+      const execution = await executePlaywrightMcpBrowserCommand({
+        command: registerLinkCommandV1,
+        args: {
+          ...args,
+          currentUrl,
+        },
+        state: currentState,
+        beforeObservation,
+        skipBeforeSnapshot: false,
+      });
+
+      const executionOk = execution.ok === true;
+      const observation = observationFromExecution(execution, execution) || execution.observation || beforeObservation || {};
+      currentUrl = observation?.url || currentUrl;
+      currentTitle = observation?.title || currentTitle;
+      finalObservation = observation || finalObservation;
+
+      const summary = executionOk
+        ? browserExecutionTraceSummary(registerLinkCommandV1, execution)
+        : execution.error || "Could not click the visible registration link.";
+
+      trace.push(traceEntry({
+        role: "playwright_executor",
+        title: "Playwright registration link navigation",
+        step: stepNumber,
+        status: executionOk ? "executed" : "failed",
+        input: {
+          step,
+          command: registerLinkCommandV1,
+        },
+        output: {
+          ok: executionOk,
+          error: execution.error || "",
+          actionResult: execution.actionResult || null,
+          observation,
+        },
+        summary,
+        tool: "browserClickByText",
+        ok: executionOk,
+      }));
+
+      const stepResult = {
+        stepNumber,
+        step,
+        ok: executionOk,
+        repaired: false,
+        status: executionOk ? "passed" : "failed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: registerLinkCommandV1,
+      };
+
+      stepResults.push(stepResult);
+
+      if (executionOk) {
+        continue;
+      }
+
+      stoppedReason = summary;
+      break;
+    }
+
+    if (
+      envFlag("BROWSER_AGENT_BLOCK_LOGIN_AUTOFILL_FOR_REGISTRATION", true) &&
+      isRegistrationFillStepOnLoginPageV1(step, beforeState, instruction) &&
+      !registerLinkCommandV1
+    ) {
+      const summary = "Blocked form fill because the visible form appears to be a login form, not a registration form.";
+
+      trace.push(traceEntry({
+        role: "watcher",
+        title: "Registration form guard",
+        step: stepNumber,
+        status: "blocked_login_form_fill",
+        input: { step, currentUrl },
+        output: {
+          pageTitle: beforeState?.title || "",
+          inputs: Array.isArray(beforeState?.inputs) ? beforeState.inputs.slice(0, 8) : [],
+        },
+        summary,
+        tool: "browserObserve",
+        ok: false,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: false,
+        repaired: false,
+        status: "failed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: null,
+      });
+
+      stoppedReason = summary;
+      break;
     }
 
     const deterministicFillCommandV1 = deterministicFormFillCommandFromStepV1(step, currentUrl, instruction);
@@ -3863,6 +4297,49 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         url: currentUrl,
         title: currentTitle,
         command: { intent: "observe", tool: "browserObserve", args: { currentUrl } },
+      });
+
+      continue;
+    }
+
+    const alreadySatisfiedNavigationV5 = navigationStepAlreadySatisfiedV5(step, beforeState, currentUrl, instruction);
+    if (alreadySatisfiedNavigationV5?.ok === true) {
+      const observation = observationFromPageState(beforeState) || before?.observation || {};
+      currentUrl = observation.url || currentUrl;
+      currentTitle = observation.title || currentTitle;
+      finalObservation = observation;
+
+      trace.push(traceEntry({
+        role: "watcher",
+        title: "Navigation already satisfied",
+        step: stepNumber,
+        status: "auto_passed_current_url",
+        input: step,
+        output: {
+          currentUrl,
+          currentTitle,
+          reason: alreadySatisfiedNavigationV5.reason,
+        },
+        summary: alreadySatisfiedNavigationV5.reason,
+        tool: "browserObserve",
+        ok: true,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: true,
+        repaired: false,
+        status: "passed",
+        summary: alreadySatisfiedNavigationV5.reason,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "already_satisfied_navigation",
+          tool: "browserObserve",
+          args: { currentUrl },
+          notes: alreadySatisfiedNavigationV5.reason,
+        },
       });
 
       continue;
@@ -4358,6 +4835,32 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
 
     }
+    const strictRegistrationSubmitV5 = strictRegistrationSubmitResultV5({
+      step,
+      command: executionCommand,
+      execution,
+      originalInstruction: instruction,
+    });
+
+    if (strictRegistrationSubmitV5) {
+      resultCheck = strictRegistrationSubmitV5;
+
+      trace.push(traceEntry({
+        role: "watcher",
+        title: "Strict registration submit verifier",
+        step: stepNumber,
+        status: "failed_still_on_registration_form",
+        input: {
+          step,
+          command: executionCommand,
+        },
+        output: strictRegistrationSubmitV5,
+        summary: strictRegistrationSubmitV5.summary,
+        tool: executionCommand?.tool || "",
+        ok: false,
+      }));
+    }
+
     let repaired = false;
     const initialSyncRepair = parseWatcherSyncRepairInstruction(resultCheck?.repairInstruction || "");
     const effectiveRepairAttempts = initialSyncRepair ? Math.max(1, maxRepairAttempts) : maxRepairAttempts;
@@ -4692,6 +5195,36 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       missingSteps: passedAllSteps ? [] : steps.slice(stepResults.length).map((step) => step.instruction),
       reason: stoppedReason || "",
     };
+  }
+
+  const strictFinalRegistrationV6 = strictFinalRegistrationFlowV6({
+    instruction,
+    stepResults,
+    finalObservation,
+    final,
+  });
+
+  if (strictFinalRegistrationV6) {
+    final = {
+      ...final,
+      ...strictFinalRegistrationV6,
+    };
+
+    trace.push(traceEntry({
+      role: "final_verifier",
+      title: "Strict registration final verifier",
+      step: null,
+      status: "failed_registration_not_complete",
+      input: {
+        finalUrl: finalObservation?.url || "",
+        finalTitle: finalObservation?.title || "",
+        stepCount: stepResults.length,
+      },
+      output: strictFinalRegistrationV6,
+      summary: strictFinalRegistrationV6.summary,
+      tool: "",
+      ok: false,
+    }));
   }
 
   if (!passedAllSteps && final?.success === true) {

@@ -2215,26 +2215,60 @@ async function tryDomAutoFillTestForm(command = {}, args = {}, state = {}) {
     };
 
     const personName = "Test User";
-    const slug = "test-user";
+    const slug = "test-user-" + String(Date.now()).slice(-6);
 
     const valueFor = (el) => {
       const tag = el.tagName.toLowerCase();
       const type = inputType(el);
-      const label = norm(labelFor(el));
-      const key = compact(label);
+      const rawLabel = labelFor(el);
+      const label = norm(rawLabel);
+      const key = compact(rawLabel);
+
+      const attrKey = compact([
+        el.getAttribute("name") || "",
+        el.getAttribute("id") || "",
+        el.getAttribute("aria-label") || "",
+        el.getAttribute("placeholder") || "",
+        el.getAttribute("autocomplete") || "",
+      ].join(" "));
+
+      // Exact field identity wins before fuzzy visible-label matching.
+      if (/customerfirstname|firstname|first/.test(attrKey)) return "Test";
+      if (/customerlastname|lastname|surname|last/.test(attrKey)) return "User";
+      if (/customeraddressstreet|addressstreet|streetaddress|street|address/.test(attrKey)) return "123 Test Street";
+      if (/customercity|city/.test(attrKey)) return "Testville";
+      if (/customerstate|province|region|state/.test(attrKey)) return "CA";
+      if (/customerzipcode|postalcode|postcode|zipcode|zip/.test(attrKey)) return "90210";
+      if (/customerssn|ssn|socialsecurity/.test(attrKey)) return "123456789";
+      if (/customerphone|phone|mobile|tel/.test(attrKey)) return "5550100";
+      if (/country/.test(attrKey)) return "US";
+      if (/username|userid|login/.test(attrKey)) return slug;
+      if (/repeatedpassword|confirmpassword|confirm|repeat|verify/.test(attrKey)) return slug + "-Pass123";
+      if (/password|passcode/.test(attrKey)) return slug + "-Pass123";
+      if (/email/.test(attrKey)) return slug + "@example.test";
 
       if (tag === "textarea") return "Harmless automated test submission";
       if (tag === "select") return "";
 
-      if (type === "password") return slug + "-test-123";
+      if (type === "password") return slug + "-Pass123";
       if (type === "email" || /email/.test(key)) return slug + "@example.test";
       if (type === "tel" || /phone|mobile|tel/.test(key)) return "5550100";
       if (type === "url" || /website|url/.test(key)) return "https://example.test";
       if (type === "number" || /age|count|quantity|number/.test(key)) return "42";
       if (type === "date") return "2026-01-01";
 
-      if (/firstname|first name/.test(label)) return "Test";
-      if (/lastname|last name|surname/.test(label)) return "User";
+      // Realistic registration field values.
+      if (/firstname|customerfirstname|first name/.test(key) || /\bfirst name\b/.test(label)) return "Test";
+      if (/lastname|customerlastname|last name|surname/.test(key) || /\blast name\b/.test(label)) return "User";
+      if (/country/.test(key)) return "US";
+      if (/city/.test(key)) return "Testville";
+      if (/state|province|region/.test(key)) return "CA";
+      if (/zipcode|zip|postal/.test(key)) return "90210";
+      if (/address|street/.test(key)) return "123 Test Street";
+      if (/ssn|socialsecurity/.test(key)) return "123456789";
+      if (/username|user name|login/.test(key)) return slug;
+      if (/confirm|repeat|verify|repeatedpassword/.test(key)) return slug + "-Pass123";
+
       if (/name|textinput|mytext|text/.test(key)) return personName;
 
       return "Test value";
@@ -2810,6 +2844,160 @@ async function probeDomFormFilledEnoughBeforeSubmitV1(command = {}, args = {}, s
 }
 
 
+async function submitDomRegistrationFormV7(command = {}, args = {}, state = {}) {
+  const script = `() => {
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0;
+    };
+
+    const valueOf = (selector) => {
+      const el = document.querySelector(selector);
+      return el ? String(el.value || "").trim() : "";
+    };
+
+    const form =
+      document.querySelector("form input[name='customer.firstName']")?.closest("form") ||
+      document.querySelector("form input[name='customer.lastName']")?.closest("form") ||
+      document.querySelector("form input[name='customer.address.street']")?.closest("form") ||
+      document.querySelector("form input[name='customer.ssn']")?.closest("form") ||
+      document.querySelector("form input[name='repeatedPassword']")?.closest("form") ||
+      null;
+
+    if (!form) {
+      return JSON.stringify({
+        ok: false,
+        reason: "registration_form_not_found",
+        title: document.title,
+        url: location.href,
+      });
+    }
+
+    const required = [
+      ["firstName", "input[name='customer.firstName']"],
+      ["lastName", "input[name='customer.lastName']"],
+      ["address", "input[name='customer.address.street']"],
+      ["city", "input[name='customer.address.city']"],
+      ["state", "input[name='customer.address.state']"],
+      ["zipCode", "input[name='customer.address.zipCode']"],
+      ["phone", "input[name='customer.phoneNumber']"],
+      ["ssn", "input[name='customer.ssn']"],
+      ["username", "input[name='customer.username'], input[name='username']"],
+      ["password", "input[name='customer.password'], input[name='password']"],
+      ["confirm", "input[name='repeatedPassword'], input[name='confirm'], input[name='passwordConfirm']"]
+    ];
+
+    const values = {};
+    const missing = [];
+
+    for (const [name, selector] of required) {
+      const value = valueOf(selector);
+      values[name] = name === "password" || name === "confirm" ? (value ? "[redacted]" : "") : value;
+      if (!value) missing.push(name);
+    }
+
+    if (missing.length) {
+      return JSON.stringify({
+        ok: false,
+        reason: "registration_form_has_missing_values_before_submit",
+        missing,
+        values,
+        title: document.title,
+        url: location.href,
+      });
+    }
+
+    const submit =
+      Array.from(form.querySelectorAll("input[type='submit'], button[type='submit'], button, input[type='button']"))
+        .filter(visible)
+        .find((el) => /register|submit|create/i.test(String(el.value || el.innerText || el.textContent || ""))) ||
+      form.querySelector("input[type='submit'], button[type='submit']");
+
+    if (!submit) {
+      return JSON.stringify({
+        ok: false,
+        reason: "registration_submit_button_not_found",
+        values,
+        title: document.title,
+        url: location.href,
+      });
+    }
+
+    submit.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    try { submit.focus?.(); } catch {}
+
+    try {
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit(submit);
+      } else {
+        submit.click();
+      }
+    } catch {
+      try { submit.click(); } catch {}
+    }
+
+    return JSON.stringify({
+      ok: true,
+      reason: "registration_form_submit_requested",
+      buttonText: String(submit.value || submit.innerText || submit.textContent || "").trim(),
+      values,
+      title: document.title,
+      url: location.href,
+    });
+  }`;
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: script,
+  }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    text: err instanceof Error ? err.message : String(err),
+  }));
+
+  if (clickResultFailed(result)) {
+    return {
+      ok: false,
+      error: result.error || result.text || "Registration DOM submit failed.",
+      text: result.text || result.error || "",
+    };
+  }
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "") ||
+    parseMcpJsonResult(result.text || result.error || "");
+
+  return {
+    ...result,
+    ok: parsed?.ok === true,
+    registrationSubmit: parsed || null,
+    error: parsed?.ok === true ? "" : parsed?.reason || "Registration DOM submit failed.",
+    text: parsed
+      ? "Registration DOM submit " + (parsed.ok ? "requested." : "blocked.") + " " + safeText(JSON.stringify(parsed), 1600)
+      : result.text,
+  };
+}
+
+function isRegistrationSubmitCommandV7(command = {}, args = {}) {
+  const haystack = [
+    command.intent,
+    command.tool,
+    command.args?.currentUrl,
+    command.args?.url,
+    command.args?.formIntent,
+    command.args?.text,
+    command.args?.buttonText,
+    args.currentUrl,
+  ].map((value) => String(value || "")).join(" ").toLowerCase();
+
+  return /\b(register|registration|new customer|create account|sign up|signup)\b/.test(haystack) ||
+    /\/register(?:\.htm)?/i.test(haystack);
+}
+
+
 async function executeApprovedAction(command = {}, args = {}, state = {}) {
   const tool = command.tool || "unknown";
   const commandArgs = command.args || {};
@@ -2886,6 +3074,10 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
   }
 
   if (tool === "browserSubmitForm") {
+    if (isRegistrationSubmitCommandV7(command, args)) {
+      return submitDomRegistrationFormV7(command, args, state);
+    }
+
     const text = safeText(commandArgs.text || commandArgs.submitText || commandArgs.buttonText || "Submit", 180);
     return tryPlaywrightClick({
       ...command,
@@ -2898,41 +3090,37 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     }, args, state);
   }
 
+
   if (tool === "browserFillAndSubmit") {
-    let fill = null;
-    let probe = null;
-
-    if (commandArgs.autoFillTestData === true) {
-      probe = await probeDomFormFilledEnoughBeforeSubmitV1(command, args, state);
-
-      if (probe.ok === true && probe.filledEnough === true) {
-        fill = {
+    if (isRegistrationSubmitCommandV7(command, args)) {
+      const submit = await submitDomRegistrationFormV7(command, args, state);
+      return {
+        ok: Boolean(submit.ok),
+        fill: {
           ok: true,
           skipped: true,
-          probe,
-          text: "Skipped re-fill before submit because current DOM form values are already present.",
-        };
-      }
+          text: "Skipped re-fill before registration submit; using existing verified DOM values.",
+        },
+        submit,
+        text: [
+          "Skipped re-fill before registration submit; using existing verified DOM values.",
+          submit.text || submit.error || "",
+        ].filter(Boolean).join("\n"),
+      };
     }
 
-    if (!fill) {
-      fill = await executeApprovedAction({ ...command, tool: "browserFillFields" }, args, state);
-      if (!fill.ok) return fill;
-    }
+    const fill = await executeApprovedAction({ ...command, tool: "browserFillFields" }, args, state);
+    if (!fill.ok) return fill;
 
     const submit = await executeApprovedAction({ ...command, tool: "browserSubmitForm" }, args, state);
-
     return {
       ok: Boolean(submit.ok),
       fill,
       submit,
-      probe,
-      text: [
-        fill.text,
-        submit.text,
-      ].filter(Boolean).join("\n"),
+      text: [fill.text, submit.text].filter(Boolean).join("\n"),
     };
   }
+
 
   return {
     ok: false,
