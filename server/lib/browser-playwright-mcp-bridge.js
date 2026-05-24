@@ -2417,6 +2417,21 @@ async function tryDomFillFields(fields = []) {
       return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
     };
 
+    const compatible = (el, field) => {
+      const fieldText = norm([field.label, field.name, field.placeholder, field.type].join(" "));
+      const type = String(el.getAttribute("type") || el.tagName || "").toLowerCase();
+      const elText = norm(textFor(el));
+
+      const wantsDate = /pickupdate|pickup|date/.test(fieldText) || /^\d{4}-\d{2}-\d{2}$/.test(String(field.value || ""));
+      const wantsPhone = /contactnumber|contactno|phone|mobile|telephone|tel/.test(fieldText);
+      const wantsPayment = /payment|method/.test(fieldText);
+
+      if (wantsDate) return type === "date" || /pickupdate|pickup|date/.test(elText);
+      if (wantsPhone) return type === "tel" || /contactnumber|contactno|phone|mobile|telephone|tel/.test(elText);
+      if (wantsPayment) return el.tagName.toLowerCase() === "select" || /payment|method/.test(elText);
+      return true;
+    };
+
     const textFor = (el) => {
       const parts = [];
       const id = el.getAttribute("id");
@@ -2461,6 +2476,14 @@ async function tryDomFillFields(fields = []) {
         el.focus();
         if (setter) setter.call(el, value);
         else el.value = value;
+
+        if (String(el.getAttribute("type") || "").toLowerCase() === "date" && /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) {
+          try {
+            const [year, month, day] = String(value).split("-").map(Number);
+            el.valueAsDate = new Date(Date.UTC(year, month - 1, day));
+            if (!el.value) el.value = value;
+          } catch {}
+        }
       }
 
       el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
@@ -2477,28 +2500,38 @@ async function tryDomFillFields(fields = []) {
       if (field.selector) {
         try {
           const selected = document.querySelector(field.selector);
-          if (selected && visible(selected)) target = selected;
+          if (selected && visible(selected) && compatible(selected, field)) target = selected;
         } catch {}
       }
 
-      const refMatch = String(field.ref || "").match(/^lp_input_(\d+)$/i);
-      if (!target && refMatch) {
-        target = candidates[Number(refMatch[1])] || null;
-      }
+      const semanticKeys = [field.label, field.name, field.placeholder]
+        .map(norm)
+        .filter(Boolean);
 
-      if (!target && field.name) {
-        const wantedName = norm(field.name);
+      if (!target) {
         target = candidates.find((el) => {
+          if (!compatible(el, field)) return false;
           const nameKey = norm([el.getAttribute("name") || "", el.getAttribute("id") || ""].join(" "));
-          return wantedName && nameKey && (nameKey === wantedName || nameKey.includes(wantedName) || wantedName.includes(nameKey));
+          return semanticKeys.some((needle) =>
+            needle &&
+            nameKey &&
+            (nameKey === needle || nameKey.includes(needle) || needle.includes(nameKey))
+          );
         }) || null;
       }
 
       if (!target) {
         target = candidates.find((el) => {
+          if (!compatible(el, field)) return false;
           const hay = norm(textFor(el));
-          return wanted.some((needle) => needle && (hay === needle || hay.includes(needle) || needle.includes(hay)));
+          return semanticKeys.some((needle) => needle && (hay === needle || hay.includes(needle) || needle.includes(hay)));
         }) || null;
+      }
+
+      const refMatch = String(field.ref || "").match(/^lp_input_(\d+)$/i);
+      if (!target && refMatch) {
+        const byRef = candidates[Number(refMatch[1])] || null;
+        if (byRef && compatible(byRef, field)) target = byRef;
       }
 
       if (!target && isSecret) {
@@ -2574,6 +2607,21 @@ async function verifyFilledFields(fields = []) {
       const rect = el.getBoundingClientRect();
       return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
     };
+    const compatible = (el, field) => {
+      const fieldText = norm([field.label, field.name, field.placeholder, field.type].join(" "));
+      const type = String(el.getAttribute("type") || el.tagName || "").toLowerCase();
+      const elText = norm(textFor(el));
+
+      const wantsDate = /pickupdate|pickup|date/.test(fieldText) || /^\d{4}-\d{2}-\d{2}$/.test(String(field.value || ""));
+      const wantsPhone = /contactnumber|contactno|phone|mobile|telephone|tel/.test(fieldText);
+      const wantsPayment = /payment|method/.test(fieldText);
+
+      if (wantsDate) return type === "date" || /pickupdate|pickup|date/.test(elText);
+      if (wantsPhone) return type === "tel" || /contactnumber|contactno|phone|mobile|telephone|tel/.test(elText);
+      if (wantsPayment) return el.tagName.toLowerCase() === "select" || /payment|method/.test(elText);
+      return true;
+    };
+
     const textFor = (el) => {
       const parts = [];
       const id = el.getAttribute("id");
@@ -2594,28 +2642,38 @@ async function verifyFilledFields(fields = []) {
       if (field.selector) {
         try {
           const selected = document.querySelector(field.selector);
-          if (selected && visible(selected)) target = selected;
+          if (selected && visible(selected) && compatible(selected, field)) target = selected;
         } catch {}
       }
 
-      const refMatch = String(field.ref || "").match(/^lp_input_(\d+)$/i);
-      if (!target && refMatch) {
-        target = candidates[Number(refMatch[1])] || null;
-      }
+      const semanticKeys = [field.label, field.name, field.placeholder]
+        .map(norm)
+        .filter(Boolean);
 
-      if (!target && field.name) {
-        const wantedName = norm(field.name);
+      if (!target) {
         target = candidates.find((el) => {
+          if (!compatible(el, field)) return false;
           const nameKey = norm([el.getAttribute("name") || "", el.getAttribute("id") || ""].join(" "));
-          return wantedName && nameKey && (nameKey === wantedName || nameKey.includes(wantedName) || wantedName.includes(nameKey));
+          return semanticKeys.some((needle) =>
+            needle &&
+            nameKey &&
+            (nameKey === needle || nameKey.includes(needle) || needle.includes(nameKey))
+          );
         }) || null;
       }
 
       if (!target) {
         target = candidates.find((el) => {
+          if (!compatible(el, field)) return false;
           const hay = norm(textFor(el));
-          return wanted.some((needle) => needle && (hay === needle || hay.includes(needle) || needle.includes(hay)));
+          return semanticKeys.some((needle) => needle && (hay === needle || hay.includes(needle) || needle.includes(hay)));
         }) || null;
+      }
+
+      const refMatch = String(field.ref || "").match(/^lp_input_(\d+)$/i);
+      if (!target && refMatch) {
+        const byRef = candidates[Number(refMatch[1])] || null;
+        if (byRef && compatible(byRef, field)) target = byRef;
       }
 
       if (!target && isSecret) target = candidates.find((el) => String(el.getAttribute("type") || "").toLowerCase() === "password");

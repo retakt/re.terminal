@@ -2754,7 +2754,7 @@ function mergeFormFieldTargetsFromTemplate(fields = [], templateCommand = null) 
       ...field,
 
       // Targeting comes from Step Agent / Lightpanda evidence.
-      label: match.label || field.label || field.name || field.field || "",
+      label: field.label || field.name || field.field || match.label || "",
       name: match.name || field.name || "",
       id: match.id || field.id || "",
       placeholder: match.placeholder || field.placeholder || "",
