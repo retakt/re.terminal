@@ -2036,6 +2036,13 @@ async function tryDomClick(command = {}) {
     };
   }`;
 
+  if (envFlag("BROWSER_AGENT_DEBUG_FORM_SCRIPT", false)) {
+    try {
+      const debugPath = path.join(SERVER_ROOT, `debug-form-prepare-${Date.now()}.js`);
+      fs.writeFileSync(debugPath, script, "utf8");
+    } catch {}
+  }
+
   const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], { function: script }).catch((err) => ({
     ok: false,
     error: err instanceof Error ? err.message : String(err),
@@ -2881,28 +2888,28 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
       if (/contactname|fullname|name/.test(key)) {
         return extractAfterPhrase(
           ["contact name", "full name", "name"],
-          [", contact number", ", pickup", ", pick up", ", payment", ". after", ". submit", "\n"]
+          [", contact number", ", pickup", ", pick up", ", payment", ". after", ". submit"]
         );
       }
 
       if (/contactnumber|contactno|phone|mobile|telephone|tel/.test(key) || type === "tel") {
         return extractAfterPhrase(
           ["contact number", "contact no", "phone", "mobile", "telephone"],
-          [", pickup", ", pick up", ", payment", ". after", ". submit", "\n"]
+          [", pickup", ", pick up", ", payment", ". after", ". submit"]
         );
       }
 
       if (/pickupdate|pickup|date/.test(key) || type === "date") {
         return extractAfterPhrase(
           ["pickup date", "pick up date", "date"],
-          [", payment", ", contact", ". after", ". submit", "\n"]
+          [", payment", ", contact", ". after", ". submit"]
         );
       }
 
       if (/payment|method/.test(key)) {
         return extractAfterPhrase(
           ["payment method", "payment"],
-          [". after", ". submit", "\n"]
+          [". after", ". submit"]
         );
       }
 
