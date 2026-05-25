@@ -3196,98 +3196,308 @@ function submitCommandFromPreviousFill(lastFillCommand = null, step = {}, curren
   };
 }
 
-function naturalUserFormValuesFromInstruction(text = "") {
-  const raw = String(text || "");
-  const values = [];
-
-  const push = (semantic, value) => {
-    const clean = String(value || "")
-      .replace(/[,.;]\s*$/g, "")
-      .replace(/\b(and|then|after filling|do not submit|submit button.*)$/i, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (semantic && clean && !values.some((item) => item.semantic === semantic)) {
-      values.push({ semantic, value: clean });
-    }
-  };
-
-  const firstName =
-    raw.match(/\bfirst\s*name\s*(?:is|=|:)?\s*([A-Za-z][A-Za-z' -]{0,80}?)(?=,\s*last|\s+last\s*name|\s+and\s+last|\s+gender|\s+sex|\.|,|$)/i)?.[1] ||
-    raw.match(/\bfirstname\s*(?:is|=|:)?\s*([A-Za-z][A-Za-z' -]{0,80}?)(?=,\s*last|\s+lastname|\s+gender|\s+sex|\.|,|$)/i)?.[1] ||
-    "";
-
-  const lastName =
-    raw.match(/\blast\s*name\s*(?:is|=|:)?\s*([A-Za-z][A-Za-z' -]{0,80}?)(?=,\s*(?:and\s+)?gender|\s+and\s+gender|\s+gender|\s+sex|\.|,|$)/i)?.[1] ||
-    raw.match(/\blastname\s*(?:is|=|:)?\s*([A-Za-z][A-Za-z' -]{0,80}?)(?=,\s*(?:and\s+)?gender|\s+gender|\s+sex|\.|,|$)/i)?.[1] ||
-    "";
-
-  const gender =
-    raw.match(/\b(?:gender|sex)\s*(?:is|=|:)?\s*(male|female)\b/i)?.[1] ||
-    "";
-
-  push("firstName", firstName);
-  push("lastName", lastName);
-  push("gender", gender);
-
-  return values;
+function intentNorm(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function hasNaturalUserFormValues(text = "") {
-  return naturalUserFormValuesFromInstruction(text).length > 0;
+function intentCompact(value = "") {
+  return intentNorm(value).replace(/\s+/g, "");
 }
 
-function registryActionText(action = {}) {
+function escapeRegex(value = "") {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasPhrase(haystack = "", phrase = "") {
+  const hay = intentNorm(haystack);
+  const needle = intentNorm(phrase);
+  if (!needle) return false;
+  return new RegExp(`\\b${escapeRegex(needle).replace(/\\s+/g, "\\\\s+")}\\b`, "i").test(hay);
+}
+
+function splitWords(value = "") {
+  return intentNorm(value).split(/\s+/).filter(Boolean);
+}
+
+function actionRegistryText(action = {}) {
   return [
     action.actionId,
     action.label,
     action.name,
     action.id,
     action.type,
+    action.tag,
     action.value,
     action.selector,
-  ].map((value) => String(value || "").toLowerCase()).join(" ");
+    ...(Array.isArray(action.options) ? action.options.flatMap((option) => [option.value, option.text]) : []),
+  ].map((value) => String(value || "")).join(" ");
 }
 
-function findNaturalRegistryFieldAction(value = {}, actionRegistry = null) {
+function actionAliases(action = {}) {
+  const raw = [
+    action.label,
+    action.name,
+    action.id,
+    String(action.actionId || "").replace(/^field_/, ""),
+  ].map((value) => String(value || "")).filter(Boolean);
+
+  const aliases = new Set();
+
+  for (const item of raw) {
+    const normal = intentNorm(item);
+    const compact = intentCompact(item);
+
+    if (normal) aliases.add(normal);
+    if (compact && compact !== normal) aliases.add(compact);
+
+    // Split actionIds/ids like selenium_commands or contactNumber into useful label variants.
+    const spaced = String(item || "")
+      .replace(/^field_/, "")
+      .replace(/[_-]+/g, " ")
+      .replace(/([a-z])([A-Z])/g, "$1 $2");
+    if (intentNorm(spaced)) aliases.add(intentNorm(spaced));
+  }
+
+  const compactAll = [...aliases].map(intentCompact).join(" ");
+
+  // Generic common field-language, not website-specific.
+  if (/firstname|first/.test(compactAll)) aliases.add("first name");
+  if (/lastname|surname|familyname|last/.test(compactAll)) aliases.add("last name");
+  if (/fullname|contactname|\bname\b/.test(compactAll)) aliases.add("full name");
+  if (/sex|gender/.test(compactAll)) aliases.add("gender");
+  if (/\bexp\b|experience/.test(compactAll)) {
+    aliases.add("experience");
+    aliases.add("years of experience");
+  }
+
+  return [...aliases].filter(Boolean);
+}
+
+function extractValueAfterAliases(rawText = "", aliases = []) {
+  const raw = String(rawText || "");
+
+  for (const alias of aliases) {
+    const words = splitWords(alias);
+    if (!words.length) continue;
+
+    const aliasPattern = words.map(escapeRegex).join("\\s+");
+
+    const patterns = [
+      // first name field with Riley
+      new RegExp(`\\b${aliasPattern}\\b\\s+(?:field|input|textbox|text\\s+box|text\\s+field|control)\\s*(?:is|=|:|as|to|with)\\s+([^,.;\\n]+)`, "i"),
+      // first name with Riley / first name is Riley / first name = Riley
+      new RegExp(`\\b${aliasPattern}\\b\\s*(?:is|=|:|as|to|with)\\s+([^,.;\\n]+)`, "i"),
+      // first name Riley
+      new RegExp(`\\b${aliasPattern}\\b\\s+([^,.;\\n]+)`, "i"),
+    ];
+
+    for (const re of patterns) {
+      const match = raw.match(re);
+      if (!match?.[1]) continue;
+
+      let value = String(match[1] || "")
+        .replace(/\b(and|then|after filling|do not submit|submit button.*)$/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      value = value.replace(/^(field|input|textbox|text box|text field|control)\s+/i, "").trim();
+
+      if (!value) continue;
+      if (/^(field|input|textbox|text box|text field|control)$/i.test(value)) continue;
+
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function extractPersonName(rawText = "") {
+  const raw = String(rawText || "");
+
+  return (
+    raw.match(/\b(?:person|candidate|applicant|user|customer)\s+(?:is|=|:)?\s*([A-Z][A-Za-z' -]+?\s+[A-Z][A-Za-z' -]+?)(?=,|\s+(?:male|female|who|works|uses|\d{1,3}\s*years)|\.|$)/i)?.[1] ||
+    raw.match(/\bname\s*(?:is|=|:)?\s*([A-Z][A-Za-z' -]+?\s+[A-Z][A-Za-z' -]+?)(?=,|\s+(?:male|female|who|works|uses|\d{1,3}\s*years)|\.|$)/i)?.[1] ||
+    ""
+  ).replace(/\s+/g, " ").trim();
+}
+
+function primitiveValueForAction(action = {}, rawText = "") {
+  const type = String(action.type || "").toLowerCase();
+  const identity = intentCompact(actionRegistryText(action));
+  const aliases = actionAliases(action);
+  const direct = extractValueAfterAliases(rawText, aliases);
+
+  if (direct) return direct;
+
+  if (type === "email" || /email/.test(identity)) {
+    return String(rawText).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
+  }
+
+  if (type === "url" || /website|url/.test(identity)) {
+    return String(rawText).match(/https?:\/\/[^\s,.;]+/i)?.[0] || "";
+  }
+
+  if (type === "tel" || /phone|mobile|telephone|contactnumber|contactno/.test(identity)) {
+    return String(rawText).match(/\b(?:\+?\d[\d\s().-]{6,}\d)\b/)?.[0]?.replace(/\s+/g, " ").trim() || "";
+  }
+
+  if (type === "date" || /date|dob|birthdate|pickup/.test(identity)) {
+    return String(rawText).match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0] || "";
+  }
+
+  if (type === "color" || /color|colour/.test(identity)) {
+    return String(rawText).match(/#[0-9a-f]{6}\b/i)?.[0] || "";
+  }
+
+  const personName = extractPersonName(rawText);
+  if (personName) {
+    const parts = personName.split(/\s+/).filter(Boolean);
+
+    if (/firstname|givenname|first/.test(identity)) return parts[0] || "";
+    if (/lastname|surname|familyname|last/.test(identity)) return parts.slice(1).join(" ") || "";
+    if (/fullname|contactname|\bname\b/.test(identity)) return personName;
+  }
+
+  return "";
+}
+
+function optionLooksPlaceholder(option = {}) {
+  const text = String(option.text || option.value || "").trim();
+  return !String(option.value || "").trim() ||
+    /^(choose|select|open this|open this select menu|select an option|please select)$/i.test(text);
+}
+
+function optionLabel(option = {}) {
+  return String(option.text || option.value || "").replace(/\s+/g, " ").trim();
+}
+
+function choiceValueForAction(action = {}, rawText = "") {
+  const type = String(action.type || "").toLowerCase();
+  const tag = String(action.tag || "").toLowerCase();
+
+  const choices = tag === "select"
+    ? (Array.isArray(action.options) ? action.options.filter((option) => !option.disabled && !optionLooksPlaceholder(option)) : [])
+    : [{ value: action.value, text: action.label, disabled: action.disabled }];
+
+  const identity = actionRegistryText(action);
+  const aliases = actionAliases(action);
+
+  const contextualValue = extractValueAfterAliases(rawText, aliases);
+  const hay = intentNorm(rawText);
+
+  const scored = choices
+    .map((option) => {
+      const label = optionLabel(option);
+      const value = String(option.value || label || "").trim();
+      if (!label && !value) return null;
+
+      const optionPhrases = [...new Set([label, value].map(intentNorm).filter(Boolean))];
+      const mentioned = optionPhrases.some((phrase) => hasPhrase(rawText, phrase));
+      const matchesContextualValue = contextualValue &&
+        optionPhrases.some((phrase) =>
+          phrase === intentNorm(contextualValue) ||
+          phrase.includes(intentNorm(contextualValue)) ||
+          intentNorm(contextualValue).includes(phrase)
+        );
+
+      if (!mentioned && !matchesContextualValue) return null;
+
+      let score = 0;
+      if (matchesContextualValue) score += 100;
+      if (mentioned) score += 40;
+
+      // Numeric radio/select options are dangerous unless the field context is present.
+      const numericOnly = /^\d+$/.test(intentNorm(value));
+      const fieldContextPresent = aliases.some((alias) => hasPhrase(rawText, alias));
+      if (numericOnly && !fieldContextPresent) return null;
+
+      if (fieldContextPresent) score += 40;
+
+      // For checkbox/radio, exact visible option mention is usually enough.
+      if (type === "checkbox" || type === "radio") score += 20;
+      if (tag === "select") score += 15;
+
+      return { option, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  return best ? String(best.option.value || best.option.text || "") : "";
+}
+
+function valueForRegistryActionFromUser(action = {}, rawText = "") {
+  const tag = String(action.tag || "").toLowerCase();
+  const type = String(action.type || "").toLowerCase();
+
+  if (["hidden", "file", "submit", "button", "reset"].includes(type)) return "";
+
+  if (tag === "select" || type === "radio" || type === "checkbox") {
+    return choiceValueForAction(action, rawText);
+  }
+
+  return primitiveValueForAction(action, rawText);
+}
+
+function actionExplicitlyMentionedInText(action = {}, rawText = "") {
+  const aliases = actionAliases(action);
+  return aliases.some((alias) => {
+    const words = splitWords(alias);
+    if (!words.length) return false;
+    const aliasPattern = words.map(escapeRegex).join("\\s+");
+    return new RegExp(`\\b${aliasPattern}\\b`, "i").test(intentNorm(rawText));
+  });
+}
+
+function resolveUserValuesAgainstActionRegistry(instruction = "", actionRegistry = null) {
   const actions = Array.isArray(actionRegistry?.actions) ? actionRegistry.actions : [];
   const fields = actions.filter((action) => String(action?.kind || "") === "field");
+  const out = [];
+  const seen = new Set();
 
-  if (value.semantic === "firstName") {
-    return fields.find((action) => {
-      const text = registryActionText(action);
-      return /\b(first\s*name|firstname)\b/.test(text) ||
-        String(action.name || "").toLowerCase() === "firstname" ||
-        String(action.actionId || "").toLowerCase() === "field_firstname";
-    }) || null;
+  const explicitlyMentioned = new Set(
+    fields
+      .filter((action) => actionExplicitlyMentionedInText(action, instruction))
+      .map((action) => String(action.actionId || "").trim())
+      .filter(Boolean)
+  );
+
+  const onlyMentionedMode = /\bonly\b/i.test(instruction) && explicitlyMentioned.size > 0;
+
+  for (const action of fields) {
+    const actionId = String(action.actionId || "").trim();
+    if (!actionId || seen.has(actionId)) continue;
+    if (onlyMentionedMode && !explicitlyMentioned.has(actionId)) continue;
+
+    const value = valueForRegistryActionFromUser(action, instruction);
+    if (!String(value || "").trim()) continue;
+    seen.add(actionId);
+
+    out.push({
+      actionId,
+      label: action.label || action.name || action.id || actionId,
+      name: action.name || "",
+      id: action.id || "",
+      selector: action.selector || "",
+      type: action.type || "",
+      value: String(value || "").trim(),
+      secret: String(action.type || "").toLowerCase() === "password",
+    });
   }
 
-  if (value.semantic === "lastName") {
-    return fields.find((action) => {
-      const text = registryActionText(action);
-      return /\b(last\s*name|lastname)\b/.test(text) ||
-        String(action.name || "").toLowerCase() === "lastname" ||
-        String(action.actionId || "").toLowerCase() === "field_lastname";
-    }) || null;
-  }
+  return out;
+}
 
-  if (value.semantic === "gender") {
-    const wanted = String(value.value || "").toLowerCase();
-    return fields.find((action) => {
-      const text = registryActionText(action);
-      const isGenderGroup =
-        String(action.name || "").toLowerCase() === "sex" ||
-        /\b(gender|sex)\b/.test(text);
-
-      const isWanted =
-        String(action.value || "").toLowerCase() === wanted ||
-        new RegExp(`\\b${wanted}\\b`, "i").test(String(action.label || ""));
-
-      return isGenderGroup && isWanted;
-    }) || null;
-  }
-
-  return null;
+function hasNaturalUserFormValues(text = "") {
+  return /\b(fill|use|with|person|candidate|applicant|customer|name|email|phone|mobile|date|select|choose|pick|works as|uses|male|female)\b/i
+    .test(String(text || ""));
 }
 
 function syntheticStepPlanFromNaturalRegistryFormFields({
@@ -3303,44 +3513,15 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
     step.successCriteria,
   ].map((value) => String(value || "")).join(" ");
 
-  if (!/\b(fill|enter|type|input|form)\b/i.test(text)) return null;
+  if (!/\b(fill|enter|type|input|form|select|choose|pick|use)\b/i.test(text)) return null;
   if (!actionRegistry?.ok || !Array.isArray(actionRegistry.actions)) return null;
 
-  const requested = naturalUserFormValuesFromInstruction(text);
-  if (!requested.length) return null;
-
-  const fields = [];
-  const missing = [];
-
-  for (const item of requested) {
-    const action = findNaturalRegistryFieldAction(item, actionRegistry);
-
-    if (!action) {
-      missing.push(item.semantic);
-      continue;
-    }
-
-    fields.push({
-      actionId: action.actionId,
-      label:
-        item.semantic === "firstName" ? "First name" :
-        item.semantic === "lastName" ? "Last name" :
-        item.semantic === "gender" ? "Gender" :
-        action.label || action.name || action.actionId,
-      name: action.name || "",
-      id: action.id || "",
-      selector: action.selector || "",
-      type: action.type || "",
-      value: item.value,
-      secret: false,
-    });
-  }
-
-  if (!fields.length || missing.length) return null;
+  const fields = resolveUserValuesAgainstActionRegistry(text, actionRegistry);
+  if (!fields.length) return null;
 
   return {
     status: "ready",
-    syntheticSource: "natural_playwright_registry_fields",
+    syntheticSource: "generic_playwright_registry_intent_resolver",
     command: {
       intent: "fill_form",
       tool: "browserFillFields",
@@ -3349,14 +3530,15 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
         fields,
         skipGenericFormPreparedValues: true,
       },
-      notes: "Deterministic fill built from natural user field values and Playwright action registry. No default values were added.",
+      notes: "Generic deterministic fill built by matching the user's instruction against all Playwright action registry fields/options. No website-specific rules or default values were used.",
     },
-    reason: "User supplied natural field values; mapped them to Playwright registry actions without using Lightpanda refs or defaults.",
-    messageToChecker: "Approve natural Playwright registry field fill. Do not submit. Do not add default values.",
+    reason: "Mapped user-provided values to executable Playwright registry actions generically.",
+    messageToChecker: "Approve generic Playwright registry field fill. Do not submit. Do not add values.",
     messageToUser: "",
-    confidence: 0.97,
+    confidence: 0.94,
   };
 }
+
 
 function explicitPlaywrightRegistryFieldAssignments(text = "", actionRegistry = null, { stepText = "" } = {}) {
   const actions = Array.isArray(actionRegistry?.actions) ? actionRegistry.actions : [];
