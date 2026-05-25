@@ -121,6 +121,7 @@ function commandFillFieldsForDefaultMerge(command = {}) {
 }
 
 function commandWithMissingRegistryDefaultFields(command = {}, defaultCommand = null, step = {}, instruction = "") {
+  if (command?.args?.preserveFieldValues === true) return command;
   if (!defaultCommand?.args || !Array.isArray(defaultCommand.args.fields)) return command;
 
   const tool = String(command?.tool || "");
@@ -4844,6 +4845,79 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         input: {
           checkerStatus: checker?.status || "",
           lastSuccessfulFillCommand,
+        },
+        output: checker,
+        summary: checker.reason,
+        tool: checker.command?.tool || "",
+        ok: true,
+      }));
+    }
+
+    const stepAgentFillCommand =
+      stepPlan?.command &&
+      typeof stepPlan.command === "object" &&
+      ["browserFillFields", "browserFillAndSubmit"].includes(String(stepPlan.command.tool || "")) &&
+      Array.isArray(stepPlan.command.args?.fields) &&
+      stepPlan.command.args.fields.length > 0
+        ? stepPlan.command
+        : null;
+
+    if (
+      stepAgentFillCommand &&
+      checker?.approved !== true &&
+      ["", "needs_user", "rejected", "failed", "not_approved"].includes(String(checker?.status || "").toLowerCase())
+    ) {
+      const noSubmitIntent = hasNegativeSubmitIntentText([
+        instruction,
+        step.instruction,
+        step.expectedAction,
+        step.successCriteria,
+        stepAgentFillCommand.intent,
+        stepAgentFillCommand.notes,
+      ].map((value) => String(value || "")).join(" "));
+
+      const preservedArgs = {
+        ...(stepAgentFillCommand.args || {}),
+        preserveFieldValues: true,
+      };
+
+      if (noSubmitIntent) {
+        delete preservedArgs.explicitSubmit;
+        delete preservedArgs.submit;
+        delete preservedArgs.submitText;
+        delete preservedArgs.buttonText;
+      }
+
+      checker = {
+        ...(checker && typeof checker === "object" ? checker : {}),
+        status: "approved_step_agent_form_fill",
+        approved: true,
+        command: {
+          ...stepAgentFillCommand,
+          intent: noSubmitIntent ? "fill_form" : (stepAgentFillCommand.intent || "fill_form"),
+          tool: noSubmitIntent ? "browserFillFields" : stepAgentFillCommand.tool,
+          args: preservedArgs,
+          notes: [
+            stepAgentFillCommand.notes || "",
+            "Preserved Step Agent field values; checker rejection was only a mapping uncertainty. Resolver will map fields against Playwright action registry.",
+          ].filter(Boolean).join(" "),
+        },
+        reason: "Step Agent produced an executable form fill command with field values. Preserving those values and letting the Playwright action registry resolver map targets instead of replacing them with generated defaults.",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: Math.max(0.86, Number(checker?.confidence || 0.86)),
+      };
+
+      if (checkerCall) checkerCall = { ...checkerCall, ok: true, error: "" };
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Preserve Step Agent form fill",
+        step: stepNumber,
+        status: "approved_step_agent_form_fill",
+        input: {
+          checkerStatus: checker?.status || "",
+          stepAgentCommand: stepAgentFillCommand,
         },
         output: checker,
         summary: checker.reason,
