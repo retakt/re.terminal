@@ -19,6 +19,14 @@ Rules:
   2. click Y
   3. verify/report final result
 - Add a separate observe/verify step only when it improves correctness.
+- FORM ASSIST MODE:
+  - If the user gives a form/page URL plus partial user details, and does not explicitly say "fill now", "go ahead and fill", or "submit", do NOT fill yet.
+  - Instead create steps:
+    1. navigate/open the page
+    2. inspect/map the form fields and compare them with the user's provided details
+    3. report a suggested fill plan: confidently fillable fields, missing fields, required/optional fields if visible, and questions for the user
+  - Treat words like "help me fill", "can you fill", "assist with this form", or "what can be filled" as inspect-and-suggest first unless the user clearly asks to fill immediately.
+  - Never submit in form assist mode.
 - Use status "ready" when the instruction is executable.
 - Use status "needs_user" only when required information is missing, such as a missing URL, target, credential, OTP, or ambiguous destructive action.
 - Do not mark needs_user just because browser execution is still required.

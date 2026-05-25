@@ -4652,6 +4652,29 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         tool: checker.command?.tool || stepPlan.command?.tool || "",
         ok: true,
       }));
+    } else if (!envFlag("BROWSER_AGENT_CHECKER_ENABLED", true)) {
+      checker = syntheticApprovedChecker({
+        ...stepPlan,
+        reason: "Checker disabled by BROWSER_AGENT_CHECKER_ENABLED=false. Approved Step Agent command directly.",
+      });
+
+      checkerCall = {
+        ok: true,
+        error: "",
+        call: { data: checker },
+      };
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Checker disabled",
+        step: stepNumber,
+        status: "checker_disabled_auto_approved",
+        input: stepPlan,
+        output: checker,
+        summary: checker.reason,
+        tool: checker.command?.tool || stepPlan.command?.tool || "",
+        ok: true,
+      }));
     } else {
       checkerCall = await safeRole("gemma_checker", () => runCheckerAgent({
         schemaName: "gemma_checker",
@@ -5976,7 +5999,14 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     final = finalCall.call?.data || {
       success: passedAllSteps,
-      summary: finalBrowserAgentUserSummary({ passedAllSteps, stoppedReason, finalObservation, lastStep: stepResults.at(-1) }),
+      summary: finalBrowserAgentUserSummary({
+        passedAllSteps,
+        stoppedReason,
+        finalObservation,
+        lastStep: stepResults.at(-1),
+        originalInstruction: instruction,
+        stepResults,
+      }),
       needsUser: Boolean(stoppedReason),
       nextSafeAction: stoppedReason || "Continue with the next browser instruction.",
       missingSteps: [],
@@ -5986,12 +6016,57 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     const lastStep = stepResults.at(-1) || {};
     final = {
       success: passedAllSteps,
-      summary: finalBrowserAgentUserSummary({ passedAllSteps, stoppedReason, finalObservation, lastStep }),
+      summary: finalBrowserAgentUserSummary({
+        passedAllSteps,
+        stoppedReason,
+        finalObservation,
+        lastStep,
+        originalInstruction: instruction,
+        stepResults,
+      }),
       needsUser: Boolean(stoppedReason) || !passedAllSteps,
       nextSafeAction: stoppedReason || "Continue with the next browser instruction.",
       missingSteps: passedAllSteps ? [] : steps.slice(stepResults.length).map((step) => step.instruction),
       reason: stoppedReason || "",
     };
+  }
+
+  const deterministicFormAssistSummary = finalBrowserAgentUserSummary({
+    passedAllSteps,
+    stoppedReason: "",
+    finalObservation,
+    lastStep: stepResults.at(-1) || {},
+    originalInstruction: instruction,
+    stepResults,
+  });
+
+  if (
+    passedAllSteps &&
+    deterministicFormAssistSummary &&
+    !/^Done\. Final page:/i.test(deterministicFormAssistSummary)
+  ) {
+    final = {
+      ...final,
+      success: true,
+      summary: deterministicFormAssistSummary,
+      browserSummary: deterministicFormAssistSummary,
+      needsUser: true,
+      nextSafeAction: "Ask the user for the missing form details, or wait for confirmation before filling.",
+      reason: "Used deterministic form-assist summary because the final verifier returned a generic page summary.",
+    };
+
+    trace.push(traceEntry({
+      role: "pipeline_supervisor",
+      title: "Form assist final summary override",
+      status: "overrode_generic_final_summary",
+      input: {
+        originalFinalSummary: final?.summary || "",
+        finalObservation,
+      },
+      output: final,
+      summary: deterministicFormAssistSummary,
+      ok: true,
+    }));
   }
 
   if (!passedAllSteps && final?.success === true) {
@@ -6015,6 +6090,8 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         stoppedReason: "",
         finalObservation,
         lastStep,
+        originalInstruction: instruction,
+        stepResults,
       }),
       missingSteps: [],
       reason: "",

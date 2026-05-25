@@ -32,6 +32,45 @@ function shouldSkipRegistryFillAction(action = {}) {
   return false;
 }
 
+const LIGHTPANDA_REF_RE = /^lp_(input|button|link|form)_\d+$/i;
+
+function isLightpandaRef(value = "") {
+  return LIGHTPANDA_REF_RE.test(String(value || "").trim());
+}
+
+function fieldContainsLightpandaRef(field = {}) {
+  return [field.ref, field.actionId, field.target, field.id].some(isLightpandaRef);
+}
+
+function stripLightpandaIdentity(field = {}) {
+  const clean = { ...field };
+  for (const key of ["ref", "actionId", "target", "id"]) {
+    if (isLightpandaRef(clean[key])) clean[key] = "";
+  }
+  return clean;
+}
+
+function compactFieldForWarning(field = {}) {
+  return {
+    ref: field.ref || "",
+    actionId: field.actionId || "",
+    label: field.label || field.name || field.field || "",
+    selector: field.selector || "",
+    type: field.type || "",
+    valuePreview: safeText(field.value || "", 120),
+  };
+}
+
+function compactActionForWarning(action = {}) {
+  return {
+    actionId: action.actionId || "",
+    label: action.label || "",
+    selector: action.selector || "",
+    type: action.type || "",
+    tag: action.tag || "",
+  };
+}
+
 function looseFieldLooksUnsupported(field = {}) {
   const text = [
     field.actionId,
@@ -277,25 +316,40 @@ export function withActionRegistryFieldTargets(command = {}, registry = {}) {
   const fields = fieldsFromArgs(args);
   if (!fields.length) return command;
 
+  const resolutionWarnings = [];
+
   const resolvedFields = fields.map((field) => {
-    const match = findRegistryField(field, registry);
+    const hadLightpandaRef = fieldContainsLightpandaRef(field);
+    const registryOnlyField = stripLightpandaIdentity(field);
+    const match = findRegistryField(registryOnlyField, registry);
 
     if (match && shouldSkipRegistryFillAction(match)) {
+      resolutionWarnings.push({
+        code: "playwright_registry_target_unsupported",
+        severity: "blocked",
+        reason: "Matched Playwright registry target is disabled, readonly, or not fillable by the current text-fill tool.",
+        field: compactFieldForWarning(field),
+        matchedAction: compactActionForWarning(match),
+      });
       return null;
     }
 
     if (!match) {
-      if (looseFieldLooksUnsupported(field)) return null;
-
-      return {
-        ...field,
-        value: cleanFieldValue(field.value ?? ""),
-      };
+      resolutionWarnings.push({
+        code: hadLightpandaRef ? "lightpanda_ref_not_executable" : "no_playwright_registry_match",
+        severity: "blocked",
+        reason: hadLightpandaRef
+          ? "Lightpanda refs are observe-only. Playwright execution requires a Playwright action registry actionId or selector."
+          : "No matching Playwright registry field was found, so the field was not executed.",
+        field: compactFieldForWarning(field),
+        hint: "Use Lightpanda only for observation. Use Playwright registry actions for execution.",
+      });
+      return null;
     }
 
     return {
-      ...field,
-      actionId: match.actionId || field.actionId || "",
+      ...registryOnlyField,
+      actionId: match.actionId || registryOnlyField.actionId || "",
       label: field.label || match.label || field.name || field.field || "",
       value: normalizeValueForAction(field, match),
       selector: match.selector || field.selector || "",
@@ -312,10 +366,21 @@ export function withActionRegistryFieldTargets(command = {}, registry = {}) {
     args: {
       ...args,
       fields: resolvedFields,
+      registryResolution: {
+        ok: resolutionWarnings.length === 0,
+        resolvedCount: resolvedFields.length,
+        rejectedCount: resolutionWarnings.length,
+        warnings: resolutionWarnings,
+      },
     },
     notes: [
       command.notes || "",
       "Resolved form fields against Playwright action registry before execution.",
+      resolutionWarnings.length
+        ? `Registry resolver blocked ${resolutionWarnings.length} field(s): ${
+            resolutionWarnings.map((warning) => warning.code).join(", ")
+          }.`
+        : "",
     ].filter(Boolean).join(" "),
   };
 }
