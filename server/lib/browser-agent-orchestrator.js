@@ -4373,11 +4373,71 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       continue;
     }
 
-    if (hasNegativeSubmitIntentText([
+    const passiveConstraintText = [
       step.instruction,
       step.expectedAction,
       step.successCriteria,
-    ].join(" "))) {
+    ].map((value) => String(value || "")).join(" ");
+
+    const passiveExpectedAction = String(step.expectedAction || "").toLowerCase();
+    const passiveInstruction = String(step.instruction || "");
+
+    const startsWithPositiveMutation =
+      /^\s*(fill|select|choose|pick|check|type|enter|input|set|click|press|tap|submit|register|send|save)\b/i.test(passiveInstruction);
+
+    const isPassiveConstraintStep =
+      ["no_action", "observe", "verify", "report", "confirm", "none"].includes(passiveExpectedAction) &&
+      !startsWithPositiveMutation &&
+      /\b(?:do\s+not\s+fill|not\s+clearly\s+requested|do\s+not\s+submit|no\s+submit|submit\s+button\s+was\s+not\s+clicked|not\s+clicked|confirm\s+no\s+submit)\b/i.test(passiveConstraintText);
+
+    if (isPassiveConstraintStep) {
+      const summary = /submit|clicked/i.test(passiveConstraintText)
+        ? "Passive constraint satisfied. Submit button was not clicked."
+        : "Passive constraint satisfied. No unrequested fields were filled.";
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Passive constraint guard",
+        step: stepNumber,
+        status: "passed_passive_constraint",
+        input: step,
+        output: { noMutation: true, submitClicked: false },
+        summary,
+        tool: "browserObserve",
+        ok: true,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: true,
+        repaired: false,
+        status: "passed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "passive_constraint",
+          tool: "browserObserve",
+          args: {
+            currentUrl,
+            noMutation: true,
+            submitClicked: false,
+            reportOnly: true,
+          },
+          notes: "Passive constraint step; no browser mutation was required or executed.",
+        },
+      });
+
+      continue;
+    }
+
+    const isPureNoSubmitGuardStep =
+      hasNegativeSubmitIntentText(passiveConstraintText) &&
+      !startsWithPositiveMutation &&
+      !["fill", "select", "choose", "check", "type", "input", "enter", "click", "submit"].includes(passiveExpectedAction);
+
+    if (isPureNoSubmitGuardStep) {
       const summary = "No-submit instruction satisfied. Submit button was not clicked.";
 
       trace.push(traceEntry({
@@ -4388,7 +4448,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         input: step,
         output: { submitClicked: false },
         summary,
-        tool: "browserFillFields",
+        tool: "browserObserve",
         ok: true,
       }));
 
@@ -4403,7 +4463,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         title: currentTitle,
         command: {
           intent: "no_submit_guard",
-          tool: "browserFillFields",
+          tool: "browserObserve",
           args: {
             currentUrl,
             submitClicked: false,
