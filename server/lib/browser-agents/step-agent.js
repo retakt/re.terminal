@@ -1,8 +1,46 @@
 import { callBrowserAgentRoleJson } from "../browser-llm-runtime.js";
 import { browserAgentStage, browserAgentSystemPrompt } from "./profiles.js";
 
+function currentDateContextForAgent() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function stepAgentSystemPrompt() {
+  const currentDate = currentDateContextForAgent();
+
   const base = `You are a Browser Step Agent.
+
+Runtime date:
+- Today is ${currentDate}.
+- Use this date only for interpreting relative user-provided values.
+- Never invent missing form values.
+
+Global form-value mapping rules:
+- Playwright actionRegistry is the complete executable map of page controls.
+- For every fill request, match the user's provided values against all actionRegistry fields/options generically.
+- Do not use website-specific field rules.
+- Do not fill any field unless the value comes from the user instruction or a safe deterministic transformation of a user-provided value.
+- If the user provides age like "23 years old":
+  - Prefer an explicit age/years-old field if one exists.
+  - If a field clearly means date of birth / birth date / DOB, convert age to an estimated yyyy-mm-dd birthdate using today's month/day.
+  - Example: if today is ${currentDate} and age is 23, estimated DOB is ${new Date().getFullYear() - 23}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}.
+  - Do NOT put age into years-of-experience unless the user explicitly says it is work experience.
+  - Do NOT put age into a generic date/date-picker field unless the user or field label clearly says date of birth.
+- For radio/checkbox/select controls:
+  - Match user text to visible option text/value.
+  - If no option matches, leave it unfilled and report it.
+- For dropdowns:
+  - Do not choose the first option as fallback.
+  - Choose only a matching option from actionRegistry.options.
+- For file inputs:
+  - Skip unless the user provided a file.
+- For submit buttons:
+  - Never submit when the user says do not submit.
 
 You receive exactly one browser step from the orchestrator.
 You inspect the provided actionRegistry first for anything that requires a real browser action.

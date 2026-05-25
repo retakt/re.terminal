@@ -290,13 +290,9 @@ function normalizeValueForAction(field = {}, action = {}) {
       );
   });
 
-  const fallback = usableOptions[0] || options.find((option) => !option.disabled) || null;
-
   return String(
     match?.value ||
     match?.text ||
-    fallback?.value ||
-    fallback?.text ||
     value ||
     ""
   );

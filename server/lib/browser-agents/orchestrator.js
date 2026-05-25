@@ -1,8 +1,32 @@
 import { callBrowserAgentRoleJson } from "../browser-llm-runtime.js";
 import { browserAgentStage, browserAgentSystemPrompt } from "./profiles.js";
 
+function currentDateContextForAgent() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function orchestratorSystemPrompt() {
+  const currentDate = currentDateContextForAgent();
+
   const base = `You are the Main Browser Orchestrator.
+
+Runtime date:
+- Today is ${currentDate}.
+- Preserve this date context in form-filling steps when the user gives relative values like age, today, tomorrow, next week, or years old.
+- Do not invent missing form values.
+
+Global form planning rules:
+- Do not create website-specific field plans.
+- For fill requests, keep all user-provided details in the fill step so the Step Agent can map them against Playwright actionRegistry.
+- If the user provides age like "23 years old", preserve that exact detail in the fill step.
+- Do not convert age to years-of-experience unless the user explicitly says work experience.
+- Do not convert age to a generic date field unless the user or field label clearly means date of birth / DOB.
+- If the user says do not submit, every fill/report step must preserve do-not-submit.
 
 You read the user's full browser instruction and break it into ordered browser intents.
 You do not execute browser actions.
