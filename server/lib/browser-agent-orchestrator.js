@@ -2209,22 +2209,13 @@ function browserAgentHostFromUrl(value = "") {
 
 function browserAgentLooksLikeAdOrParkingRedirect(value = "") {
   const raw = String(value || "");
-  const host = browserAgentHostFromUrl(raw);
 
-  if (host && [
-    "dot-news.org",
-    "godaddy.com",
-    "parkingcrew.net",
-    "sedoparking.com",
-    "bodis.com",
-    "hugedomains.com",
-  ].some((blocked) => host === blocked || host.endsWith("." + blocked))) {
-    return true;
-  }
-
-  return /[?&](?:psystem|domain|oref)=/i.test(raw) ||
-    /\b(access denied|parked free|parked domain|expired domain|domain parking|this domain is parked)\b/i.test(raw);
+  // Generic parked/ad/access-denied redirect hints.
+  // Do NOT hardcode every ad domain; host mismatch is handled separately.
+  return /[?&](?:psystem|oref|trafficTarget)=/i.test(raw) ||
+    /\b(access denied|parked free|parked domain|expired domain|domain parking|this domain is parked|domain for sale|buy this domain)\b/i.test(raw);
 }
+
 
 function browserAgentNavigationRedirectBlocked({ requestedUrl = "", observedUrl = "", observedText = "" } = {}) {
   const requestedHost = browserAgentHostFromUrl(requestedUrl);
@@ -6023,6 +6014,56 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       beforeObservation: observationFromPageState(beforeState),
       skipBeforeSnapshot: !captureBeforeSnapshot && beforeState?.ok === true,
     });
+
+    const executionObservationForRedirect = observationFromExecution(execution);
+    const redirectAfterPlaywrightExecution = String(executionCommand?.tool || "") === "browserNavigate"
+      ? browserAgentNavigationRedirectBlocked({
+          requestedUrl: executionCommand?.args?.url || stepTargetUrl || "",
+          observedUrl: executionObservationForRedirect?.url || "",
+          observedText: [
+            executionObservationForRedirect?.title,
+            executionObservationForRedirect?.textPreview,
+            executionObservationForRedirect?.text,
+            execution?.actionResult?.text,
+            execution?.error,
+          ].map((value) => String(value || "")).join(" "),
+        })
+      : { blocked: false, reason: "" };
+
+    if (redirectAfterPlaywrightExecution.blocked) {
+      stoppedReason = redirectAfterPlaywrightExecution.reason;
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Post-Playwright redirect guard",
+        step: stepNumber,
+        status: "blocked_redirect",
+        input: {
+          command: executionCommand,
+          requestedUrl: executionCommand?.args?.url || stepTargetUrl || "",
+          observedUrl: executionObservationForRedirect?.url || "",
+          observedTitle: executionObservationForRedirect?.title || "",
+        },
+        output: redirectAfterPlaywrightExecution,
+        summary: redirectAfterPlaywrightExecution.reason,
+        tool: executionCommand.tool || "",
+        ok: false,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: false,
+        repaired: false,
+        status: "blocked_redirect",
+        summary: redirectAfterPlaywrightExecution.reason,
+        url: executionObservationForRedirect?.url || currentUrl,
+        title: executionObservationForRedirect?.title || currentTitle,
+        command: executionCommand,
+      });
+
+      break;
+    }
 
     if (
       envFlag("BROWSER_AGENT_FORCE_AFTER_SCREENSHOT", true) &&
