@@ -2876,29 +2876,35 @@ function explicitFormValuesFromInstructionV1(instruction = "") {
   const contactName = extractExplicitAfterPhraseV1(
     source,
     ["contact name", "full name", "name"],
-    [", contact number", ", pickup", ", pick up", ", payment", ". after", ". submit", "\n"]
+    ["contact number", "contact no", "phone", "mobile", "telephone", "pickup date", "pick-up date", "pick up date", "pickupdate", "payment method", "payment", "after filling", "do not submit", "\n"]
   );
   if (contactName) values.push({ label: "ContactName", value: contactName, secret: false });
 
   const contactNumber = extractExplicitAfterPhraseV1(
     source,
     ["contact number", "contact no", "phone", "mobile", "telephone"],
-    [", pickup", ", pick up", ", payment", ". after", ". submit", "\n"]
+    ["pickup date", "pick-up date", "pick up date", "pickupdate", "payment method", "payment", "after filling", "do not submit", "\n"]
   );
   if (contactNumber) values.push({ label: "contactnumber", value: contactNumber, secret: false });
 
   const pickupDate = extractExplicitAfterPhraseV1(
     source,
-    ["pickup date", "pick up date", "pickupdate"],
-    [", payment", ", contact", ". after", ". submit", "\n"]
+    ["pickup date", "pick-up date", "pick up date", "pickupdate"],
+    ["payment method", "payment", "contact name", "contact number", "after filling", "do not submit", "\n"]
   );
   if (pickupDate) values.push({ label: "pickupdate", value: pickupDate, secret: false, type: "date" });
 
-  const payment = extractExplicitAfterPhraseV1(
-    source,
-    ["payment method", "payment"],
-    [", but", ", do not", ". after", ". submit", "\n"]
-  );
+  const paymentSelectMatch = source.match(/\bselect\s+(.+?)\s+as\s+(?:the\s+)?payment\s+method(?:\s+if\s+(?:visible|available|present))?(?=\.|,|;|\n|$)/i);
+
+  const payment = cleanExplicitFormValueV1(
+    paymentSelectMatch?.[1] ||
+    extractExplicitAfterPhraseV1(
+      source,
+      ["payment method", "payment"],
+      ["but", "do not", "after filling", "submit", "\n"]
+    )
+  ).replace(/\bif\s+(?:visible|available|present)\b.*$/i, "").trim();
+
   if (payment) values.push({ label: "payment", value: payment, secret: false });
 
   return values;
@@ -5043,6 +5049,52 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         ["", "needs_user", "rejected", "failed", "not_approved"].includes(checkerStatusForRegistryDefault)
       ) ||
       checkerApprovedWrongNonFillCommand;
+
+    if (!registryDefaultFillCommand && checkerApprovedWrongNonFillCommand) {
+      const explicitInstructionFieldsForVisibleFill = explicitFormValuesFromInstructionV1(instruction);
+
+      if (explicitInstructionFieldsForVisibleFill.length > 0) {
+        checker = {
+          ...(checker && typeof checker === "object" ? checker : {}),
+          status: "approved_explicit_visible_field_fill",
+          approved: true,
+          command: {
+            intent: "fill_form",
+            tool: "browserFillFields",
+            args: {
+              currentUrl,
+              fields: explicitInstructionFieldsForVisibleFill,
+              skipGenericFormPreparedValues: true,
+              preserveFieldValues: true,
+            },
+            notes: "Replaced incompatible non-fill command with deterministic explicit user values for a broad visible-field fill step.",
+          },
+          reason: "The current step is a fill/select field step, but the proposed command was not a fill command. Recovered explicit user-provided values into browserFillFields.",
+          repairInstruction: "",
+          messageToUser: "",
+          confidence: Math.max(0.9, Number(checker?.confidence || 0.9)),
+        };
+
+        if (checkerCall) checkerCall = { ...checkerCall, ok: true, error: "" };
+
+        trace.push(traceEntry({
+          role: "pipeline_supervisor",
+          title: "Explicit visible-field command override",
+          step: stepNumber,
+          status: "approved_explicit_visible_field_fill",
+          input: {
+            checkerStatus: checkerStatusForRegistryDefault,
+            checkerTool: checkerToolForRegistryDefault,
+            proposedCommand: checker?.command || null,
+            fields: explicitInstructionFieldsForVisibleFill,
+          },
+          output: checker,
+          summary: checker.reason,
+          tool: "browserFillFields",
+          ok: true,
+        }));
+      }
+    }
 
     if (registryDefaultFillCommand && checkerNeedsRegistryDefault) {
       checker = {
