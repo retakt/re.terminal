@@ -3590,8 +3590,8 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
   const stepInstruction = String(step.instruction || "");
 
   const isExplicitFillStep =
-    expectedAction === "fill" ||
-    /^\s*(fill|type|enter|input)\b/i.test(stepInstruction);
+    ["fill", "select", "choose", "check", "type", "input", "enter"].includes(expectedAction) ||
+    /^\s*(fill|type|enter|input|select|choose|pick|check|set)\b/i.test(stepInstruction);
 
   const isPassiveStateAssertion =
     /\b(?:is|are|was|were)\s+(?:selected|checked|filled|set|chosen)\b/i.test(stepOnlyText) &&
@@ -3608,23 +3608,40 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
     return null;
   }
 
-  if (hasNegativeSubmitIntentText(stepOnlyText)) return null;
+  const isPureNoSubmitGuardStep =
+    hasNegativeSubmitIntentText(stepOnlyText) &&
+    !isExplicitFillStep &&
+    !/^\s*(fill|select|choose|pick|check|type|enter|input|set)\b/i.test(stepInstruction);
+
+  if (isPureNoSubmitGuardStep) return null;
 
   if (!isExplicitFillStep && /\b(after\s+filling|after\s+fill|already\s+filled)\b/i.test(stepOnlyText)) {
     return null;
   }
 
-  const text = [
+  const fullText = [
     instruction,
     step.instruction,
     step.expectedAction,
     step.successCriteria,
   ].map((value) => String(value || "")).join(" ");
 
-  if (!/\b(fill|enter|type|input|form|select|choose|pick|use)\b/i.test(text)) return null;
+  const stepScopedText = [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ");
+
+  if (!/\b(fill|enter|type|input|form|select|choose|pick|use|check|set)\b/i.test(fullText)) return null;
   if (!actionRegistry?.ok || !Array.isArray(actionRegistry.actions)) return null;
 
-  const fields = resolveUserValuesAgainstActionRegistry(text, actionRegistry);
+  const broadFillStep =
+    /\b(all provided|clearly matching fields|specific fields|profile|the form|all fields|provided fields)\b/i.test(String(step.instruction || "")) ||
+    /^\s*fill\b/i.test(String(step.instruction || ""));
+
+  const mappingText = broadFillStep ? fullText : stepScopedText;
+
+  const fields = resolveUserValuesAgainstActionRegistry(mappingText, actionRegistry);
   if (!fields.length) return null;
 
   return {
@@ -5802,22 +5819,72 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       break;
     }
 
-    const targetAdjustedCommand = commandWithLightpandaExecutionTarget(normalized.command, {
-      step,
-      beforeState,
-      originalInstruction: instruction,
-      currentUrl,
-    });
+    const stepAssertionTextForTarget = [
+      step.instruction,
+      step.expectedAction,
+      step.successCriteria,
+    ].map((value) => String(value || "")).join(" ");
 
-    if (targetAdjustedCommand !== normalized.command) {
+    const passiveStateAssertionForTarget =
+      (
+        /\b(?:is|are|was|were)\s+(?:selected|checked|filled|set|chosen|not\s+clicked|clicked)\b/i.test(stepAssertionTextForTarget) ||
+        /\b(report|verify|readback|screenshot|snapshot|confirm|check)\b/i.test(stepAssertionTextForTarget) ||
+        hasNegativeSubmitIntentText(stepAssertionTextForTarget)
+      ) &&
+      !/^\s*(click|press|tap|open|navigate)\b/i.test(String(step.instruction || ""));
+
+    const normalizedToolForTarget = String(normalized.command?.tool || "");
+    const normalizedHasFieldsForTarget =
+      Array.isArray(normalized.command?.args?.fields) &&
+      normalized.command.args.fields.length > 0;
+
+    const normalizedCommandForTarget =
+      passiveStateAssertionForTarget && normalizedToolForTarget === "browserClickByText"
+        ? {
+            intent: "observe",
+            tool: "browserObserve",
+            args: { currentUrl, focus: "page" },
+            notes: "Passive verification/report/no-submit step must observe, not click. Blocked stale click command.",
+          }
+        : normalized.command;
+
+    if (normalizedCommandForTarget !== normalized.command) {
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Passive verification click guard",
+        step: stepNumber,
+        status: "blocked_passive_click",
+        input: normalized.command,
+        output: normalizedCommandForTarget,
+        summary: "Blocked browserClickByText for passive verification/report/no-submit step.",
+        tool: normalizedCommandForTarget.tool || "",
+        ok: true,
+      }));
+    }
+
+    const canUseLightpandaExecutionTarget =
+      String(normalizedCommandForTarget?.tool || "") === "browserClickByText" &&
+      !normalizedHasFieldsForTarget &&
+      !passiveStateAssertionForTarget;
+
+    const targetAdjustedCommand = canUseLightpandaExecutionTarget
+      ? commandWithLightpandaExecutionTarget(normalizedCommandForTarget, {
+          step,
+          beforeState,
+          originalInstruction: instruction,
+          currentUrl,
+        })
+      : normalizedCommandForTarget;
+
+    if (targetAdjustedCommand !== normalizedCommandForTarget) {
       trace.push(traceEntry({
         role: "playwright_controller",
         title: "Lightpanda execution target",
         step: stepNumber,
         status: "prepared",
-        input: normalized.command,
+        input: normalizedCommandForTarget,
         output: targetAdjustedCommand,
-        summary: "Prepared real Playwright click target from Lightpanda DOM evidence for button-like intent.",
+        summary: "Prepared real Playwright click target from Lightpanda DOM evidence for explicit button-like intent.",
         tool: targetAdjustedCommand.tool,
         ok: null,
       }));
