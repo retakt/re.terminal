@@ -27,3 +27,9 @@ server/.playwright-mcp/
 # Browser agent debug artifacts
 server/debug-browser-agent-*.json
 server/config/browser-agent/debug-browser-*.json
+
+# runtime audit logs
+server/re-term.audit.jsonl
+server/*.audit.jsonl
+server/debug-browser-agent-*.json
+server/.playwright-mcp/
