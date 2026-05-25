@@ -3006,16 +3006,43 @@ function positiveSubmitIntentText(value = "") {
   return /\b(submit|register|registration|send|save|continue|next)\b/i.test(String(value || ""));
 }
 
-function stepSatisfiedByPreviousVerifiedFill(step = {}, originalInstruction = "") {
+function explicitFieldIdsFromText(value = "") {
+  return [...String(value || "").matchAll(/\b(field_[A-Za-z0-9_]+)\b/g)]
+    .map((match) => String(match[1] || "").trim())
+    .filter(Boolean);
+}
+
+function commandFieldIds(command = {}) {
+  const fields = Array.isArray(command?.args?.fields)
+    ? command.args.fields
+    : Array.isArray(command?.args?.requestedValues)
+      ? command.args.requestedValues
+      : [];
+
+  return fields
+    .map((field) => String(field?.actionId || "").trim())
+    .filter(Boolean);
+}
+
+function stepSatisfiedByPreviousVerifiedFill(step = {}, originalInstruction = "", lastFillCommand = null) {
   const stepText = [
     step.instruction,
     step.expectedAction,
     step.successCriteria,
   ].map((value) => String(value || "")).join(" ");
 
-  if (!stepText.trim()) return false;
+  if (!stepText.trim() || !lastFillCommand) return false;
 
-  // A negative submit instruction after a verified fill is a no-op guard.
+  const previousIds = new Set(commandFieldIds(lastFillCommand));
+  const currentStepIds = explicitFieldIdsFromText(stepText);
+
+  // Important: if the current step names exact field_* IDs, only skip when those
+  // exact IDs were already filled. Do not let field_firstname satisfy field_lastname.
+  if (currentStepIds.length > 0) {
+    return currentStepIds.every((id) => previousIds.has(id));
+  }
+
+  // A negative submit/report guard after a verified fill is a no-op.
   // It must not trigger another fill or submit.
   if (hasNegativeSubmitIntentText(stepText)) return true;
 
@@ -3024,12 +3051,13 @@ function stepSatisfiedByPreviousVerifiedFill(step = {}, originalInstruction = ""
     return false;
   }
 
-  // Planner often splits one user request into:
-  // "fill fields", "use these values", "do not submit".
-  // Once a fill using the full original instruction has been verified, those follow-up
-  // value-detail steps are already satisfied and should not clear/refill the same fields.
-  return /\b(fill|field|fields|editable|visible fields|all fields|every field|fake data|test data|use text input|text input|password|textarea|date|color|range|dropdown|select|payment|contact|phone|name)\b/i
-    .test(stepText);
+  // Generic report-only followups are safe to satisfy from stored fill.
+  if (/\b(report|which fields|filled fields|what was filled|submit button was not clicked|not clicked)\b/i.test(stepText)) {
+    return previousIds.size > 0;
+  }
+
+  // Never skip a new fill-like step unless exact field IDs proved it was already done.
+  return false;
 }
 
 function commandWithGenericFormPreparedValues(command = {}, step = {}, originalInstruction = "", templateCommand = null) {
@@ -4325,7 +4353,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     if (
       lastSuccessfulFillCommand &&
-      stepSatisfiedByPreviousVerifiedFill(step, instruction)
+      stepSatisfiedByPreviousVerifiedFill(step, instruction, lastSuccessfulFillCommand)
     ) {
       const summary = hasNegativeSubmitIntentText([
         step.instruction,
