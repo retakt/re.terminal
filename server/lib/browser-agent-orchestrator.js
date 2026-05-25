@@ -3196,6 +3196,168 @@ function submitCommandFromPreviousFill(lastFillCommand = null, step = {}, curren
   };
 }
 
+function naturalUserFormValuesFromInstruction(text = "") {
+  const raw = String(text || "");
+  const values = [];
+
+  const push = (semantic, value) => {
+    const clean = String(value || "")
+      .replace(/[,.;]\s*$/g, "")
+      .replace(/\b(and|then|after filling|do not submit|submit button.*)$/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (semantic && clean && !values.some((item) => item.semantic === semantic)) {
+      values.push({ semantic, value: clean });
+    }
+  };
+
+  const firstName =
+    raw.match(/\bfirst\s*name\s*(?:is|=|:)?\s*([A-Za-z][A-Za-z' -]{0,80}?)(?=,\s*last|\s+last\s*name|\s+and\s+last|\s+gender|\s+sex|\.|,|$)/i)?.[1] ||
+    raw.match(/\bfirstname\s*(?:is|=|:)?\s*([A-Za-z][A-Za-z' -]{0,80}?)(?=,\s*last|\s+lastname|\s+gender|\s+sex|\.|,|$)/i)?.[1] ||
+    "";
+
+  const lastName =
+    raw.match(/\blast\s*name\s*(?:is|=|:)?\s*([A-Za-z][A-Za-z' -]{0,80}?)(?=,\s*(?:and\s+)?gender|\s+and\s+gender|\s+gender|\s+sex|\.|,|$)/i)?.[1] ||
+    raw.match(/\blastname\s*(?:is|=|:)?\s*([A-Za-z][A-Za-z' -]{0,80}?)(?=,\s*(?:and\s+)?gender|\s+gender|\s+sex|\.|,|$)/i)?.[1] ||
+    "";
+
+  const gender =
+    raw.match(/\b(?:gender|sex)\s*(?:is|=|:)?\s*(male|female)\b/i)?.[1] ||
+    "";
+
+  push("firstName", firstName);
+  push("lastName", lastName);
+  push("gender", gender);
+
+  return values;
+}
+
+function hasNaturalUserFormValues(text = "") {
+  return naturalUserFormValuesFromInstruction(text).length > 0;
+}
+
+function registryActionText(action = {}) {
+  return [
+    action.actionId,
+    action.label,
+    action.name,
+    action.id,
+    action.type,
+    action.value,
+    action.selector,
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+}
+
+function findNaturalRegistryFieldAction(value = {}, actionRegistry = null) {
+  const actions = Array.isArray(actionRegistry?.actions) ? actionRegistry.actions : [];
+  const fields = actions.filter((action) => String(action?.kind || "") === "field");
+
+  if (value.semantic === "firstName") {
+    return fields.find((action) => {
+      const text = registryActionText(action);
+      return /\b(first\s*name|firstname)\b/.test(text) ||
+        String(action.name || "").toLowerCase() === "firstname" ||
+        String(action.actionId || "").toLowerCase() === "field_firstname";
+    }) || null;
+  }
+
+  if (value.semantic === "lastName") {
+    return fields.find((action) => {
+      const text = registryActionText(action);
+      return /\b(last\s*name|lastname)\b/.test(text) ||
+        String(action.name || "").toLowerCase() === "lastname" ||
+        String(action.actionId || "").toLowerCase() === "field_lastname";
+    }) || null;
+  }
+
+  if (value.semantic === "gender") {
+    const wanted = String(value.value || "").toLowerCase();
+    return fields.find((action) => {
+      const text = registryActionText(action);
+      const isGenderGroup =
+        String(action.name || "").toLowerCase() === "sex" ||
+        /\b(gender|sex)\b/.test(text);
+
+      const isWanted =
+        String(action.value || "").toLowerCase() === wanted ||
+        new RegExp(`\\b${wanted}\\b`, "i").test(String(action.label || ""));
+
+      return isGenderGroup && isWanted;
+    }) || null;
+  }
+
+  return null;
+}
+
+function syntheticStepPlanFromNaturalRegistryFormFields({
+  instruction = "",
+  step = {},
+  actionRegistry = null,
+  currentUrl = "",
+} = {}) {
+  const text = [
+    instruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ");
+
+  if (!/\b(fill|enter|type|input|form)\b/i.test(text)) return null;
+  if (!actionRegistry?.ok || !Array.isArray(actionRegistry.actions)) return null;
+
+  const requested = naturalUserFormValuesFromInstruction(text);
+  if (!requested.length) return null;
+
+  const fields = [];
+  const missing = [];
+
+  for (const item of requested) {
+    const action = findNaturalRegistryFieldAction(item, actionRegistry);
+
+    if (!action) {
+      missing.push(item.semantic);
+      continue;
+    }
+
+    fields.push({
+      actionId: action.actionId,
+      label:
+        item.semantic === "firstName" ? "First name" :
+        item.semantic === "lastName" ? "Last name" :
+        item.semantic === "gender" ? "Gender" :
+        action.label || action.name || action.actionId,
+      name: action.name || "",
+      id: action.id || "",
+      selector: action.selector || "",
+      type: action.type || "",
+      value: item.value,
+      secret: false,
+    });
+  }
+
+  if (!fields.length || missing.length) return null;
+
+  return {
+    status: "ready",
+    syntheticSource: "natural_playwright_registry_fields",
+    command: {
+      intent: "fill_form",
+      tool: "browserFillFields",
+      args: {
+        currentUrl,
+        fields,
+        skipGenericFormPreparedValues: true,
+      },
+      notes: "Deterministic fill built from natural user field values and Playwright action registry. No default values were added.",
+    },
+    reason: "User supplied natural field values; mapped them to Playwright registry actions without using Lightpanda refs or defaults.",
+    messageToChecker: "Approve natural Playwright registry field fill. Do not submit. Do not add default values.",
+    messageToUser: "",
+    confidence: 0.97,
+  };
+}
+
 function explicitPlaywrightRegistryFieldAssignments(text = "", actionRegistry = null, { stepText = "" } = {}) {
   const actions = Array.isArray(actionRegistry?.actions) ? actionRegistry.actions : [];
   const byId = new Map(actions.map((action) => [String(action?.actionId || ""), action]));
@@ -4515,7 +4677,12 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }
 
     let stepAgentCall = null;
-    let stepPlan = syntheticStepPlanFromExplicitPlaywrightRegistryFields({
+    let stepPlan = syntheticStepPlanFromNaturalRegistryFormFields({
+      instruction,
+      step,
+      actionRegistry,
+      currentUrl,
+    }) || syntheticStepPlanFromExplicitPlaywrightRegistryFields({
       instruction,
       step,
       actionRegistry,
@@ -5105,7 +5272,11 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       ) ||
       checkerApprovedWrongNonFillCommand;
 
-    if (registryDefaultFillCommand && checkerNeedsRegistryDefault) {
+    if (
+      registryDefaultFillCommand &&
+      !hasNaturalUserFormValues(instruction) &&
+      checkerNeedsRegistryDefault
+    ) {
       checker = {
         ...(checker && typeof checker === "object" ? checker : {}),
         status: "approved_registry_default_form_fill",
@@ -5136,6 +5307,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }
 
     const exactUserTargetFill =
+      hasNaturalUserFormValues(instruction) ||
       /\b(use only|only these|exact field targets|exactly these fields|do not guess|registry fields only|playwright registry fields only|use playwright registry fields only)\b/i.test(instruction) ||
       /\bfield_[A-Za-z0-9_]+\s*=/.test(instruction) ||
       /\blp_(input|button|link|form)_\d+\b/i.test(instruction);
