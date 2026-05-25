@@ -3164,6 +3164,78 @@ function submitCommandFromPreviousFill(lastFillCommand = null, step = {}, curren
   };
 }
 
+function explicitPlaywrightRegistryFieldAssignments(text = "", actionRegistry = null) {
+  const actions = Array.isArray(actionRegistry?.actions) ? actionRegistry.actions : [];
+  const byId = new Map(actions.map((action) => [String(action?.actionId || ""), action]));
+  const fields = [];
+  const seen = new Set();
+
+  const re = /(?:^|[,;\n]\s*)(field_[A-Za-z0-9_]+)\s*=\s*([^,;\n.]+)/g;
+  let match;
+
+  while ((match = re.exec(String(text || "")))) {
+    const actionId = String(match[1] || "").trim();
+    const value = String(match[2] || "").trim();
+
+    if (!actionId || !value || seen.has(actionId)) continue;
+
+    const action = byId.get(actionId);
+    if (!action || String(action.kind || "") !== "field") continue;
+
+    seen.add(actionId);
+    fields.push({
+      actionId,
+      label: action.label || action.name || action.id || actionId,
+      name: action.name || "",
+      id: action.id || "",
+      selector: action.selector || "",
+      type: action.type || "",
+      value,
+      secret: false,
+    });
+  }
+
+  return fields;
+}
+
+function syntheticStepPlanFromExplicitPlaywrightRegistryFields({
+  instruction = "",
+  step = {},
+  actionRegistry = null,
+  currentUrl = "",
+} = {}) {
+  const text = [
+    instruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ");
+
+  if (!/\b(fill|enter|type|input)\b/i.test(text)) return null;
+  if (!/\b(field_[A-Za-z0-9_]+)\s*=/.test(text)) return null;
+
+  const fields = explicitPlaywrightRegistryFieldAssignments(text, actionRegistry);
+  if (!fields.length) return null;
+
+  return {
+    status: "ready",
+    syntheticSource: "explicit_playwright_registry_fields",
+    command: {
+      intent: "fill_form",
+      tool: "browserFillFields",
+      args: {
+        currentUrl,
+        fields,
+      },
+      notes: "Deterministic fill built from exact user-provided Playwright actionRegistry field IDs.",
+    },
+    reason: "User supplied exact Playwright actionRegistry field IDs and values; no extra mapping or observation is needed.",
+    messageToChecker: "Approve exact Playwright registry field fill. Do not submit.",
+    messageToUser: "",
+    confidence: 0.98,
+  };
+}
+
 function isStateChangingBrowserCommand(command = {}) {
   return [
     "browserClickByText",
@@ -4322,7 +4394,12 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }
 
     let stepAgentCall = null;
-    let stepPlan = syntheticStepPlanFromPlaywrightScout({
+    let stepPlan = syntheticStepPlanFromExplicitPlaywrightRegistryFields({
+      instruction,
+      step,
+      actionRegistry,
+      currentUrl,
+    }) || syntheticStepPlanFromPlaywrightScout({
       scout: playwrightScout,
       step,
       currentUrl,

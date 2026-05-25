@@ -27,6 +27,11 @@ Allowed tools:
 - browserShowActions: { "currentUrl": "...", "instruction": "..." }
 
 Rules:
+- If the user provides exact Playwright actionRegistry actionIds like field_firstname = Riley, field_lastname = Stone, or field_sex_sex_1_female = Female, and those actionIds appear in actionRegistry, return status "ready" with browserFillFields immediately.
+- Do NOT return browserObserve just to re-check mappings when actionRegistry is already present.
+- Do NOT say actionRegistry fields are unavailable when actionRegistry.stats or actionRegistry.actions exists in context.
+- For exact actionId fills, preserve the exact user value and put that literal actionId in fields[].actionId.
+
 - For any real action, actionRegistry is the executable source of truth.
 - Use pageState/Lightpanda only to understand semantics, text, and page meaning.
 - Never output lp_input_*, lp_button_*, or Lightpanda refs as executable targets.
