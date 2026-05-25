@@ -3568,17 +3568,27 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
     step.successCriteria,
   ].map((value) => String(value || "")).join(" ");
 
+  const expectedAction = String(step.expectedAction || "").toLowerCase();
+  const stepInstruction = String(step.instruction || "");
+
+  const isExplicitFillStep =
+    expectedAction === "fill" ||
+    /^\s*(fill|type|enter|input)\b/i.test(stepInstruction);
+
   // Do not let verification/report/screenshot/no-submit steps become new fill commands.
-  // These steps may contain words like "first name contains Riley", but that is an
-  // assertion to verify, not a value to type.
+  // "After filling, verify..." is NOT a fill step. It is a verification step.
   if (
     /\b(report|verify|readback|contains|screenshot|snapshot|screen|image|look|confirm|check)\b/i.test(stepOnlyText) &&
-    !/\b(fill|type|enter|input)\b/i.test(String(step.instruction || ""))
+    !isExplicitFillStep
   ) {
     return null;
   }
 
   if (hasNegativeSubmitIntentText(stepOnlyText)) return null;
+
+  if (!isExplicitFillStep && /\b(after\s+filling|after\s+fill|already\s+filled)\b/i.test(stepOnlyText)) {
+    return null;
+  }
 
   const text = [
     instruction,
