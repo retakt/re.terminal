@@ -3,7 +3,10 @@ function safeText(value = "", limit = 1000) {
 }
 
 function key(value = "") {
-  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\bfield\b/g, " ")
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 function cleanFieldValue(value = "") {

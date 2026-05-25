@@ -280,7 +280,9 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
   const snapshotCall = await callPlaywrightTool(["browser_snapshot", "snapshot"], {});
   let screenshotCall = null;
 
-  if (envFlag("PLAYWRIGHT_MCP_SCREENSHOT_ENABLED", true)) {
+  const includeScreenshot = args.includeScreenshot === true || args.screenshot === true;
+
+  if (includeScreenshot) {
     try {
       screenshotCall = await callPlaywrightTool(["browser_take_screenshot", "take_screenshot", "screenshot"], {
         raw: true,
@@ -4105,7 +4107,7 @@ export async function executePlaywrightMcpBrowserCommand({
         url: beforeObservation?.url || currentUrl,
         title: beforeObservation?.title || "",
         textPreview: safeText(beforeObservation?.textPreview || beforeObservation?.text || "", 5000),
-        engine: beforeObservation?.engine || "lightpanda_cdp",
+        engine: beforeObservation?.engine || "playwright_mcp",
         links: Array.isArray(beforeObservation?.links) ? beforeObservation.links : [],
         buttons: Array.isArray(beforeObservation?.buttons) ? beforeObservation.buttons : [],
         inputs: Array.isArray(beforeObservation?.inputs) ? beforeObservation.inputs : [],

@@ -1,0 +1,322 @@
+{
+  "sessionId": "debug-lp-steps-1779731631656",
+  "route": "lightpanda",
+  "routeEngine": "lightpanda_cdp",
+  "currentUrl": "",
+  "currentTitle": "",
+  "currentPageKey": "",
+  "lastInstruction": "Open https://webdriveruniversity.com/Contact-Us/contactus.html. Read the visible contact form controls, extract the readable labels, and report which parts of the page would be useful. Do not click, fill, or screenshot.",
+  "lastPlan": {
+    "status": "needs_user",
+    "userIntent": "Analyze the contact form on the provided URL without interacting with it.",
+    "routeHint": "auto",
+    "needsLightpandaWarmup": false,
+    "steps": [
+      {
+        "kind": "navigate",
+        "text": "Navigate to the specified URL: https://webdriveruniversity.com/Contact-Us/contactus.html",
+        "url": "https://webdriveruniversity.com/Contact-Us/contactus.html",
+        "query": "",
+        "targetText": "",
+        "fields": [],
+        "notes": "Initial step to load the target page for analysis.",
+        "shouldVerify": true,
+        "shouldScreenshot": false,
+        "index": 1
+      },
+      {
+        "kind": "observe",
+        "text": "Observe the visible contact form controls and extract their readable labels.",
+        "url": "",
+        "query": "",
+        "targetText": "",
+        "fields": [],
+        "notes": "Identify form fields and their labels for reporting.",
+        "shouldVerify": true,
+        "shouldScreenshot": false,
+        "index": 2
+      },
+      {
+        "kind": "report",
+        "text": "Report which parts of the page would be useful based on the extracted labels.",
+        "url": "",
+        "query": "",
+        "targetText": "",
+        "fields": [],
+        "notes": "Summarize the form structure and utility for the user.",
+        "shouldVerify": true,
+        "shouldScreenshot": false,
+        "index": 3
+      }
+    ],
+    "reason": "The user wants to analyze a specific URL without performing any interactions (clicks, fills, screenshots). The plan involves navigating, observing, and reporting.",
+    "confidence": 0.95
+  },
+  "lastCommand": {
+    "route": "lightpanda",
+    "kind": "observe",
+    "tool": "browserObserve",
+    "args": {
+      "focus": ""
+    },
+    "notes": "Summarize the form structure and utility for the user."
+  },
+  "lastResult": {
+    "ok": true,
+    "route": "lightpanda",
+    "backend": "lightpanda_cdp",
+    "tool": "browserObserve",
+    "observation": {
+      "url": "about:blank",
+      "title": "",
+      "text": "",
+      "links": [],
+      "buttons": [],
+      "inputs": [],
+      "forms": [],
+      "interactiveElements": [],
+      "stats": {
+        "links": 0,
+        "buttons": 0,
+        "inputs": 0,
+        "forms": 0,
+        "scripts": 0,
+        "images": 0,
+        "markdownChars": 0,
+        "axNodes": 1,
+        "extractionFailures": 0
+      },
+      "textPreview": "",
+      "markdown": "",
+      "accessibility": {
+        "ok": true,
+        "nodeCount": 1,
+        "rootRole": "RootWebArea",
+        "rootName": "",
+        "roles": {
+          "RootWebArea": 1
+        },
+        "controls": [],
+        "textPreview": ""
+      },
+      "extractionSources": [
+        "lightpanda_cdp.axtree",
+        "dom_eval"
+      ],
+      "extractionPath": "lightpanda_cdp.axtree,dom_eval",
+      "extractionCapabilities": {
+        "cdp": true,
+        "markdown": false,
+        "accessibilityTree": true,
+        "domEval": true,
+        "nativeMcp": false,
+        "selectors": true
+      },
+      "extractionErrors": [],
+      "settle": {
+        "status": "stable_without_controls",
+        "attempts": 1,
+        "elapsedMs": 3
+      }
+    },
+    "snapshot": {
+      "url": "about:blank",
+      "title": "",
+      "text": "",
+      "links": [],
+      "buttons": [],
+      "inputs": [],
+      "forms": [],
+      "interactiveElements": [],
+      "stats": {
+        "links": 0,
+        "buttons": 0,
+        "inputs": 0,
+        "forms": 0,
+        "scripts": 0,
+        "images": 0,
+        "markdownChars": 0,
+        "axNodes": 1,
+        "extractionFailures": 0
+      },
+      "textPreview": "",
+      "markdown": "",
+      "accessibility": {
+        "ok": true,
+        "nodeCount": 1,
+        "rootRole": "RootWebArea",
+        "rootName": "",
+        "roles": {
+          "RootWebArea": 1
+        },
+        "controls": [],
+        "textPreview": ""
+      },
+      "extractionSources": [
+        "lightpanda_cdp.axtree",
+        "dom_eval"
+      ],
+      "extractionPath": "lightpanda_cdp.axtree,dom_eval",
+      "extractionCapabilities": {
+        "cdp": true,
+        "markdown": false,
+        "accessibilityTree": true,
+        "domEval": true,
+        "nativeMcp": false,
+        "selectors": true
+      },
+      "extractionErrors": [],
+      "settle": {
+        "status": "stable_without_controls",
+        "attempts": 1,
+        "elapsedMs": 3
+      }
+    },
+    "extracted": {
+      "url": "about:blank",
+      "title": "",
+      "textPreview": "",
+      "links": [],
+      "buttons": [],
+      "inputs": [],
+      "forms": [],
+      "text": ""
+    },
+    "error": ""
+  },
+  "lastObservation": {
+    "url": "about:blank",
+    "title": "",
+    "text": "",
+    "links": [],
+    "buttons": [],
+    "inputs": [],
+    "forms": [],
+    "interactiveElements": [],
+    "stats": {
+      "links": 0,
+      "buttons": 0,
+      "inputs": 0,
+      "forms": 0,
+      "scripts": 0,
+      "images": 0,
+      "markdownChars": 0,
+      "axNodes": 1,
+      "extractionFailures": 0
+    },
+    "textPreview": "",
+    "markdown": "",
+    "accessibility": {
+      "ok": true,
+      "nodeCount": 1,
+      "rootRole": "RootWebArea",
+      "rootName": "",
+      "roles": {
+        "RootWebArea": 1
+      },
+      "controls": [],
+      "textPreview": ""
+    },
+    "extractionSources": [
+      "lightpanda_cdp.axtree",
+      "dom_eval"
+    ],
+    "extractionPath": "lightpanda_cdp.axtree,dom_eval",
+    "extractionCapabilities": {
+      "cdp": true,
+      "markdown": false,
+      "accessibilityTree": true,
+      "domEval": true,
+      "nativeMcp": false,
+      "selectors": true
+    },
+    "extractionErrors": [],
+    "settle": {
+      "status": "stable_without_controls",
+      "attempts": 1,
+      "elapsedMs": 3
+    }
+  },
+  "lastValidObservation": {
+    "url": "about:blank",
+    "title": "",
+    "text": "",
+    "links": [],
+    "buttons": [],
+    "inputs": [],
+    "forms": [],
+    "interactiveElements": [],
+    "stats": {
+      "links": 0,
+      "buttons": 0,
+      "inputs": 0,
+      "forms": 0,
+      "scripts": 0,
+      "images": 0,
+      "markdownChars": 0,
+      "axNodes": 1,
+      "extractionFailures": 0
+    },
+    "textPreview": "",
+    "markdown": "",
+    "accessibility": {
+      "ok": true,
+      "nodeCount": 1,
+      "rootRole": "RootWebArea",
+      "rootName": "",
+      "roles": {
+        "RootWebArea": 1
+      },
+      "controls": [],
+      "textPreview": ""
+    },
+    "extractionSources": [
+      "lightpanda_cdp.axtree",
+      "dom_eval"
+    ],
+    "extractionPath": "lightpanda_cdp.axtree,dom_eval",
+    "extractionCapabilities": {
+      "cdp": true,
+      "markdown": false,
+      "accessibilityTree": true,
+      "domEval": true,
+      "nativeMcp": false,
+      "selectors": true
+    },
+    "extractionErrors": [],
+    "settle": {
+      "status": "stable_without_controls",
+      "attempts": 1,
+      "elapsedMs": 3
+    }
+  },
+  "lastFailedObservation": null,
+  "engineFailures": {},
+  "history": [
+    {
+      "at": "2026-05-25T17:54:17.450Z",
+      "route": "lightpanda",
+      "url": "",
+      "title": "",
+      "tool": "browserNavigate",
+      "status": ""
+    },
+    {
+      "at": "2026-05-25T17:54:39.530Z",
+      "route": "lightpanda",
+      "url": "",
+      "title": "",
+      "tool": "browserObserve",
+      "status": ""
+    },
+    {
+      "at": "2026-05-25T17:55:02.792Z",
+      "route": "lightpanda",
+      "url": "",
+      "title": "",
+      "tool": "browserObserve",
+      "status": ""
+    }
+  ],
+  "updatedAt": "2026-05-25T17:55:02.795Z"
+}

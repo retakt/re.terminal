@@ -19,7 +19,7 @@ client/data/
 client/dist/
 client/artifacts/
 server/.playwright-mcp/
-
+server/lib/browser-agents/
 # Editors
 .vscode/
 ```

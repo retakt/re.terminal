@@ -34,7 +34,7 @@ function playwrightConfig(enabled) {
         protocol: "mcp",
         enabled,
         command: "npx",
-        args: ["-y", "@playwright/mcp@latest", "--isolated"],
+        args: ["-y", "@playwright/mcp@latest", "--isolated", "--headless"],
         description: "Official Microsoft Playwright MCP server for browser automation.",
       },
     },

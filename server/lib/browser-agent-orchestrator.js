@@ -2873,37 +2873,56 @@ function explicitFormValuesFromInstructionV1(instruction = "") {
   const source = String(instruction || "");
   const values = [];
 
-  const contactName = extractExplicitAfterPhraseV1(
-    source,
-    ["contact name", "full name", "name"],
-    ["contact number", "contact no", "phone", "mobile", "telephone", "pickup date", "pick-up date", "pick up date", "pickupdate", "payment method", "payment", "after filling", "do not submit", "\n"]
+  const cleanValue = (value = "") =>
+    cleanExplicitFormValueV1(value)
+      .replace(/\bif\s+(?:visible|available|present)\b.*$/i, "")
+      .replace(/\bdo\s+not\b.*$/i, "")
+      .replace(/\bafter\s+filling\b.*$/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const captureUntilNext = (pattern) => {
+    const match = source.match(pattern);
+    return cleanValue(match?.[1] || "");
+  };
+
+  const contactName = captureUntilNext(
+    /\bcontact\s+name\s*(?:is|=|:|as|to|with)?\s*([\s\S]*?)(?=\s*(?:\.|,|;|\n|contact\s+number\b|contact\s+no\b|phone\b|mobile\b|telephone\b|pick[-\s]?up\s+date\b|payment\s+method\b|select\b|after\s+filling\b|do\s+not\b|$))/i
   );
   if (contactName) values.push({ label: "ContactName", value: contactName, secret: false });
 
-  const contactNumber = extractExplicitAfterPhraseV1(
-    source,
-    ["contact number", "contact no", "phone", "mobile", "telephone"],
-    ["pickup date", "pick-up date", "pick up date", "pickupdate", "payment method", "payment", "after filling", "do not submit", "\n"]
-  );
-  if (contactNumber) values.push({ label: "contactnumber", value: contactNumber, secret: false });
+  const contactNumber =
+    source.match(/\bcontact\s+number\s*(?:is|=|:|as|to|with)?\s*([+]?\d[\d\s().-]{5,}\d)\b/i)?.[1] ||
+    source.match(/\b(?:contact\s+no|phone|mobile|telephone)\s*(?:is|=|:|as|to|with)?\s*([+]?\d[\d\s().-]{5,}\d)\b/i)?.[1] ||
+    "";
+  if (contactNumber) {
+    values.push({
+      label: "contactnumber",
+      value: cleanValue(contactNumber),
+      secret: false,
+      type: "tel",
+    });
+  }
 
-  const pickupDate = extractExplicitAfterPhraseV1(
-    source,
-    ["pickup date", "pick-up date", "pick up date", "pickupdate"],
-    ["payment method", "payment", "contact name", "contact number", "after filling", "do not submit", "\n"]
-  );
-  if (pickupDate) values.push({ label: "pickupdate", value: pickupDate, secret: false, type: "date" });
+  const pickupDate =
+    source.match(/\bpick[-\s]?up\s+date\s*(?:is|=|:|as|to|with)?\s*(\d{4}-\d{2}-\d{2})\b/i)?.[1] ||
+    source.match(/\bpickupdate\s*(?:is|=|:|as|to|with)?\s*(\d{4}-\d{2}-\d{2})\b/i)?.[1] ||
+    "";
+  if (pickupDate) {
+    values.push({
+      label: "pickupdate",
+      value: cleanValue(pickupDate),
+      secret: false,
+      type: "date",
+    });
+  }
 
-  const paymentSelectMatch = source.match(/\bselect\s+(.+?)\s+as\s+(?:the\s+)?payment\s+method(?:\s+if\s+(?:visible|available|present))?(?=\.|,|;|\n|$)/i);
+  const paymentSelectMatch =
+    source.match(/\bselect\s+([\s\S]*?)\s+as\s+(?:the\s+)?payment\s+method(?:\s+if\s+(?:visible|available|present))?(?=\.|,|;|\n|$)/i);
 
-  const payment = cleanExplicitFormValueV1(
-    paymentSelectMatch?.[1] ||
-    extractExplicitAfterPhraseV1(
-      source,
-      ["payment method", "payment"],
-      ["but", "do not", "after filling", "submit", "\n"]
-    )
-  ).replace(/\bif\s+(?:visible|available|present)\b.*$/i, "").trim();
+  const payment =
+    cleanValue(paymentSelectMatch?.[1] || "") ||
+    captureUntilNext(/\bpayment\s+method\s*(?:is|=|:|as|to|with)?\s*([\s\S]*?)(?=\s*(?:\.|,|;|\n|after\s+filling\b|do\s+not\b|$))/i);
 
   if (payment) values.push({ label: "payment", value: payment, secret: false });
 

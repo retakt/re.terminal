@@ -84,6 +84,13 @@ function stageKey(stage = "") {
     .toUpperCase() || "PLANNER";
 }
 
+function routeKey(route = "") {
+  const raw = String(route || "").trim().toLowerCase();
+  if (raw === "playwright" || raw === "playwright_mcp") return "PLAYWRIGHT";
+  if (raw === "lightpanda" || raw === "lightpanda_cdp") return "LIGHTPANDA";
+  return "";
+}
+
 function firstEnv(names = []) {
   for (const name of names) {
     if (process.env[name] !== undefined) return process.env[name];
@@ -105,7 +112,34 @@ function stageAliasKeys(stage = "") {
   return [];
 }
 
-function stageEnv(stage, suffix) {
+function routeStageEnv(route = "", stage = "", suffix = "") {
+  const routePrefix = routeKey(route);
+  if (!routePrefix) return undefined;
+
+  const key = stageKey(stage);
+  const keys = [key, ...stageAliasKeys(stage)].filter(Boolean);
+  const uniqueKeys = [...new Set(keys)];
+  const names = [];
+
+  for (const candidate of uniqueKeys) {
+    names.push(
+      `BROWSER_AGENT_${routePrefix}_${candidate}_${suffix}`,
+      `BROWSER_${routePrefix}_${candidate}_${suffix}`,
+    );
+  }
+
+  names.push(
+    `BROWSER_AGENT_${routePrefix}_${suffix}`,
+    `BROWSER_${routePrefix}_${suffix}`,
+  );
+
+  return firstEnv(names);
+}
+
+function stageEnv(stage, suffix, route = "") {
+  const routeValue = routeStageEnv(route, stage, suffix);
+  if (routeValue !== undefined) return routeValue;
+
   const key = stageKey(stage);
   const keys = [key, ...stageAliasKeys(stage)].filter(Boolean);
   const uniqueKeys = [...new Set(keys)];
@@ -136,8 +170,8 @@ function baseBrowserAgentModel() {
   ).trim();
 }
 
-function stageModel(stage, fallback = "") {
-  return String(stageEnv(stage, "MODEL") || fallback || "").trim();
+function stageModel(stage, fallback = "", route = "") {
+  return String(stageEnv(stage, "MODEL", route) || fallback || "").trim();
 }
 
 function normalizeBrowserAgentProvider(value = "", baseUrl = "") {
@@ -162,50 +196,51 @@ function normalizeBrowserAgentBaseUrl(value = "", provider = "ollama") {
   return raw;
 }
 
-function stageProvider(stage, fallbackBaseUrl = "") {
-  const baseCandidate = String(stageEnv(stage, "BASE_URL") || fallbackBaseUrl || rawBaseUrl()).trim();
-  return normalizeBrowserAgentProvider(stageEnv(stage, "PROVIDER"), baseCandidate);
+function stageProvider(stage, fallbackBaseUrl = "", route = "") {
+  const baseCandidate = String(stageEnv(stage, "BASE_URL", route) || fallbackBaseUrl || rawBaseUrl()).trim();
+  return normalizeBrowserAgentProvider(stageEnv(stage, "PROVIDER", route), baseCandidate);
 }
 
-function stageBaseUrl(stage, fallbackBaseUrl = "") {
-  const raw = String(stageEnv(stage, "BASE_URL") || fallbackBaseUrl || rawBaseUrl()).trim();
-  return normalizeBrowserAgentBaseUrl(raw, stageProvider(stage, raw));
+function stageBaseUrl(stage, fallbackBaseUrl = "", route = "") {
+  const raw = String(stageEnv(stage, "BASE_URL", route) || fallbackBaseUrl || rawBaseUrl()).trim();
+  return normalizeBrowserAgentBaseUrl(raw, stageProvider(stage, raw, route));
 }
 
-function stageApiKey(stage, provider = "") {
+function stageApiKey(stage, provider = "", route = "") {
   return String(
-    stageEnv(stage, "API_KEY") ||
+    stageEnv(stage, "API_KEY", route) ||
     (provider === "openai" ? process.env.OPENAI_API_KEY : "") ||
     ""
   ).trim();
 }
 
-function stageEndpointDisplay(stage, fallbackBaseUrl = "") {
-  const provider = stageProvider(stage, fallbackBaseUrl);
-  const baseUrl = stageBaseUrl(stage, fallbackBaseUrl);
+function stageEndpointDisplay(stage, fallbackBaseUrl = "", route = "") {
+  const provider = stageProvider(stage, fallbackBaseUrl, route);
+  const baseUrl = stageBaseUrl(stage, fallbackBaseUrl, route);
   return {
     provider,
     redactedBaseUrl: redactBaseUrl(baseUrl),
-    hasApiKey: Boolean(stageApiKey(stage, provider)),
+    hasApiKey: Boolean(stageApiKey(stage, provider, route)),
   };
 }
 
-function modelForStage(config = {}, stage = "planner") {
+function modelForStage(config = {}, stage = "planner", route = "") {
   if (stage === "finalVerifier") {
     return config.models?.finalVerifier || config.models?.main || config.model;
   }
-  return config.models?.[stage] || config.model;
+  return stageModel(stage, config.models?.[stage] || config.model, route);
 }
 
-function runtimeForStage(config = {}, stage = "planner") {
-  const provider = stageProvider(stage, config.baseUrl);
+function runtimeForStage(config = {}, stage = "planner", route = "") {
+  const provider = stageProvider(stage, config.baseUrl, route);
   return {
     ...config,
     stage,
+    route: routeKey(route).toLowerCase(),
     provider,
-    baseUrl: stageBaseUrl(stage, config.baseUrl),
-    apiKey: stageApiKey(stage, provider),
-    model: modelForStage(config, stage),
+    baseUrl: stageBaseUrl(stage, config.baseUrl, route),
+    apiKey: stageApiKey(stage, provider, route),
+    model: modelForStage(config, stage, route),
   };
 }
 
@@ -258,16 +293,25 @@ function stageDefaultTemperature(stage = "") {
   return 0.25;
 }
 
-function stageOptions(stage) {
+function stageOptions(stage, route = "") {
   const key = stageKey(stage);
+  const routePrefix = routeKey(route);
   const defaultTemperature = stageDefaultTemperature(stage);
+  const routeEnv = (suffix) => routePrefix
+    ? envNumber(`BROWSER_AGENT_${routePrefix}_${key}_${suffix}`, NaN)
+    : NaN;
+
+  const routeTemperature = routeEnv("TEMPERATURE");
+  const routeNumPredict = routeEnv("NUM_PREDICT");
 
   const options = {
-    temperature: envNumber(
-      `BROWSER_AGENT_${key}_TEMPERATURE`,
-      envNumber(`BROWSER_${key}_TEMPERATURE`, envNumber("BROWSER_AGENT_TEMPERATURE", defaultTemperature, { min: 0, max: 2 }), { min: 0, max: 2 }),
-      { min: 0, max: 2 },
-    ),
+    temperature: Number.isFinite(routeTemperature)
+      ? Math.max(0, Math.min(routeTemperature, 2))
+      : envNumber(
+        `BROWSER_AGENT_${key}_TEMPERATURE`,
+        envNumber(`BROWSER_${key}_TEMPERATURE`, envNumber("BROWSER_AGENT_TEMPERATURE", defaultTemperature, { min: 0, max: 2 }), { min: 0, max: 2 }),
+        { min: 0, max: 2 },
+      ),
     top_p: envNumber(
       `BROWSER_AGENT_${key}_TOP_P`,
       envNumber(`BROWSER_${key}_TOP_P`, envNumber("BROWSER_AGENT_TOP_P", 0.85, { min: 0, max: 1 }), { min: 0, max: 1 }),
@@ -288,11 +332,13 @@ function stageOptions(stage) {
   const numCtx = envNumber("BROWSER_AGENT_NUM_CTX", 8192, { min: 1024, max: 131072 });
   if (numCtx) options.num_ctx = numCtx;
 
-  const numPredict = envNumber(
-    `BROWSER_AGENT_${key}_NUM_PREDICT`,
-    envNumber(`BROWSER_${key}_NUM_PREDICT`, envNumber("BROWSER_AGENT_NUM_PREDICT", 2048, { min: 128, max: 32768 }), { min: 128, max: 32768 }),
-    { min: 128, max: 32768 },
-  );
+  const numPredict = Number.isFinite(routeNumPredict)
+    ? Math.max(128, Math.min(routeNumPredict, 32768))
+    : envNumber(
+      `BROWSER_AGENT_${key}_NUM_PREDICT`,
+      envNumber(`BROWSER_${key}_NUM_PREDICT`, envNumber("BROWSER_AGENT_NUM_PREDICT", 2048, { min: 128, max: 32768 }), { min: 128, max: 32768 }),
+      { min: 128, max: 32768 },
+    );
   if (numPredict) options.num_predict = numPredict;
 
   const seed = envNumber("BROWSER_AGENT_SEED", NaN);
@@ -544,15 +590,15 @@ async function postOpenAiChat({ config, model, messages, format, options }) {
   return { response, data };
 }
 
-async function callOllamaChat({ stage, messages, format = "json" }) {
+async function callOllamaChat({ stage, messages, format = "json", route = "" }) {
   const schemaFormatForStage = browserAgentJsonSchemaFor(stage);
   if (schemaFormatForStage && (format === "json" || !format)) {
     format = schemaFormatForStage;
   }
   const config = requireBrowserAgentRuntimeConfig();
-  const stageConfig = runtimeForStage(config, stage);
+  const stageConfig = runtimeForStage(config, stage, route);
   const startedAt = performance.now();
-  const options = stageOptions(stage);
+  const options = stageOptions(stage, route);
   const model = stageConfig.model;
 
   let retriedWithoutThink = false;
@@ -602,6 +648,7 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
 
   const usage = tokenUsageFromResponse(data || {}, { ...stageConfig, model }, stage, Math.round(performance.now() - startedAt));
   usage.provider = stageConfig.provider;
+  usage.route = routeKey(route).toLowerCase() || "";
   usage.redactedBaseUrl = redactBaseUrl(stageConfig.baseUrl);
   usage.thinkRequested = Boolean(stageConfig.provider === "ollama" && config.think);
   usage.retriedWithoutThink = retriedWithoutThink;
@@ -936,6 +983,7 @@ export async function callBrowserAgentRoleJson(stage = "planner", {
   context = {},
   schemaName = "",
   images = [],
+  route = "",
 } = {}) {
   const role = String(stage || "planner").trim() || "planner";
   const roleSchemaFormat = browserAgentJsonSchemaFor(schemaName || role) || "json";
@@ -943,6 +991,7 @@ export async function callBrowserAgentRoleJson(stage = "planner", {
   const call = await callOllamaChat({
     stage: role,
     format: roleSchemaFormat,
+    route,
     messages: [
       { role: "system", content: String(system || "Return ONLY strict JSON. Do not use markdown.") },
       userMessageWithImages(context, images),
