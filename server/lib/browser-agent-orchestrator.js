@@ -4937,8 +4937,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
+    const exactUserTargetFill =
+      /\b(use only|only these|exact field targets|exactly these fields|do not guess)\b/i.test(instruction) ||
+      /\blp_(input|button|link|form)_\d+\b/i.test(instruction);
+
     if (
       registryDefaultFillCommand &&
+      !exactUserTargetFill &&
       checker?.approved === true &&
       ["browserFillFields", "browserFillAndSubmit"].includes(String(checker?.command?.tool || ""))
     ) {
