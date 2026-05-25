@@ -4975,12 +4975,49 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
-    const registryDefaultFillCommand = buildRegistryFormFillCommandFromInstruction({
+    let registryDefaultFillCommand = buildRegistryFormFillCommandFromInstruction({
       instruction,
       step,
       actionRegistry,
       currentUrl,
     });
+
+    const broadVisibleFieldFillStep =
+      /\b(fill|type|enter|input|set)\b/i.test(String(step.instruction || "")) &&
+      /\b(clearly matching visible fields|clearly matching fields|visible fields|requested fields|provided fields|specific fields)\b/i.test(String(step.instruction || ""));
+
+    if (!registryDefaultFillCommand && broadVisibleFieldFillStep) {
+      const explicitInstructionFields = explicitFormValuesFromInstructionV1(instruction);
+
+      if (explicitInstructionFields.length > 0) {
+        registryDefaultFillCommand = {
+          intent: "fill_form",
+          tool: "browserFillFields",
+          args: {
+            currentUrl,
+            fields: explicitInstructionFields,
+            skipGenericFormPreparedValues: true,
+          },
+          notes: "Deterministic explicit-value fill for broad visible-field step. Values came from the original user instruction; targets will be resolved by Playwright action registry.",
+        };
+
+        trace.push(traceEntry({
+          role: "pipeline_supervisor",
+          title: "Explicit visible-field fill fallback",
+          step: stepNumber,
+          status: "synthetic_ready",
+          input: {
+            step,
+            originalInstruction: instruction,
+            actionRegistryStats: actionRegistry?.stats || {},
+          },
+          output: registryDefaultFillCommand,
+          summary: "Built deterministic browserFillFields command from explicit user values for a broad visible-field fill step.",
+          tool: "browserFillFields",
+          ok: true,
+        }));
+      }
+    }
 
     const checkerStatusForRegistryDefault = String(checker?.status || "").toLowerCase();
     const checkerToolForRegistryDefault = String(checker?.command?.tool || "");
@@ -5156,6 +5193,54 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         tool: executionCommand.tool,
         ok: null,
       }));
+    }
+
+    const executionStepText = [
+      step.instruction,
+      step.expectedAction,
+      step.successCriteria,
+    ].map((value) => String(value || "")).join(" ");
+
+    const stepRequiresFieldMutation =
+      /\b(fill|field|fields|visible fields|select|choose|pick|check|type|enter|input|set)\b/i.test(executionStepText) &&
+      !/\b(report|screenshot|snapshot|verify|readback|confirm|do not fill|not clearly requested)\b/i.test(executionStepText);
+
+    const executionTool = String(executionCommand?.tool || "");
+
+    if (
+      stepRequiresFieldMutation &&
+      !["browserFillFields", "browserFillAndSubmit", "browserPrepareFormSubmission"].includes(executionTool)
+    ) {
+      stoppedReason = `Refusing to execute ${executionTool || "unknown tool"} for a fill/select field step.`;
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Field step command compatibility guard",
+        step: stepNumber,
+        status: "blocked_incompatible_field_command",
+        input: {
+          step,
+          command: executionCommand,
+        },
+        output: { stoppedReason },
+        summary: stoppedReason,
+        tool: executionTool,
+        ok: false,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: false,
+        repaired: false,
+        status: "blocked_incompatible_field_command",
+        summary: stoppedReason,
+        url: currentUrl,
+        title: currentTitle,
+        command: executionCommand,
+      });
+
+      break;
     }
 
     let execution = await executePlaywrightMcpBrowserCommand({
