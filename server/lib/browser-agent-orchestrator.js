@@ -3258,8 +3258,23 @@ function isSubmitLikeClickCommand(command = {}) {
   return /login|log in|sign in|submit|continue|next/.test(text);
 }
 
-function commandWithFreshFillBeforeSubmit(clickCommand = {}, lastFillCommand = null) {
+function commandWithFreshFillBeforeSubmit(clickCommand = {}, lastFillCommand = null, step = {}, originalInstruction = "") {
   if (!lastFillCommand || !commandHasFields(lastFillCommand) || !isSubmitLikeClickCommand(clickCommand)) return clickCommand;
+
+  if (!envFlag("BROWSER_AGENT_REFILL_BEFORE_SUBMIT", false)) return clickCommand;
+
+  const contextText = [
+    originalInstruction,
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+    clickCommand.args?.text,
+    clickCommand.args?.label,
+    clickCommand.args?.buttonText,
+  ].map((value) => String(value || "")).join(" ");
+
+  if (hasNegativeSubmitIntentText(contextText)) return clickCommand;
+
   return {
     ...clickCommand,
     intent: "fill_and_submit",
@@ -3268,6 +3283,7 @@ function commandWithFreshFillBeforeSubmit(clickCommand = {}, lastFillCommand = n
       ...(clickCommand.args || {}),
       fields: lastFillCommand.args.fields,
       text: clickCommand.args?.text || clickCommand.args?.label || clickCommand.args?.buttonText || "Login",
+      explicitSubmit: true,
     },
     notes: "Re-filled verified fields immediately before submit.",
   };
@@ -4456,9 +4472,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         explicitValues.length > 0 &&
         /\b(form|field|fields|fill|submit|register|registration|contact|payment|pickup|test data|fake data)\b/i.test(formStepText)
       ) {
+        const negativeSubmitIntent = hasNegativeSubmitIntentText(formStepText);
         const wantsSubmit =
-          /\b(submit|submitted|register|registration|send|save|continue)\b/i.test(formStepText) ||
-          String(step.expectedAction || "").toLowerCase().includes("submit");
+          !negativeSubmitIntent &&
+          (
+            positiveSubmitIntentText(formStepText) ||
+            String(step.expectedAction || "").toLowerCase() === "submit"
+          );
 
         const fields = mergeFormFieldTargetsFromTemplate(explicitValues, null);
 
@@ -4994,7 +5014,12 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
-    const executionCommand = commandWithFreshFillBeforeSubmit(targetAdjustedCommand, lastSuccessfulFillCommand);
+    const executionCommand = commandWithFreshFillBeforeSubmit(
+      targetAdjustedCommand,
+      lastSuccessfulFillCommand,
+      step,
+      instruction
+    );
 
     if (executionCommand !== targetAdjustedCommand) {
       trace.push(traceEntry({
@@ -5352,14 +5377,20 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       originalInstruction: instruction,
     });
 
-    const structuredRepairAttempts = shouldUseBrowserRepairPlan(initialStructuredRepairPlan)
-      ? Math.max(1, Math.min(Number(initialStructuredRepairPlan.maxAttempts || 1), 2))
-      : 0;
+    const structuredRepairAttempts =
+      maxRepairAttempts <= 0
+        ? 0
+        : shouldUseBrowserRepairPlan(initialStructuredRepairPlan)
+          ? Math.max(1, Math.min(Number(initialStructuredRepairPlan.maxAttempts || 1), 2))
+          : 0;
 
-    const effectiveRepairAttempts = Math.max(
-      initialSyncRepair ? Math.max(1, maxRepairAttempts) : maxRepairAttempts,
-      structuredRepairAttempts
-    );
+    const effectiveRepairAttempts =
+      maxRepairAttempts <= 0
+        ? 0
+        : Math.max(
+            initialSyncRepair ? Math.max(1, maxRepairAttempts) : maxRepairAttempts,
+            structuredRepairAttempts
+          );
 
     for (let repairAttempt = 0; repairAttempt < effectiveRepairAttempts; repairAttempt += 1) {
       if (resultCheck.success === true) break;
