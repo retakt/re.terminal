@@ -231,12 +231,50 @@ function summarizeSnapshotText(value = "") {
   };
 }
 
+function comparableUrl(value = "") {
+  try {
+    const parsed = new URL(String(value || ""));
+    parsed.hash = "";
+    return parsed.href.replace(/\/$/, "");
+  } catch {
+    return String(value || "").trim().replace(/#.*$/, "").replace(/\/$/, "");
+  }
+}
+
+async function currentPlaywrightPageUrl() {
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: "() => location.href",
+  }).catch(() => null);
+
+  const raw = String(result?.text || result?.error || "").trim();
+
+  const parsed =
+    parseMcpWrappedJsonSafe(raw) ||
+    parseMcpJsonResult(raw) ||
+    raw.replace(/^###\s*Result\s*/i, "").replace(/^["']|["']$/g, "").trim();
+
+  return typeof parsed === "string" ? parsed : String(parsed || "");
+}
+
+async function navigatePlaywrightIfNeeded(url = "") {
+  const target = normalizeUrl(url);
+  if (!target) return { skipped: true, reason: "empty_url" };
+
+  const current = await currentPlaywrightPageUrl().catch(() => "");
+  if (current && comparableUrl(current) === comparableUrl(target)) {
+    return { skipped: true, reason: "already_at_url", currentUrl: current };
+  }
+
+  await callPlaywrightTool(["browser_navigate", "navigate"], { url: target });
+  return { skipped: false, reason: "navigated", currentUrl: target };
+}
+
 export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
   const startedAt = Date.now();
   const currentUrl = currentUrlFromInput(args, state);
 
   if (currentUrl && args.navigate !== false) {
-    await callPlaywrightTool(["browser_navigate", "navigate"], { url: currentUrl }).catch(() => null);
+    await navigatePlaywrightIfNeeded(currentUrl).catch(() => null);
   }
 
   const snapshotCall = await callPlaywrightTool(["browser_snapshot", "snapshot"], {});
@@ -3046,7 +3084,7 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
   // Sync here so the deterministic form tool succeeds on the first attempt instead of
   // depending on the watcher repair loop to navigate and retry.
   if (currentUrl && envFlag("BROWSER_AGENT_GENERIC_FORM_SYNC_BEFORE_PREPARE", true)) {
-    await callPlaywrightTool(["browser_navigate", "navigate"], { url: currentUrl }).catch(() => null);
+    await navigatePlaywrightIfNeeded(currentUrl).catch(() => null);
   }
 
   const script = `() => {
@@ -3633,7 +3671,7 @@ export async function buildPlaywrightActionRegistry({
   const url = normalizeUrl(currentUrl || currentUrlFromInput(args, state));
 
   if (url) {
-    await callPlaywrightTool(["browser_navigate", "navigate"], { url }).catch(() => null);
+    await navigatePlaywrightIfNeeded(url).catch(() => null);
   }
 
   const script = `() => {
@@ -3878,7 +3916,6 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
     if (!fields.length) return { ok: false, error: "Fill needs at least one field." };
 
     const domFallback = await tryDomFillFields(fields);
-    const verifyAfterDom = await verifyFilledFields(fields);
 
     const domFillConfirmed =
       (
@@ -3889,7 +3926,22 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
       ) ||
       domFillTextConfirmsNoMissingFields(domFallback.text || domFallback.error || "");
 
-    if (verifyAfterDom.ok === true || domFillConfirmed) {
+    if (domFillConfirmed) {
+      return {
+        ok: true,
+        domFallback,
+        verify: null,
+        fillResult: domFallback.fillResult || null,
+        text: [
+          domFallback.text || domFallback.error || "",
+          "Accepted DOM fill readback as verification because all requested fields were filled and missing=[].",
+        ].filter(Boolean).join("\n"),
+      };
+    }
+
+    const verifyAfterDom = await verifyFilledFields(fields);
+
+    if (verifyAfterDom.ok === true) {
       return {
         ok: true,
         domFallback,
@@ -3898,9 +3950,6 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
         text: [
           domFallback.text || domFallback.error || "",
           verifyAfterDom.text || "",
-          domFillConfirmed && verifyAfterDom.ok !== true
-            ? "Accepted DOM fill readback as verification because all requested fields were filled and missing=[]."
-            : "",
         ].filter(Boolean).join("\n"),
       };
     }
