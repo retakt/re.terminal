@@ -4754,13 +4754,18 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
+    const recoveryStepPlanStatusForExecution = String(stepPlan?.status || "").toLowerCase();
+    const recoveryStepPlanCommandAllowedByStatus =
+      Boolean(stepPlan?.syntheticSource) ||
+      !["needs_user", "failed", "rejected", "not_ready", "blocked"].includes(recoveryStepPlanStatusForExecution);
+
     const nonReadyStepCommandBlocked =
-      !stepPlanCommandAllowedByStatus &&
+      !recoveryStepPlanCommandAllowedByStatus &&
       stepPlan?.command &&
       !stepPlan?.syntheticSource;
 
     if (nonReadyStepCommandBlocked) {
-      stoppedReason = checker?.reason || `Step Agent returned status "${stepPlanStatusForExecution}" with a command.`;
+      stoppedReason = checker?.reason || `Step Agent returned status "${recoveryStepPlanStatusForExecution}" with a command.`;
 
       stepResults.push({
         stepNumber,
@@ -4785,7 +4790,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         step: stepNumber,
         status: "blocked_non_ready_recovery",
         input: {
-          stepPlanStatusForExecution,
+          stepPlanStatusForExecution: recoveryStepPlanStatusForExecution,
           stepPlanCommand: stepPlan?.command || null,
           checker,
         },
