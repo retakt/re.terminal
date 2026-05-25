@@ -3415,6 +3415,22 @@ function optionLabel(option = {}) {
   return String(option.text || option.value || "").replace(/\s+/g, " ").trim();
 }
 
+function choiceMentionIsNegated(rawText = "", phrase = "") {
+  const raw = intentNorm(rawText);
+  const words = splitWords(phrase);
+  if (!raw || !words.length) return false;
+
+  const phrasePattern = words.map(escapeRegex).join("\\s+");
+
+  const patterns = [
+    new RegExp(`\\b(?:do\\s+not|don't|dont|never|not|without|exclude|skip|avoid)\\s+(?:select|choose|pick|check|click|use)?\\s*(?:the\\s+)?${phrasePattern}\\b`, "i"),
+    new RegExp(`\\b(?:select|choose|pick|check|click|use)\\s+(?:only\\s+)?[^.\\n;]*\\bnot\\s+(?:the\\s+)?${phrasePattern}\\b`, "i"),
+    new RegExp(`\\b${phrasePattern}\\b\\s+(?:should\\s+)?(?:not|never)\\s+(?:be\\s+)?(?:selected|checked|chosen|used)\\b`, "i"),
+  ];
+
+  return patterns.some((re) => re.test(raw));
+}
+
 function choiceValueForAction(action = {}, rawText = "", allActions = []) {
   const type = String(action.type || "").toLowerCase();
   const tag = String(action.tag || "").toLowerCase();
@@ -3436,6 +3452,8 @@ function choiceValueForAction(action = {}, rawText = "", allActions = []) {
       if (!label && !value) return null;
 
       const optionPhrases = [...new Set([label, value].map(intentNorm).filter(Boolean))];
+      if (optionPhrases.some((phrase) => choiceMentionIsNegated(rawText, phrase))) return null;
+
       const mentioned = optionPhrases.some((phrase) => hasPhrase(rawText, phrase));
       const matchesContextualValue = contextualValue &&
         optionPhrases.some((phrase) =>
@@ -3574,6 +3592,12 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
   const isExplicitFillStep =
     expectedAction === "fill" ||
     /^\s*(fill|type|enter|input)\b/i.test(stepInstruction);
+
+  const isPassiveStateAssertion =
+    /\b(?:is|are|was|were)\s+(?:selected|checked|filled|set|chosen)\b/i.test(stepOnlyText) &&
+    !/^\s*(select|choose|pick|check|fill|type|enter|input)\b/i.test(stepInstruction);
+
+  if (isPassiveStateAssertion) return null;
 
   // Do not let verification/report/screenshot/no-submit steps become new fill commands.
   // "After filling, verify..." is NOT a fill step. It is a verification step.
