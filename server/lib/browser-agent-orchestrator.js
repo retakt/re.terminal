@@ -3367,29 +3367,40 @@ function extractPersonName(rawText = "") {
 
 function primitiveValueForAction(action = {}, rawText = "", allActions = []) {
   const type = String(action.type || "").toLowerCase();
-  const identity = intentCompact(actionRegistryText(action));
+
+  // Use strict identity for primitive type inference.
+  // Do not use full label text here because some pages visually merge neighboring labels,
+  // e.g. "Contact number PickUp Date", which makes date fields look like phone fields.
+  const strictIdentity = intentCompact([
+    action.name,
+    action.id,
+    action.type,
+    action.selector,
+  ].map((value) => String(value || "")).join(" "));
+
+  const looseIdentity = intentCompact(actionRegistryText(action));
   const aliases = actionAliases(action);
   const direct = extractValueAfterAliases(rawText, aliases, aliasesForOtherActions(action, allActions));
 
   if (direct) return direct;
 
-  if (type === "email" || /email/.test(identity)) {
+  if (type === "email" || /email/.test(strictIdentity)) {
     return String(rawText).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
   }
 
-  if (type === "url" || /website|url/.test(identity)) {
+  if (type === "url" || /website|url/.test(strictIdentity)) {
     return String(rawText).match(/https?:\/\/[^\s,.;]+/i)?.[0] || "";
   }
 
-  if (type === "tel" || /phone|mobile|telephone|contactnumber|contactno/.test(identity)) {
+  if (type === "tel" || /phone|mobile|telephone|contactnumber|contactno/.test(strictIdentity)) {
     return String(rawText).match(/\b(?:\+?\d[\d\s().-]{6,}\d)\b/)?.[0]?.replace(/\s+/g, " ").trim() || "";
   }
 
-  if (type === "date" || /date|dob|birthdate|pickup/.test(identity)) {
+  if (type === "date" || /date|dob|birthdate|pickup/.test(strictIdentity)) {
     return String(rawText).match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0] || "";
   }
 
-  if (type === "color" || /color|colour/.test(identity)) {
+  if (type === "color" || /color|colour/.test(strictIdentity)) {
     return String(rawText).match(/#[0-9a-f]{6}\b/i)?.[0] || "";
   }
 
@@ -3397,9 +3408,9 @@ function primitiveValueForAction(action = {}, rawText = "", allActions = []) {
   if (personName) {
     const parts = personName.split(/\s+/).filter(Boolean);
 
-    if (/firstname|givenname|first/.test(identity)) return parts[0] || "";
-    if (/lastname|surname|familyname|last/.test(identity)) return parts.slice(1).join(" ") || "";
-    if (/fullname|contactname|\bname\b/.test(identity)) return personName;
+    if (/firstname|givenname|first/.test(strictIdentity || looseIdentity)) return parts[0] || "";
+    if (/lastname|surname|familyname|last/.test(strictIdentity || looseIdentity)) return parts.slice(1).join(" ") || "";
+    if (/fullname|contactname|\bname\b/.test(strictIdentity || looseIdentity)) return personName;
   }
 
   return "";
@@ -3636,8 +3647,7 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
   if (!actionRegistry?.ok || !Array.isArray(actionRegistry.actions)) return null;
 
   const broadFillStep =
-    /\b(all provided|clearly matching fields|specific fields|profile|the form|all fields|provided fields)\b/i.test(String(step.instruction || "")) ||
-    /^\s*fill\b/i.test(String(step.instruction || ""));
+    /\b(all provided fields|all requested fields|all clearly matching fields|entire form|the form|all fields|provided fields)\b/i.test(String(step.instruction || ""));
 
   const mappingText = broadFillStep ? fullText : stepScopedText;
 
@@ -6098,7 +6108,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
 
     const fillResultHasFailureSignal =
       execution.ok !== true ||
-      /registry-backed dom fill failed verification|field verification failed|fill failed verification|not confirmed|missing/i.test(fillResultText);
+      /registry-backed dom fill failed verification|field verification failed|fill failed verification|not confirmed|missing\s+(?:field|fields|value|values)/i.test(fillResultText);
 
     if (isFieldFillResultCommand) {
       if (!fillResultHasFailureSignal && browserFillFieldsConfirmedByExecutor(executionCommand, execution)) {
