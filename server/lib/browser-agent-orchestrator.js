@@ -3054,6 +3054,10 @@ function commandWithGenericFormPreparedValues(command = {}, step = {}, originalI
     return command;
   }
 
+  if (args.skipGenericFormPreparedValues === true) {
+    return command;
+  }
+
   const requestedValues = fieldsArrayFromLooseFormArgs(args);
   const requiredExplicitValues = explicitFormValuesFromInstructionV1(originalInstruction);
   const valuesWithRequiredExplicitFields = mergeRequiredExplicitFormValuesV1(
@@ -3164,20 +3168,38 @@ function submitCommandFromPreviousFill(lastFillCommand = null, step = {}, curren
   };
 }
 
-function explicitPlaywrightRegistryFieldAssignments(text = "", actionRegistry = null) {
+function explicitPlaywrightRegistryFieldAssignments(text = "", actionRegistry = null, { stepText = "" } = {}) {
   const actions = Array.isArray(actionRegistry?.actions) ? actionRegistry.actions : [];
   const byId = new Map(actions.map((action) => [String(action?.actionId || ""), action]));
   const fields = [];
   const seen = new Set();
 
-  const re = /(?:^|[,;\n]\s*)(field_[A-Za-z0-9_]+)\s*=\s*([^,;\n.]+)/g;
-  let match;
+  const stepIds = new Set(
+    [...String(stepText || "").matchAll(/\b(field_[A-Za-z0-9_]+)\b/g)]
+      .map((match) => String(match[1] || "").trim())
+      .filter(Boolean)
+  );
 
+  // Capture:
+  //   field_firstname = Riley
+  //   field_lastname = Stone
+  //   field_sex_sex_1_female = Female
+  // without swallowing the next assignment or trailing "Do not submit".
+  const re = /\b(field_[A-Za-z0-9_]+)\s*=\s*([\s\S]*?)(?=(?:[,;\n]\s*field_[A-Za-z0-9_]+\s*=)|(?:\.\s+[A-Z])|(?:\bdo\s+not\s+submit\b)|(?:\bdon't\s+submit\b)|(?:\bdont\s+submit\b)|(?:\bafter\s+filling\b)|$)/gi;
+
+  let match;
   while ((match = re.exec(String(text || "")))) {
     const actionId = String(match[1] || "").trim();
-    const value = String(match[2] || "").trim();
+    const value = String(match[2] || "")
+      .replace(/,?\s+but\s+do\s+not\s+submit.*$/i, "")
+      .replace(/,?\s+do\s+not\s+submit.*$/i, "")
+      .replace(/\.\s+after.*$/i, "")
+      .replace(/\.\s+submit.*$/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
     if (!actionId || !value || seen.has(actionId)) continue;
+    if (stepIds.size > 0 && !stepIds.has(actionId)) continue;
 
     const action = byId.get(actionId);
     if (!action || String(action.kind || "") !== "field") continue;
@@ -3214,7 +3236,13 @@ function syntheticStepPlanFromExplicitPlaywrightRegistryFields({
   if (!/\b(fill|enter|type|input)\b/i.test(text)) return null;
   if (!/\b(field_[A-Za-z0-9_]+)\s*=/.test(text)) return null;
 
-  const fields = explicitPlaywrightRegistryFieldAssignments(text, actionRegistry);
+  const stepText = [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ");
+
+  const fields = explicitPlaywrightRegistryFieldAssignments(text, actionRegistry, { stepText });
   if (!fields.length) return null;
 
   return {
@@ -3226,6 +3254,7 @@ function syntheticStepPlanFromExplicitPlaywrightRegistryFields({
       args: {
         currentUrl,
         fields,
+        skipGenericFormPreparedValues: true,
       },
       notes: "Deterministic fill built from exact user-provided Playwright actionRegistry field IDs.",
     },
