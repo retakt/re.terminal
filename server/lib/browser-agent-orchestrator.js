@@ -3543,6 +3543,24 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
   actionRegistry = null,
   currentUrl = "",
 } = {}) {
+  const stepOnlyText = [
+    step.instruction,
+    step.expectedAction,
+    step.successCriteria,
+  ].map((value) => String(value || "")).join(" ");
+
+  // Do not let verification/report/screenshot/no-submit steps become new fill commands.
+  // These steps may contain words like "first name contains Riley", but that is an
+  // assertion to verify, not a value to type.
+  if (
+    /\b(report|verify|readback|contains|screenshot|snapshot|screen|image|look|confirm|check)\b/i.test(stepOnlyText) &&
+    !/\b(fill|type|enter|input)\b/i.test(String(step.instruction || ""))
+  ) {
+    return null;
+  }
+
+  if (hasNegativeSubmitIntentText(stepOnlyText)) return null;
+
   const text = [
     instruction,
     step.instruction,
