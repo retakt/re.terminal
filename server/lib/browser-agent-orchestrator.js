@@ -2196,48 +2196,6 @@ function detailedStepReportSummaryFromObservation(observation = {}, step = {}, o
 }
 
 
-function browserAgentHostFromUrl(value = "") {
-  try {
-    const raw = String(value || "").trim();
-    if (!raw) return "";
-    const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-    return new URL(normalized).hostname.replace(/^www\./i, "").toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
-function browserAgentLooksLikeAdOrParkingRedirect(value = "") {
-  const raw = String(value || "");
-
-  // Generic parked/ad/access-denied redirect hints.
-  // Do NOT hardcode every ad domain; host mismatch is handled separately.
-  return /[?&](?:psystem|oref|trafficTarget)=/i.test(raw) ||
-    /\b(access denied|parked free|parked domain|expired domain|domain parking|this domain is parked|domain for sale|buy this domain)\b/i.test(raw);
-}
-
-
-function browserAgentNavigationRedirectBlocked({ requestedUrl = "", observedUrl = "", observedText = "" } = {}) {
-  const requestedHost = browserAgentHostFromUrl(requestedUrl);
-  const observedHost = browserAgentHostFromUrl(observedUrl);
-
-  if (browserAgentLooksLikeAdOrParkingRedirect(observedUrl) || browserAgentLooksLikeAdOrParkingRedirect(observedText)) {
-    return {
-      blocked: true,
-      reason: `Blocked ad/parking/access-denied redirect: ${observedUrl || "[unknown url]"}`,
-    };
-  }
-
-  if (requestedHost && observedHost && requestedHost !== observedHost && !observedHost.endsWith("." + requestedHost)) {
-    return {
-      blocked: true,
-      reason: `Navigation host changed from ${requestedHost} to ${observedHost}. Refusing to treat redirect as successful.`,
-    };
-  }
-
-  return { blocked: false, reason: "" };
-}
-
 function pageStateTraceSummary(pageState = null) {
   if (!pageState) return "No Lightpanda page state was captured.";
   if (pageState.ok !== true) return pageState.error || "Lightpanda page state was unavailable.";
@@ -3632,8 +3590,8 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
   const stepInstruction = String(step.instruction || "");
 
   const isExplicitFillStep =
-    ["fill", "select", "choose", "check", "type", "input", "enter"].includes(expectedAction) ||
-    /^\s*(fill|type|enter|input|select|choose|pick|check|set)\b/i.test(stepInstruction);
+    expectedAction === "fill" ||
+    /^\s*(fill|type|enter|input)\b/i.test(stepInstruction);
 
   const isPassiveStateAssertion =
     /\b(?:is|are|was|were)\s+(?:selected|checked|filled|set|chosen)\b/i.test(stepOnlyText) &&
@@ -3656,29 +3614,17 @@ function syntheticStepPlanFromNaturalRegistryFormFields({
     return null;
   }
 
-  const fullText = [
+  const text = [
     instruction,
     step.instruction,
     step.expectedAction,
     step.successCriteria,
   ].map((value) => String(value || "")).join(" ");
 
-  const stepScopedText = [
-    step.instruction,
-    step.expectedAction,
-    step.successCriteria,
-  ].map((value) => String(value || "")).join(" ");
-
-  if (!/\b(fill|enter|type|input|form|select|choose|pick|use|check|set)\b/i.test(fullText)) return null;
+  if (!/\b(fill|enter|type|input|form|select|choose|pick|use)\b/i.test(text)) return null;
   if (!actionRegistry?.ok || !Array.isArray(actionRegistry.actions)) return null;
 
-  const broadFillStep =
-    /\b(all provided|clearly matching fields|profile|the form|all fields|provided fields)\b/i.test(String(step.instruction || "")) ||
-    /^\s*fill\b/i.test(String(step.instruction || ""));
-
-  const mappingText = broadFillStep ? fullText : stepScopedText;
-
-  const fields = resolveUserValuesAgainstActionRegistry(mappingText, actionRegistry);
+  const fields = resolveUserValuesAgainstActionRegistry(text, actionRegistry);
   if (!fields.length) return null;
 
   return {
@@ -4518,64 +4464,6 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       tool: "browserObserve",
       ok: beforeState?.ok === true,
     }));
-
-    if (
-      isNavigationStep(step) &&
-      beforeState?.ok === true &&
-      !currentUrl &&
-      lightpandaReadUrl
-    ) {
-      const redirectGuard = browserAgentNavigationRedirectBlocked({
-        requestedUrl: lightpandaReadUrl,
-        observedUrl: beforeState.url || "",
-        observedText: [
-          beforeState.title,
-          beforeState.text,
-          beforeState.textPreview,
-          beforeState.markdown,
-          beforeState.error,
-        ].map((value) => String(value || "")).join(" "),
-      });
-
-      if (redirectGuard.blocked) {
-        stoppedReason = redirectGuard.reason;
-
-        trace.push(traceEntry({
-          role: "pipeline_supervisor",
-          title: "Ad/parking redirect guard",
-          step: stepNumber,
-          status: "blocked_redirect",
-          input: {
-            requestedUrl: lightpandaReadUrl,
-            observedUrl: beforeState.url || "",
-            title: beforeState.title || "",
-          },
-          output: redirectGuard,
-          summary: redirectGuard.reason,
-          tool: "browserObserve",
-          ok: false,
-        }));
-
-        stepResults.push({
-          stepNumber,
-          step,
-          ok: false,
-          repaired: false,
-          status: "blocked_redirect",
-          summary: redirectGuard.reason,
-          url: beforeState.url || currentUrl,
-          title: beforeState.title || currentTitle,
-          command: {
-            intent: "navigate",
-            tool: "browserObserve",
-            args: { requestedUrl: lightpandaReadUrl, observedUrl: beforeState.url || "" },
-            notes: "Blocked ad/parking/access-denied redirect before marking navigation as passed.",
-          },
-        });
-
-        break;
-      }
-    }
 
     if (
       (readOnlyBrowserPlan || envFlag("BROWSER_AGENT_LIGHTPANDA_NAVIGATION_PREREAD_PASS", true)) &&
@@ -5914,72 +5802,22 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       break;
     }
 
-    const stepAssertionTextForTarget = [
-      step.instruction,
-      step.expectedAction,
-      step.successCriteria,
-    ].map((value) => String(value || "")).join(" ");
+    const targetAdjustedCommand = commandWithLightpandaExecutionTarget(normalized.command, {
+      step,
+      beforeState,
+      originalInstruction: instruction,
+      currentUrl,
+    });
 
-    const passiveStateAssertionForTarget =
-      (
-        /\b(?:is|are|was|were)\s+(?:selected|checked|filled|set|chosen|not\s+clicked|clicked)\b/i.test(stepAssertionTextForTarget) ||
-        /\b(report|verify|readback|screenshot|snapshot|confirm|check)\b/i.test(stepAssertionTextForTarget) ||
-        hasNegativeSubmitIntentText(stepAssertionTextForTarget)
-      ) &&
-      !/^\s*(click|press|tap|open|navigate)\b/i.test(String(step.instruction || ""));
-
-    const normalizedToolForTarget = String(normalized.command?.tool || "");
-    const normalizedHasFieldsForTarget =
-      Array.isArray(normalized.command?.args?.fields) &&
-      normalized.command.args.fields.length > 0;
-
-    const normalizedCommandForTarget =
-      passiveStateAssertionForTarget && normalizedToolForTarget === "browserClickByText"
-        ? {
-            intent: "observe",
-            tool: "browserObserve",
-            args: { currentUrl, focus: "page" },
-            notes: "Passive verification/report/no-submit step must observe, not click. Blocked stale click command.",
-          }
-        : normalized.command;
-
-    if (normalizedCommandForTarget !== normalized.command) {
-      trace.push(traceEntry({
-        role: "pipeline_supervisor",
-        title: "Passive verification click guard",
-        step: stepNumber,
-        status: "blocked_passive_click",
-        input: normalized.command,
-        output: normalizedCommandForTarget,
-        summary: "Blocked browserClickByText for passive verification/report/no-submit step.",
-        tool: normalizedCommandForTarget.tool || "",
-        ok: true,
-      }));
-    }
-
-    const canUseLightpandaExecutionTarget =
-      normalizedCommandForTarget.tool === "browserClickByText" &&
-      !normalizedHasFieldsForTarget &&
-      !passiveStateAssertionForTarget;
-
-    const targetAdjustedCommand = canUseLightpandaExecutionTarget
-      ? commandWithLightpandaExecutionTarget(normalizedCommandForTarget, {
-          step,
-          beforeState,
-          originalInstruction: instruction,
-          currentUrl,
-        })
-      : normalizedCommandForTarget;
-
-    if (targetAdjustedCommand !== normalizedCommandForTarget) {
+    if (targetAdjustedCommand !== normalized.command) {
       trace.push(traceEntry({
         role: "playwright_controller",
         title: "Lightpanda execution target",
         step: stepNumber,
         status: "prepared",
-        input: normalizedCommandForTarget,
+        input: normalized.command,
         output: targetAdjustedCommand,
-        summary: "Prepared real Playwright click target from Lightpanda DOM evidence for explicit button-like intent.",
+        summary: "Prepared real Playwright click target from Lightpanda DOM evidence for button-like intent.",
         tool: targetAdjustedCommand.tool,
         ok: null,
       }));
@@ -6014,56 +5852,6 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       beforeObservation: observationFromPageState(beforeState),
       skipBeforeSnapshot: !captureBeforeSnapshot && beforeState?.ok === true,
     });
-
-    const executionObservationForRedirect = observationFromExecution(execution);
-    const redirectAfterPlaywrightExecution = String(executionCommand?.tool || "") === "browserNavigate"
-      ? browserAgentNavigationRedirectBlocked({
-          requestedUrl: executionCommand?.args?.url || stepTargetUrl || "",
-          observedUrl: executionObservationForRedirect?.url || "",
-          observedText: [
-            executionObservationForRedirect?.title,
-            executionObservationForRedirect?.textPreview,
-            executionObservationForRedirect?.text,
-            execution?.actionResult?.text,
-            execution?.error,
-          ].map((value) => String(value || "")).join(" "),
-        })
-      : { blocked: false, reason: "" };
-
-    if (redirectAfterPlaywrightExecution.blocked) {
-      stoppedReason = redirectAfterPlaywrightExecution.reason;
-
-      trace.push(traceEntry({
-        role: "pipeline_supervisor",
-        title: "Post-Playwright redirect guard",
-        step: stepNumber,
-        status: "blocked_redirect",
-        input: {
-          command: executionCommand,
-          requestedUrl: executionCommand?.args?.url || stepTargetUrl || "",
-          observedUrl: executionObservationForRedirect?.url || "",
-          observedTitle: executionObservationForRedirect?.title || "",
-        },
-        output: redirectAfterPlaywrightExecution,
-        summary: redirectAfterPlaywrightExecution.reason,
-        tool: executionCommand.tool || "",
-        ok: false,
-      }));
-
-      stepResults.push({
-        stepNumber,
-        step,
-        ok: false,
-        repaired: false,
-        status: "blocked_redirect",
-        summary: redirectAfterPlaywrightExecution.reason,
-        url: executionObservationForRedirect?.url || currentUrl,
-        title: executionObservationForRedirect?.title || currentTitle,
-        command: executionCommand,
-      });
-
-      break;
-    }
 
     if (
       envFlag("BROWSER_AGENT_FORCE_AFTER_SCREENSHOT", true) &&
