@@ -5014,6 +5014,46 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
+    const registryResolution = registryResolvedCommand?.args?.registryResolution;
+    const registryResolutionBlockedAll =
+      registryResolution &&
+      Number(registryResolution.rejectedCount || 0) > 0 &&
+      Array.isArray(registryResolvedCommand?.args?.fields) &&
+      registryResolvedCommand.args.fields.length === 0;
+
+    if (registryResolutionBlockedAll) {
+      const warningSummary = (registryResolution.warnings || [])
+        .map((warning) => `${warning.code}: ${warning.reason}`)
+        .filter(Boolean)
+        .join(" ");
+
+      stoppedReason = warningSummary || "All requested fields were blocked by the action registry resolver.";
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: false,
+        status: "blocked_action_registry_resolution",
+        summary: stoppedReason,
+        command: registryResolvedCommand,
+        url: currentUrl,
+        title: currentTitle,
+      });
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Action registry execution blocked",
+        step: stepNumber,
+        status: "blocked_action_registry_resolution",
+        input: registryResolvedCommand,
+        output: registryResolution,
+        summary: stoppedReason,
+        tool: registryResolvedCommand.tool || "",
+        ok: false,
+      }));
+
+      break;
+    }
+
     const normalized = normalizeCommand(registryResolvedCommand, currentUrl);
     if (!normalized.ok) {
       stoppedReason = normalized.error;

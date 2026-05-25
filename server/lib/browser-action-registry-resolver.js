@@ -320,6 +320,22 @@ export function withActionRegistryFieldTargets(command = {}, registry = {}) {
 
   const resolvedFields = fields.map((field) => {
     const hadLightpandaRef = fieldContainsLightpandaRef(field);
+
+    // Hard boundary: Lightpanda refs are observation-only. If a planned field
+    // contains lp_input_*, lp_button_*, lp_link_*, or lp_form_* anywhere, do not
+    // map it by label/name/selector into a Playwright action. The LLM must choose
+    // a real Playwright registry actionId/selector instead.
+    if (hadLightpandaRef) {
+      resolutionWarnings.push({
+        code: "lightpanda_ref_not_executable",
+        severity: "blocked",
+        reason: "Lightpanda refs are observe-only. Playwright execution requires a Playwright action registry actionId or selector.",
+        field: compactFieldForWarning(field),
+        hint: "Use Lightpanda only for observation. Use Playwright registry actions such as field_firstname for execution.",
+      });
+      return null;
+    }
+
     const registryOnlyField = stripLightpandaIdentity(field);
     const match = findRegistryField(registryOnlyField, registry);
 
