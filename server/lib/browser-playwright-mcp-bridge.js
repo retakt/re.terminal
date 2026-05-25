@@ -3250,43 +3250,15 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
       return "";
     };
 
-    const generatedFallbackValueFor = (el, uniqueSeed) => {
-      const tag = el.tagName.toLowerCase();
-      const type = typeOf(el);
-      const label = labelFor(el);
-      const key = compact(label);
-
-      if (tag === "textarea") return "automated-safe-note-" + uniqueSeed;
-      if (tag === "select") return "";
-      if (type === "password") return "safe-pass-" + uniqueSeed;
-      if (type === "email" || /email/.test(key)) return "autofill-" + uniqueSeed + "@example.test";
-      if (type === "tel" || /phone|mobile|telephone|tel|contactnumber|contactno/.test(key)) return "0000000000";
-      if (type === "url" || /website|url/.test(key)) return "https://example.test";
-      if (type === "number" || /age|count|quantity|amount|number/.test(key)) return "1";
-      if (type === "date" || /pickupdate|pickup|date/.test(key)) return "2026-01-15";
-      if (/firstname|givenname|first/.test(key)) return "first-" + uniqueSeed;
-      if (/lastname|surname|familyname|last/.test(key)) return "last-" + uniqueSeed;
-      if (/fullname|contactname|name/.test(key)) return "person-" + uniqueSeed;
-      if (/address|street/.test(key)) return "address-" + uniqueSeed;
-      if (/city/.test(key)) return "city-" + uniqueSeed;
-      if (/state|province|region/.test(key)) return "region-" + uniqueSeed;
-      if (/zip|postal|postcode/.test(key)) return "00000";
-      if (/country/.test(key)) return "US";
-      if (/user(name)?|login/.test(key)) return "user-" + uniqueSeed;
-      if (/company|organization|organisation/.test(key)) return "company-" + uniqueSeed;
-      if (/subject|title/.test(key)) return "subject-" + uniqueSeed;
-      if (/message|comment|description|notes?/.test(key)) return "automated-safe-note-" + uniqueSeed;
-
-      return "value-" + uniqueSeed;
-    };
-
     const valueFor = (el, uniqueSeed) => {
       const type = typeOf(el);
       const label = labelFor(el);
 
+      // Production safety: never invent form values.
+      // Only use values explicitly requested by the command or extracted from the user's instruction.
       return requestedValueFor(el, label, type) ||
         explicitInstructionValueFor(label, type) ||
-        generatedFallbackValueFor(el, uniqueSeed);
+        "";
     };
 
     const readValue = (el) => {
@@ -3304,14 +3276,12 @@ async function prepareGenericFormSubmissionV1(command = {}, args = {}, state = {
       if (tag === "select") {
         const wanted = norm(value);
         const options = Array.from(el.options || []).filter((option) => !option.disabled);
-        const option = options.find((item) => {
-            const hay = norm(String(item.value || "") + " " + String(item.textContent || ""));
-            return wanted && hay.includes(wanted);
-          }) ||
-          options.find((item) => item.value && !/choose|select|open this/i.test(item.textContent || "")) ||
-          options.find((item) => item.value) ||
-          options[0] ||
-          null;
+        const option = wanted
+          ? options.find((item) => {
+              const hay = norm(String(item.value || "") + " " + String(item.textContent || ""));
+              return hay.includes(wanted);
+            })
+          : null;
         if (option) el.value = option.value;
       } else if (el.isContentEditable) {
         el.textContent = value;
@@ -3517,8 +3487,14 @@ async function submitPreparedFormV1(command = {}, args = {}, state = {}) {
       try { el.focus?.(); } catch {}
 
       if (el.tagName.toLowerCase() === "select") {
+        const wanted = String(value || "").trim().toLowerCase();
         const options = Array.from(el.options || []).filter((option) => !option.disabled);
-        const option = options.find((item) => item.value) || options[0] || null;
+        const option = wanted
+          ? options.find((item) => {
+              const hay = String((item.value || "") + " " + (item.textContent || "")).trim().toLowerCase();
+              return hay.includes(wanted);
+            })
+          : null;
         if (option) el.value = option.value;
       } else if (el.isContentEditable) {
         el.textContent = value;
