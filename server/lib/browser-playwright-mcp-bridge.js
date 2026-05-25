@@ -2482,6 +2482,22 @@ async function tryDomFillFields(fields = []) {
     const missing = [];
 
     function setNativeValue(el, value) {
+      const tagName = el.tagName.toLowerCase();
+      const inputType = String(el.getAttribute("type") || "").toLowerCase();
+
+      if (tagName === "input" && (inputType === "radio" || inputType === "checkbox")) {
+        el.focus();
+        if (!el.checked) {
+          el.click();
+        } else {
+          el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        }
+        el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        el.dispatchEvent(new Event("blur", { bubbles: true }));
+        return;
+      }
+
       if (el.tagName.toLowerCase() === "select") {
         const wanted = norm(value);
         const isPlaceholderOption = (option) => {

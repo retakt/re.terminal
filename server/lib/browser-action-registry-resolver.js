@@ -17,7 +17,7 @@ function cleanFieldValue(value = "") {
 }
 
 function unsupportedFillType(type = "") {
-  return ["hidden", "file", "submit", "button", "reset", "checkbox", "radio"]
+  return ["hidden", "file", "submit", "button", "reset"]
     .includes(String(type || "").toLowerCase());
 }
 
@@ -81,7 +81,7 @@ function looseFieldLooksUnsupported(field = {}) {
     field.type,
   ].map((value) => String(value || "")).join(" ").toLowerCase();
 
-  return /disabled|read.?only|file|checkbox|radio/.test(text) ||
+  return /disabled|read.?only|file/.test(text) ||
     unsupportedFillType(field.type);
 }
 
