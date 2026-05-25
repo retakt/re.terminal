@@ -4754,6 +4754,50 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
+    const nonReadyStepCommandBlocked =
+      !stepPlanCommandAllowedByStatus &&
+      stepPlan?.command &&
+      !stepPlan?.syntheticSource;
+
+    if (nonReadyStepCommandBlocked) {
+      stoppedReason = checker?.reason || `Step Agent returned status "${stepPlanStatusForExecution}" with a command.`;
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: false,
+        repaired: false,
+        status: "blocked_non_ready_step_command",
+        summary: stoppedReason,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "blocked",
+          tool: "",
+          args: {},
+          notes: "Non-ready Step Agent command was blocked and not allowed to be recovered by form normalizers.",
+        },
+      });
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Blocked command recovery guard",
+        step: stepNumber,
+        status: "blocked_non_ready_recovery",
+        input: {
+          stepPlanStatusForExecution,
+          stepPlanCommand: stepPlan?.command || null,
+          checker,
+        },
+        output: { stoppedReason },
+        summary: "Blocked later form-command recovery from resurrecting a non-ready Step Agent command.",
+        tool: stepPlan?.command?.tool || "",
+        ok: false,
+      }));
+
+      break;
+    }
+
     const recoverableFormCommandCandidate =
       checker?.command ||
       stepPlan?.command ||
