@@ -6791,7 +6791,24 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     )
   );
 
-  if (passedAllSteps && completedRealFill && verifiedFillStep) {
+  const failedStepsAreOnlyNoSubmitOrReport = stepResults.every((item) => {
+    if (item?.ok === true) return true;
+
+    const text = [
+      item?.step?.instruction,
+      item?.step?.expectedAction,
+      item?.step?.successCriteria,
+      item?.summary,
+    ].map((value) => String(value || "")).join(" ");
+
+    return hasNegativeSubmitIntentText(text) || isReportOnlyStep(item?.step || {});
+  });
+
+  const effectivelyPassedAllSteps =
+    passedAllSteps ||
+    (completedRealFill && verifiedFillStep && failedStepsAreOnlyNoSubmitOrReport);
+
+  if (effectivelyPassedAllSteps && completedRealFill && verifiedFillStep) {
     const fields = Array.isArray(verifiedFillStep.command?.args?.fields)
       ? verifiedFillStep.command.args.fields
       : Array.isArray(verifiedFillStep.command?.args?.requestedValues)
@@ -6873,7 +6890,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }));
   }
 
-  if (!passedAllSteps && final?.success === true) {
+  if (!effectivelyPassedAllSteps && final?.success === true) {
     final = {
       ...final,
       success: false,
@@ -6883,7 +6900,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     };
   }
 
-  if (passedAllSteps && final?.success !== true) {
+  if (effectivelyPassedAllSteps && final?.success !== true) {
     const lastStep = stepResults.at(-1) || {};
     final = {
       ...final,
