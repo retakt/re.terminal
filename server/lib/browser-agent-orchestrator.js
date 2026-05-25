@@ -5236,6 +5236,11 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     let checkerCall = null;
     let checker = null;
 
+    const stepPlanStatusForExecution = String(stepPlan?.status || "").toLowerCase();
+    const stepPlanCommandAllowedByStatus =
+      Boolean(stepPlan?.syntheticSource) ||
+      !["needs_user", "failed", "rejected", "not_ready", "blocked"].includes(stepPlanStatusForExecution);
+
     const snapshotChecker = fastSnapshotCheckerForStep({ stepPlan, step, before });
     const playwrightScoutChecker = playwrightScoutEvidenceCheckerForStep({ stepPlan, step });
     const lightpandaEvidenceChecker = envFlag("BROWSER_AGENT_LIGHTPANDA_EVIDENCE_CHECKER", true)
@@ -5243,6 +5248,38 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       : null;
 
     if (
+      !stepPlanCommandAllowedByStatus &&
+      stepPlan?.command &&
+      !stepPlan?.syntheticSource
+    ) {
+      checker = {
+        status: "needs_user",
+        approved: false,
+        command: null,
+        reason: `Step Agent returned status "${stepPlanStatusForExecution}" with a command. Refusing to execute non-ready model command.`,
+        repairInstruction: "",
+        messageToUser: stepPlan?.messageToUser || stepPlan?.reason || "",
+        confidence: 1,
+      };
+
+      checkerCall = {
+        ok: true,
+        error: "",
+        call: { data: checker },
+      };
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Step command status guard",
+        step: stepNumber,
+        status: "blocked_non_ready_step_command",
+        input: stepPlan,
+        output: checker,
+        summary: checker.reason,
+        tool: stepPlan.command?.tool || "",
+        ok: false,
+      }));
+    } else if (
       stepPlan?.syntheticSource === "explicit_form_contract" &&
       stepPlan?.command &&
       ["browserFillFields", "browserFillAndSubmit"].includes(String(stepPlan.command.tool || ""))
