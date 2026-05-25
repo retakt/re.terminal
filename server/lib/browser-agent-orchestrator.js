@@ -2196,6 +2196,57 @@ function detailedStepReportSummaryFromObservation(observation = {}, step = {}, o
 }
 
 
+function browserAgentHostFromUrl(value = "") {
+  try {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    return new URL(normalized).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function browserAgentLooksLikeAdOrParkingRedirect(value = "") {
+  const raw = String(value || "");
+  const host = browserAgentHostFromUrl(raw);
+
+  if (host && [
+    "dot-news.org",
+    "godaddy.com",
+    "parkingcrew.net",
+    "sedoparking.com",
+    "bodis.com",
+    "hugedomains.com",
+  ].some((blocked) => host === blocked || host.endsWith("." + blocked))) {
+    return true;
+  }
+
+  return /[?&](?:psystem|domain|oref)=/i.test(raw) ||
+    /\b(access denied|parked free|parked domain|expired domain|domain parking|this domain is parked)\b/i.test(raw);
+}
+
+function browserAgentNavigationRedirectBlocked({ requestedUrl = "", observedUrl = "", observedText = "" } = {}) {
+  const requestedHost = browserAgentHostFromUrl(requestedUrl);
+  const observedHost = browserAgentHostFromUrl(observedUrl);
+
+  if (browserAgentLooksLikeAdOrParkingRedirect(observedUrl) || browserAgentLooksLikeAdOrParkingRedirect(observedText)) {
+    return {
+      blocked: true,
+      reason: `Blocked ad/parking/access-denied redirect: ${observedUrl || "[unknown url]"}`,
+    };
+  }
+
+  if (requestedHost && observedHost && requestedHost !== observedHost && !observedHost.endsWith("." + requestedHost)) {
+    return {
+      blocked: true,
+      reason: `Navigation host changed from ${requestedHost} to ${observedHost}. Refusing to treat redirect as successful.`,
+    };
+  }
+
+  return { blocked: false, reason: "" };
+}
+
 function pageStateTraceSummary(pageState = null) {
   if (!pageState) return "No Lightpanda page state was captured.";
   if (pageState.ok !== true) return pageState.error || "Lightpanda page state was unavailable.";
@@ -4476,6 +4527,64 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       tool: "browserObserve",
       ok: beforeState?.ok === true,
     }));
+
+    if (
+      isNavigationStep(step) &&
+      beforeState?.ok === true &&
+      !currentUrl &&
+      lightpandaReadUrl
+    ) {
+      const redirectGuard = browserAgentNavigationRedirectBlocked({
+        requestedUrl: lightpandaReadUrl,
+        observedUrl: beforeState.url || "",
+        observedText: [
+          beforeState.title,
+          beforeState.text,
+          beforeState.textPreview,
+          beforeState.markdown,
+          beforeState.error,
+        ].map((value) => String(value || "")).join(" "),
+      });
+
+      if (redirectGuard.blocked) {
+        stoppedReason = redirectGuard.reason;
+
+        trace.push(traceEntry({
+          role: "pipeline_supervisor",
+          title: "Ad/parking redirect guard",
+          step: stepNumber,
+          status: "blocked_redirect",
+          input: {
+            requestedUrl: lightpandaReadUrl,
+            observedUrl: beforeState.url || "",
+            title: beforeState.title || "",
+          },
+          output: redirectGuard,
+          summary: redirectGuard.reason,
+          tool: "browserObserve",
+          ok: false,
+        }));
+
+        stepResults.push({
+          stepNumber,
+          step,
+          ok: false,
+          repaired: false,
+          status: "blocked_redirect",
+          summary: redirectGuard.reason,
+          url: beforeState.url || currentUrl,
+          title: beforeState.title || currentTitle,
+          command: {
+            intent: "navigate",
+            tool: "browserObserve",
+            args: { requestedUrl: lightpandaReadUrl, observedUrl: beforeState.url || "" },
+            notes: "Blocked ad/parking/access-denied redirect before marking navigation as passed.",
+          },
+        });
+
+        break;
+      }
+    }
 
     if (
       (readOnlyBrowserPlan || envFlag("BROWSER_AGENT_LIGHTPANDA_NAVIGATION_PREREAD_PASS", true)) &&
