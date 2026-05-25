@@ -92,13 +92,102 @@ export function cleanBrowserAgentTraceSummary(value = "") {
   return safeText(value, 700);
 }
 
+function extractSimpleUserDetails(text = "") {
+  const raw = String(text || "");
+  const nameMatch = raw.match(/\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/);
+  const ageMatch = raw.match(/\b(?:age\s*)?(\d{1,3})\b/);
+  const gender =
+    /\b(f|female|woman|girl)\b/i.test(raw) ? "Female" :
+    /\b(m|male|man|boy)\b/i.test(raw) ? "Male" :
+    "";
+
+  return {
+    firstName: nameMatch?.[1] || "",
+    lastName: nameMatch?.[2] || "",
+    gender,
+    age: ageMatch?.[1] || "",
+  };
+}
+
+function formAssistSummaryFromObservation({
+  originalInstruction = "",
+  finalObservation = null,
+  lastStep = null,
+} = {}) {
+  const stepText = [
+    originalInstruction,
+    lastStep?.step?.instruction,
+    lastStep?.step?.successCriteria,
+  ].map((value) => String(value || "")).join(" ");
+
+  if (!/\b(form|fill plan|suggested fill|what can be filled|missing fields|required|optional)\b/i.test(stepText)) {
+    return "";
+  }
+
+  const inputs = Array.isArray(finalObservation?.inputs) ? finalObservation.inputs : [];
+  const buttons = Array.isArray(finalObservation?.buttons) ? finalObservation.buttons : [];
+  if (!inputs.length) return "";
+
+  const details = extractSimpleUserDetails(originalInstruction);
+  const required = inputs.filter((field) => field.required);
+  const has = (pattern) => inputs.some((field) =>
+    pattern.test([field.label, field.name, field.id, field.type, field.role].map((v) => String(v || "")).join(" "))
+  );
+
+  const canFill = [];
+  if (details.firstName && has(/first.?name|firstname/i)) canFill.push(`First name: ${details.firstName}`);
+  if (details.lastName && has(/last.?name|lastname/i)) canFill.push(`Last name: ${details.lastName}`);
+  if (details.gender && has(/sex|gender/i)) canFill.push(`Gender/Sex: ${details.gender}`);
+
+  const missing = [];
+  if (has(/exp|experience/i)) {
+    missing.push(details.age
+      ? `Years of experience: missing — age ${details.age} is not the same as experience`
+      : "Years of experience");
+  }
+  if (has(/date|datepicker/i)) missing.push("Date");
+  if (has(/profession/i)) missing.push("Profession, for example Manual Tester or Automation Tester");
+  if (has(/tool/i)) missing.push("Automation tool, for example QTP, Selenium IDE, or Selenium WebDriver");
+  if (has(/photo|file/i)) missing.push("Photo/file upload path, if needed");
+  if (has(/continent/i)) missing.push("Continent");
+  if (has(/selenium.?commands/i)) missing.push("Selenium command category");
+
+  const submitButton = buttons.find((button) => /submit/i.test(String(button.text || button.label || button.id || button.name || "")));
+
+  return [
+    "I inspected the form and did not fill or submit anything.",
+    "",
+    canFill.length
+      ? `Can confidently fill: ${canFill.join("; ")}.`
+      : "I could not confidently fill any personal fields from the provided details.",
+    missing.length
+      ? `Still need: ${missing.join("; ")}.`
+      : "No obvious missing fields found from the visible controls.",
+    required.length
+      ? `Required fields visible: ${required.map((field) => field.label || field.name || field.id || field.selector || "unnamed field").join(", ")}.`
+      : "No fields were marked required in the visible metadata.",
+    submitButton ? "Submit button exists, but I will not click it unless you explicitly ask." : "",
+  ].filter(Boolean).join("\n");
+}
+
 export function finalBrowserAgentUserSummary({
   passedAllSteps = false,
   stoppedReason = "",
   finalObservation = null,
   lastStep = null,
+  originalInstruction = "",
+  stepResults = [],
 } = {}) {
   if (stoppedReason) return stoppedReason;
+
+  const formAssistSummary = formAssistSummaryFromObservation({
+    originalInstruction,
+    finalObservation,
+    lastStep,
+    stepResults,
+  });
+
+  if (formAssistSummary) return formAssistSummary;
 
   const where = pageSummaryFromObservation(finalObservation || {}, lastStep?.summary || "");
 

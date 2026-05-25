@@ -34,6 +34,8 @@ Rules:
 - Output actionId for every field whenever actionRegistry has a matching field.
 - Exact user values from formValueHints must be preserved.
 - For select/dropdown fields, use actionRegistry.options to choose the best option value/text.
+- Form inspect/map/suggest step: use browserObserve with focus "forms" or "actions". Do not fill.
+- If the step asks to compare provided user details with form fields, observe the form and prepare information for the final answer; do not mutate the page.
 - Fill-only step: browserFillFields only. Do not submit.
 - Submit-only step: browserSubmitForm only.
 - Fill+submit in one current step: browserFillAndSubmit.
