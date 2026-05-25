@@ -6005,7 +6005,95 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     let resultCheckCall = null;
     let resultCheck = null;
 
+    const fillResultTool = String(executionCommand?.tool || "");
+    const fillResultText = [
+      execution?.status,
+      execution?.error,
+      execution?.actionResult?.text,
+      execution?.observation?.textPreview,
+    ].map((value) => String(value || "")).join(" ");
+
+    const isFieldFillResultCommand =
+      ["browserFillFields", "browserFillAndSubmit"].includes(fillResultTool) ||
+      (
+        fillResultTool === "browserPrepareFormSubmission" &&
+        Array.isArray(executionCommand?.args?.fields)
+      );
+
+    if (isFieldFillResultCommand) {
+      if (browserFillFieldsConfirmedByExecutor(executionCommand, execution)) {
+        resultCheck = normalizeWatcherRepairResult({
+          status: "passed",
+          success: true,
+          summary: "Executor DOM readback confirmed all requested fields were filled.",
+          evidence: execution.actionResult?.text || "",
+          failureKind: "",
+          repairInstruction: "",
+          messageToUser: "",
+          confidence: 0.99,
+        }, {
+          execution,
+          step,
+          command: executionCommand,
+          beforeState,
+        });
+
+        trace.push(traceEntry({
+          role: "pipeline_supervisor",
+          title: "Deterministic fill result guard",
+          step: stepNumber,
+          status: "passed_executor_fill_readback",
+          input: {
+            command: executionCommand,
+            executionStatus: execution.status,
+            executionOk: execution.ok,
+          },
+          output: resultCheck,
+          summary: resultCheck.summary,
+          tool: executionCommand.tool || "",
+          ok: true,
+        }));
+      } else if (
+        execution.ok !== true ||
+        /registry-backed dom fill failed verification|field verification failed|fill failed verification|not confirmed|missing/i.test(fillResultText)
+      ) {
+        resultCheck = normalizeWatcherRepairResult({
+          status: "failed",
+          success: false,
+          summary: execution.error || execution.actionResult?.text || "Executor did not confirm requested field values.",
+          evidence: execution.actionResult?.text || "",
+          failureKind: "field_value_not_confirmed",
+          repairInstruction: "",
+          messageToUser: "",
+          confidence: 0.95,
+        }, {
+          execution,
+          step,
+          command: executionCommand,
+          beforeState,
+        });
+
+        trace.push(traceEntry({
+          role: "pipeline_supervisor",
+          title: "Deterministic fill result guard",
+          step: stepNumber,
+          status: "failed_executor_fill_readback",
+          input: {
+            command: executionCommand,
+            executionStatus: execution.status,
+            executionOk: execution.ok,
+            executionError: execution.error || "",
+          },
+          output: resultCheck,
+          summary: resultCheck.summary,
+          tool: executionCommand.tool || "",
+          ok: false,
+        }));
+      }
+    }
+
     if (
+      !resultCheck &&
       String(executionCommand.tool || "") === "browserPrepareFormSubmission" &&
       execution.ok === true
     ) {
@@ -6149,6 +6237,41 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         output: resultCheck,
         summary: resultCheck.summary || resultCheck.evidence || "",
         ok: resultCheck.success === true,
+      }));
+    } else if (envFlag("BROWSER_AGENT_WATCHER_SPY_ONLY", true)) {
+      resultCheck = normalizeWatcherRepairResult({
+        status: execution.ok === true ? "passed" : "failed",
+        success: execution.ok === true,
+        summary: execution.ok === true
+          ? "Watcher is spy-only. Executor result accepted as authoritative."
+          : (execution.error || execution.actionResult?.text || "Executor failed. Watcher is spy-only and cannot override."),
+        evidence: execution.actionResult?.text || "",
+        failureKind: execution.ok === true ? "" : "executor_failed",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: execution.ok === true ? 0.9 : 0.1,
+      }, {
+        execution,
+        step,
+        command: executionCommand,
+        beforeState,
+      });
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Watcher spy-only authority guard",
+        step: stepNumber,
+        status: execution.ok === true ? "passed_executor_authority" : "failed_executor_authority",
+        input: {
+          step,
+          command: executionCommand,
+          executionStatus: execution.status,
+          executionOk: execution.ok,
+        },
+        output: resultCheck,
+        summary: resultCheck.summary,
+        tool: executionCommand.tool || "",
+        ok: execution.ok === true,
       }));
     } else {
       const resultImages = snapshotImagesForModel(execution.beforeSnapshot || before?.snapshot, execution.afterSnapshot);
