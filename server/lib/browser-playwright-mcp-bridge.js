@@ -114,6 +114,35 @@ function imagesFromMcp(result = {}) {
     .filter((item) => item.data);
 }
 
+function writeMcpImageToDisk(image = {}, label = "page") {
+  try {
+    const data = String(image?.data || image?.imageBase64 || "").replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
+    if (!data) return null;
+
+    const mime = String(image?.mimeType || image?.mime_type || "image/png").toLowerCase();
+    const ext = mime.includes("jpeg") || mime.includes("jpg")
+      ? ".jpg"
+      : mime.includes("webp")
+        ? ".webp"
+        : ".png";
+
+    fs.mkdirSync(PLAYWRIGHT_MCP_DIR, { recursive: true });
+
+    const safeLabel = String(label || "page").replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "page";
+    const filePath = path.join(PLAYWRIGHT_MCP_DIR, `${safeLabel}-${new Date().toISOString().replace(/[:.]/g, "-")}${ext}`);
+
+    fs.writeFileSync(filePath, Buffer.from(data, "base64"));
+
+    return {
+      imageBase64: data,
+      imagePath: filePath,
+      mimeType: mime,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function readImageBase64(filePath = "") {
   try {
     if (!filePath || !fs.existsSync(filePath)) return null;
@@ -269,11 +298,7 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
   }
 
   const imageFromMcp = screenshotCall.images?.[0]
-    ? {
-        imageBase64: screenshotCall.images[0].data,
-        mimeType: screenshotCall.images[0].mimeType,
-        imagePath: "",
-      }
+    ? writeMcpImageToDisk(screenshotCall.images[0], args.label || "page")
     : null;
 
   const imageFromText = snapshotPathFromText(screenshotCall.text) || snapshotPathFromText(snapshotCall.text);
@@ -2434,8 +2459,9 @@ async function tryDomFillFields(fields = []) {
     secret: fieldIsSecret(field),
   }));
 
-  const script = `() => {
+  const script = `async () => {
     const fields = ${JSON.stringify(payload)};
+    const waitPaint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     const norm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
     const visible = (el) => {
@@ -2534,6 +2560,10 @@ async function tryDomFillFields(fields = []) {
         if (setter) setter.call(el, value);
         else el.value = value;
 
+        try {
+          el.setAttribute("value", value);
+        } catch {}
+
         if (String(el.getAttribute("type") || "").toLowerCase() === "date" && /^\\d{4}-\\d{2}-\\d{2}$/.test(String(value || ""))) {
           try {
             const [year, month, day] = String(value).split("-").map(Number);
@@ -2618,6 +2648,8 @@ async function tryDomFillFields(fields = []) {
         id: target.getAttribute("id") || "",
       });
     }
+
+    await waitPaint();
 
     return { ok: missing.length === 0, filled, missing };
   }`;
@@ -3881,7 +3913,7 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
       ) ||
       domFillTextConfirmsNoMissingFields(domFallback.text || domFallback.error || "");
 
-    if (verifyAfterDom.ok === true || domFillConfirmed) {
+    if (verifyAfterDom.ok === true) {
       return {
         ok: true,
         domFallback,
@@ -3890,9 +3922,6 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
         text: [
           domFallback.text || domFallback.error || "",
           verifyAfterDom.text || "",
-          domFillConfirmed && verifyAfterDom.ok !== true
-            ? "Accepted DOM fill readback as verification because all requested fields were filled and missing=[]."
-            : "",
         ].filter(Boolean).join("\n"),
       };
     }
@@ -4063,6 +4092,10 @@ export async function executePlaywrightMcpBrowserCommand({
   }
 
   const action = await executeApprovedAction(command, { ...args, beforeSnapshot: before.snapshot || beforeSnapshot || null }, state);
+
+  await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: "async () => { await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))); return 'paint flushed'; }",
+  }).catch(() => null);
 
   const after = await capturePlaywrightMcpSnapshot({
     ...args,
