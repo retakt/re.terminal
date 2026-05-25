@@ -2712,12 +2712,26 @@ function domFillTextConfirmsNoMissingFields(value = "") {
 function parseMcpJsonResult(text = "") {
   const raw = String(text || "").trim();
   if (!raw) return null;
-  try { return JSON.parse(raw); } catch {}
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start >= 0 && end > start) {
-    try { return JSON.parse(raw.slice(start, end + 1)); } catch {}
+
+  const attempts = [raw];
+
+  // Playwright MCP commonly returns:
+  // ### Result
+  // { ...json... }
+  // ### Ran Playwright code
+  const resultBlock = raw.match(/###\s*Result\s*\n([\s\S]*?)(?=\n###\s|\n```|$)/i)?.[1]?.trim();
+  if (resultBlock) attempts.unshift(resultBlock);
+
+  for (const attempt of attempts) {
+    try { return JSON.parse(attempt); } catch {}
+
+    const start = attempt.indexOf("{");
+    const end = attempt.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try { return JSON.parse(attempt.slice(start, end + 1)); } catch {}
+    }
   }
+
   return null;
 }
 
