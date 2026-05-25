@@ -20,7 +20,9 @@ Rules:
   3. verify/report final result
 - Add a separate observe/verify step only when it improves correctness.
 - FORM ASSIST MODE:
-  - If the user gives a form/page URL plus partial user details, and does not explicitly say "fill now", "go ahead and fill", or "submit", do NOT fill yet.
+  - Use form assist mode only for vague help/assist requests where the user has not clearly asked to mutate the page.
+  - If the user says "fill now", "go ahead and fill", "fill it", "do not inspect-only", "not inspect-only", "use these exact field targets", or "use only these exact field targets", create a real fill step instead of inspect-and-suggest mode.
+  - If the user gives a form/page URL plus partial user details, and does not clearly ask to fill immediately or submit, do NOT fill yet.
   - Instead create steps:
     1. navigate/open the page
     2. inspect/map the form fields and compare them with the user's provided details

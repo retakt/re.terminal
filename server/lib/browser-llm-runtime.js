@@ -544,7 +544,7 @@ async function postOpenAiChat({ config, model, messages, format, options }) {
   return { response, data };
 }
 
-async function callOllamaChat({ stage, messages, format = "json" }) {
+async function callOllamaChat({ stage, messages, format = "json", forceThink = null }) {
   const schemaFormatForStage = browserAgentJsonSchemaFor(stage);
   if (schemaFormatForStage && (format === "json" || !format)) {
     format = schemaFormatForStage;
@@ -573,7 +573,7 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
       messages,
       format,
       options,
-      think: config.think,
+      think: forceThink === null ? config.think : Boolean(forceThink),
     });
 
     if (!attempt.response.ok && config.think && thinkUnsupportedError(attempt.data, model)) {
@@ -605,7 +605,11 @@ async function callOllamaChat({ stage, messages, format = "json" }) {
   usage.redactedBaseUrl = redactBaseUrl(stageConfig.baseUrl);
   usage.thinkRequested = Boolean(stageConfig.provider === "ollama" && config.think);
   usage.retriedWithoutThink = retriedWithoutThink;
-  usage.thinkUsed = Boolean(stageConfig.provider === "ollama" && config.think && !retriedWithoutThink);
+  usage.thinkUsed = Boolean(
+    stageConfig.provider === "ollama" &&
+    (forceThink === null ? config.think : Boolean(forceThink)) &&
+    !retriedWithoutThink
+  );
 
   return {
     content: responseContent(data),
@@ -931,6 +935,14 @@ export async function callBrowserAgentReporter(context = {}) {
   };
 }
 
+function parseRoleJsonOrThrow(content = "", role = "planner", schemaName = "") {
+  let data = parseStrictJson(content, schemaName || role);
+  if (shouldNormalizeWatcherJson(role, schemaName)) {
+    data = normalizeWatcherJsonShape(data);
+  }
+  return data;
+}
+
 export async function callBrowserAgentRoleJson(stage = "planner", {
   system = "",
   context = {},
@@ -939,32 +951,67 @@ export async function callBrowserAgentRoleJson(stage = "planner", {
 } = {}) {
   const role = String(stage || "planner").trim() || "planner";
   const roleSchemaFormat = browserAgentJsonSchemaFor(schemaName || role) || "json";
+  const messages = [
+    { role: "system", content: String(system || "Return ONLY strict JSON. Do not use markdown.") },
+    userMessageWithImages(context, images),
+  ];
 
   const call = await callOllamaChat({
     stage: role,
     format: roleSchemaFormat,
-    messages: [
-      { role: "system", content: String(system || "Return ONLY strict JSON. Do not use markdown.") },
-      userMessageWithImages(context, images),
-    ],
+    messages,
   });
 
-  let data;
   try {
-    data = parseStrictJson(call.content, schemaName || role);
-    if (shouldNormalizeWatcherJson(role, schemaName)) {
-      data = normalizeWatcherJsonShape(data);
-    }
+    const data = parseRoleJsonOrThrow(call.content, role, schemaName);
+    return {
+      data,
+      usage: call.usage,
+      rawContent: call.content,
+    };
   } catch (err) {
-    err.usage = call.usage;
-    throw err;
-  }
+    const shouldRetryWithoutThink =
+      call.usage?.provider === "ollama" &&
+      call.usage?.thinkUsed === true &&
+      (
+        !String(call.content || "").trim() ||
+        err.code === "BROWSER_AGENT_LLM_INVALID_JSON"
+      );
 
-  return {
-    data,
-    usage: call.usage,
-    rawContent: call.content,
-  };
+    if (!shouldRetryWithoutThink) {
+      err.usage = call.usage;
+      throw err;
+    }
+
+    const retry = await callOllamaChat({
+      stage: role,
+      format: roleSchemaFormat,
+      messages: [
+        ...messages,
+        {
+          role: "user",
+          content: "Your previous response was not parseable JSON. Retry now with ONLY one strict JSON object matching the schema. No markdown. No explanation.",
+        },
+      ],
+      forceThink: false,
+    });
+
+    try {
+      const data = parseRoleJsonOrThrow(retry.content, role, schemaName);
+      retry.usage.retriedWithoutThinkForJson = true;
+      retry.usage.firstInvalidJsonPreview = safeText(call.content || call.thinking || "", 1200);
+      return {
+        data,
+        usage: retry.usage,
+        rawContent: retry.content,
+        firstRawContent: call.content,
+      };
+    } catch (retryErr) {
+      retryErr.usage = retry.usage;
+      retryErr.firstInvalidJsonPreview = safeText(call.content || call.thinking || "", 1200);
+      throw retryErr;
+    }
+  }
 }
 
 export async function callBrowserAgentReviewer(context = {}, system = "", options = {}) {
