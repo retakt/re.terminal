@@ -3279,7 +3279,43 @@ function actionAliases(action = {}) {
   return [...aliases].filter(Boolean);
 }
 
-function extractValueAfterAliases(rawText = "", aliases = []) {
+function aliasesForOtherActions(currentAction = {}, allActions = []) {
+  const currentId = String(currentAction?.actionId || "").trim();
+  const aliases = [];
+
+  for (const action of allActions || []) {
+    if (!action || String(action?.kind || "") !== "field") continue;
+    if (currentId && String(action.actionId || "").trim() === currentId) continue;
+
+    aliases.push(...actionAliases(action));
+  }
+
+  return [...new Set(aliases)]
+    .filter(Boolean)
+    .sort((a, b) => splitWords(b).length - splitWords(a).length || b.length - a.length);
+}
+
+function trimAtNextRegistryAlias(value = "", stopAliases = []) {
+  let out = String(value || "");
+
+  for (const alias of stopAliases) {
+    const words = splitWords(alias);
+    if (!words.length) continue;
+
+    const aliasPattern = words.map(escapeRegex).join("\\s+");
+
+    // Example:
+    // value captured as "Riley and last name Stone"
+    // stop alias from registry: "last name"
+    // output: "Riley"
+    const re = new RegExp(`\\s+(?:and|then|,)?\\s*${aliasPattern}\\b.*$`, "i");
+    out = out.replace(re, "");
+  }
+
+  return out.replace(/\s+/g, " ").trim();
+}
+
+function extractValueAfterAliases(rawText = "", aliases = [], stopAliases = []) {
   const raw = String(rawText || "");
 
   for (const alias of aliases) {
@@ -3302,11 +3338,12 @@ function extractValueAfterAliases(rawText = "", aliases = []) {
       if (!match?.[1]) continue;
 
       let value = String(match[1] || "")
-        .replace(/\b(and|then|after filling|do not submit|submit button.*)$/i, "")
+        .replace(/\b(?:then|after filling|do not submit|submit button.*)$/i, "")
         .replace(/\s+/g, " ")
         .trim();
 
       value = value.replace(/^(field|input|textbox|text box|text field|control)\s+/i, "").trim();
+      value = trimAtNextRegistryAlias(value, stopAliases);
 
       if (!value) continue;
       if (/^(field|input|textbox|text box|text field|control)$/i.test(value)) continue;
@@ -3322,17 +3359,17 @@ function extractPersonName(rawText = "") {
   const raw = String(rawText || "");
 
   return (
-    raw.match(/\b(?:person|candidate|applicant|user|customer)\s+(?:is|=|:)?\s*([A-Z][A-Za-z' -]+?\s+[A-Z][A-Za-z' -]+?)(?=,|\s+(?:male|female|who|works|uses|\d{1,3}\s*years)|\.|$)/i)?.[1] ||
+    raw.match(/\b(?:person|profile|candidate|applicant|user|customer)\s+(?:is|=|:)?\s*([A-Z][A-Za-z' -]+?\s+[A-Z][A-Za-z' -]+?)(?=,|\s+(?:male|female|who|works|uses|\d{1,3}\s*years)|\.|$)/i)?.[1] ||
     raw.match(/\bname\s*(?:is|=|:)?\s*([A-Z][A-Za-z' -]+?\s+[A-Z][A-Za-z' -]+?)(?=,|\s+(?:male|female|who|works|uses|\d{1,3}\s*years)|\.|$)/i)?.[1] ||
     ""
   ).replace(/\s+/g, " ").trim();
 }
 
-function primitiveValueForAction(action = {}, rawText = "") {
+function primitiveValueForAction(action = {}, rawText = "", allActions = []) {
   const type = String(action.type || "").toLowerCase();
   const identity = intentCompact(actionRegistryText(action));
   const aliases = actionAliases(action);
-  const direct = extractValueAfterAliases(rawText, aliases);
+  const direct = extractValueAfterAliases(rawText, aliases, aliasesForOtherActions(action, allActions));
 
   if (direct) return direct;
 
@@ -3378,7 +3415,7 @@ function optionLabel(option = {}) {
   return String(option.text || option.value || "").replace(/\s+/g, " ").trim();
 }
 
-function choiceValueForAction(action = {}, rawText = "") {
+function choiceValueForAction(action = {}, rawText = "", allActions = []) {
   const type = String(action.type || "").toLowerCase();
   const tag = String(action.tag || "").toLowerCase();
 
@@ -3389,7 +3426,7 @@ function choiceValueForAction(action = {}, rawText = "") {
   const identity = actionRegistryText(action);
   const aliases = actionAliases(action);
 
-  const contextualValue = extractValueAfterAliases(rawText, aliases);
+  const contextualValue = extractValueAfterAliases(rawText, aliases, aliasesForOtherActions(action, allActions));
   const hay = intentNorm(rawText);
 
   const scored = choices
@@ -3433,17 +3470,17 @@ function choiceValueForAction(action = {}, rawText = "") {
   return best ? String(best.option.value || best.option.text || "") : "";
 }
 
-function valueForRegistryActionFromUser(action = {}, rawText = "") {
+function valueForRegistryActionFromUser(action = {}, rawText = "", allActions = []) {
   const tag = String(action.tag || "").toLowerCase();
   const type = String(action.type || "").toLowerCase();
 
   if (["hidden", "file", "submit", "button", "reset"].includes(type)) return "";
 
   if (tag === "select" || type === "radio" || type === "checkbox") {
-    return choiceValueForAction(action, rawText);
+    return choiceValueForAction(action, rawText, allActions);
   }
 
-  return primitiveValueForAction(action, rawText);
+  return primitiveValueForAction(action, rawText, allActions);
 }
 
 function actionExplicitlyMentionedInText(action = {}, rawText = "") {
@@ -3476,7 +3513,7 @@ function resolveUserValuesAgainstActionRegistry(instruction = "", actionRegistry
     if (!actionId || seen.has(actionId)) continue;
     if (onlyMentionedMode && !explicitlyMentioned.has(actionId)) continue;
 
-    const value = valueForRegistryActionFromUser(action, instruction);
+    const value = valueForRegistryActionFromUser(action, instruction, fields);
     if (!String(value || "").trim()) continue;
     seen.add(actionId);
 
@@ -4242,6 +4279,49 @@ export async function runBrowserAgentOrchestrator(args = {}) {
             submitClicked: false,
           },
           notes: "Reported from stored verified fill; did not re-observe, navigate, reload, or mutate the page.",
+        },
+      });
+
+      continue;
+    }
+
+    if (hasNegativeSubmitIntentText([
+      step.instruction,
+      step.expectedAction,
+      step.successCriteria,
+    ].join(" "))) {
+      const summary = "No-submit instruction satisfied. Submit button was not clicked.";
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "No-submit guard",
+        step: stepNumber,
+        status: "passed_no_submit",
+        input: step,
+        output: { submitClicked: false },
+        summary,
+        tool: "browserFillFields",
+        ok: true,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: true,
+        repaired: false,
+        status: "passed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "no_submit_guard",
+          tool: "browserFillFields",
+          args: {
+            currentUrl,
+            submitClicked: false,
+            reportOnly: true,
+          },
+          notes: "User explicitly said not to submit. This step is satisfied by doing nothing.",
         },
       });
 
@@ -5323,6 +5403,42 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }));
     }
 
+    if (
+      stepPlan?.syntheticSource === "generic_playwright_registry_intent_resolver" &&
+      stepPlan?.command?.tool === "browserFillFields" &&
+      checker?.command?.tool !== "browserFillFields"
+    ) {
+      const replacedCommand = checker?.command || null;
+
+      checker = {
+        ...(checker && typeof checker === "object" ? checker : {}),
+        status: "forced_generic_registry_fill_command",
+        approved: true,
+        command: stepPlan.command,
+        reason: "Checker attempted to replace deterministic Playwright registry fill with a non-fill command. Restored browserFillFields.",
+        repairInstruction: "",
+        messageToUser: "",
+        confidence: Math.max(0.96, Number(stepPlan.confidence || 0.96)),
+      };
+
+      if (checkerCall) checkerCall = { ...checkerCall, ok: true, error: "" };
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Generic registry fill command guard",
+        step: stepNumber,
+        status: "forced_generic_registry_fill_command",
+        input: {
+          stepPlanCommand: stepPlan.command,
+          replacedCommand,
+        },
+        output: checker,
+        summary: checker.reason,
+        tool: checker.command?.tool || "",
+        ok: true,
+      }));
+    }
+
     const recoverableFormCommandCandidate =
       checker?.command ||
       stepPlan?.command ||
@@ -5666,6 +5782,32 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       skipBeforeSnapshot: !captureBeforeSnapshot && beforeState?.ok === true,
     });
 
+    if (
+      envFlag("BROWSER_AGENT_FORCE_AFTER_SCREENSHOT", true) &&
+      isStateChangingBrowserCommand(executionCommand)
+    ) {
+      const afterProof = await capturePlaywrightMcpSnapshot({
+        ...args,
+        currentUrl: execution.observation?.url || currentUrl,
+        label: `step_${stepNumber}_after_${String(executionCommand.tool || "action")}`,
+        navigate: false,
+      }, currentState).catch((err) => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+
+      execution = {
+        ...execution,
+        afterSnapshot: afterProof?.snapshot || execution.afterSnapshot || null,
+        screenshotProof: {
+          ok: afterProof?.ok === true,
+          imagePath: afterProof?.snapshot?.imagePath || "",
+          hasImageBase64: Boolean(afterProof?.snapshot?.imageBase64),
+          screenshotError: afterProof?.snapshot?.screenshotError || afterProof?.error || "",
+        },
+      };
+    }
+
     trace.push(traceEntry({
       role: "playwright_controller",
       title: "Playwright browser controller",
@@ -5678,6 +5820,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         error: execution.error || "",
         summary: execution.actionResult?.text || "",
         actionDetails: browserExecutionUiDetails(executionCommand, execution),
+        screenshotProof: execution.screenshotProof || null,
       },
       summary: browserExecutionTraceSummary(executionCommand, execution),
       tool: executionCommand.tool,
