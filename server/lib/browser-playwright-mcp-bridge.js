@@ -3990,6 +3990,19 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
         text: [
           domFallback.text || domFallback.error || "",
           verifyAfterDom.text || verifyAfterDom.error || "",
+          "FILL_DEBUG " + safeText(JSON.stringify({
+            requestedFields: fields.map((field) => ({
+              actionId: field.actionId || "",
+              label: field.label || "",
+              name: field.name || "",
+              selector: field.selector || "",
+              value: field.secret ? "[redacted]" : String(field.value ?? ""),
+            })),
+            domFillResult: domFallback.fillResult || null,
+            verifierResult: verifyAfterDom.verification || null,
+            domOk: domFallback.ok === true,
+            verifierOk: verifyAfterDom.ok === true,
+          }), 8000),
           verifyAfterDom.verification ? "Verification details: " + safeText(JSON.stringify(verifyAfterDom.verification), 3000) : "",
           "Registry-backed fill failed verification; skipped legacy browser_type fallback to avoid appending into existing fields.",
         ].filter(Boolean).join("\n"),
