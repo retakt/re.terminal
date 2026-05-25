@@ -3925,16 +3925,38 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
       ) ||
       domFillTextConfirmsNoMissingFields(domFallback.text || domFallback.error || "");
 
+    const cleanReadbackValue = (value) => {
+      let out = String(value ?? "").replace(/\s+/g, " ").trim();
+      for (let i = 0; i < 2; i += 1) {
+        const next = out.replace(/^['"“”‘’`]\s*(.*?)\s*['"“”‘’`]$/u, "$1").trim();
+        if (next === out) break;
+        out = next;
+      }
+      return out;
+    };
+
+    const filledReadback = Array.isArray(domFallback.fillResult?.filled)
+      ? domFallback.fillResult.filled
+      : [];
+
     const structuredDomFillConfirmed =
       domFallback.ok === true &&
       domFallback.fillResult?.ok === true &&
       Array.isArray(domFallback.fillResult?.missing) &&
       domFallback.fillResult.missing.length === 0 &&
-      Array.isArray(domFallback.fillResult?.filled) &&
-      domFallback.fillResult.filled.length === fields.length &&
-      domFallback.fillResult.filled.every((item) =>
-        String(item?.expected ?? "") === String(item?.actual ?? "")
-      );
+      fields.length > 0 &&
+      fields.every((field) => {
+        const expected = cleanReadbackValue(field.value);
+        return filledReadback.some((item) => {
+          const sameSelector = field.selector && item?.selector && String(field.selector) === String(item.selector);
+          const sameLabel = field.label && item?.label && String(field.label).toLowerCase() === String(item.label).toLowerCase();
+          const sameName = field.name && item?.name && String(field.name).toLowerCase() === String(item.name).toLowerCase();
+
+          return (sameSelector || sameLabel || sameName) &&
+            cleanReadbackValue(item?.expected) === expected &&
+            cleanReadbackValue(item?.actual) === expected;
+        });
+      });
 
     if (verifyAfterDom.ok === true || structuredDomFillConfirmed) {
       return {
