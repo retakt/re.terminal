@@ -3812,6 +3812,70 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       continue;
     }
 
+    if (
+      lastSuccessfulFillCommand &&
+      isReportOnlyStep(step) &&
+      /\b(filled|which fields|report exactly|submit button was not clicked|not clicked|no submit|do not submit)\b/i.test([
+        instruction,
+        step.instruction,
+        step.expectedAction,
+        step.successCriteria,
+      ].map((value) => String(value || "")).join(" "))
+    ) {
+      const fields = Array.isArray(lastSuccessfulFillCommand?.args?.fields)
+        ? lastSuccessfulFillCommand.args.fields
+        : [];
+
+      const filledSummary = fields
+        .map((field) => {
+          const label = field.label || field.name || field.actionId || "field";
+          const value = field.secret ? "[redacted]" : String(field.value ?? "");
+          return `${label}: ${value}`;
+        })
+        .join(", ");
+
+      const summary = [
+        filledSummary ? `Filled fields: ${filledSummary}.` : "Filled fields were verified.",
+        "Submit button was not clicked.",
+      ].join(" ");
+
+      trace.push(traceEntry({
+        role: "pipeline_supervisor",
+        title: "Report from verified fill",
+        step: stepNumber,
+        status: "reported_from_stored_fill",
+        input: { step, lastSuccessfulFillCommand },
+        output: { summary, fields, submitClicked: false },
+        summary,
+        tool: "browserFillFields",
+        ok: true,
+      }));
+
+      stepResults.push({
+        stepNumber,
+        step,
+        ok: true,
+        repaired: false,
+        status: "passed",
+        summary,
+        url: currentUrl,
+        title: currentTitle,
+        command: {
+          intent: "report",
+          tool: "browserFillFields",
+          args: {
+            currentUrl,
+            fields,
+            reportOnly: true,
+            submitClicked: false,
+          },
+          notes: "Reported from stored verified fill; did not re-observe, navigate, reload, or mutate the page.",
+        },
+      });
+
+      continue;
+    }
+
     const stepTargetUrl = targetUrlForStep(step, instruction);
     const shouldLightpandaReadStepTarget =
       !currentUrl &&
@@ -5044,11 +5108,13 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     }
 
     const exactUserTargetFill =
-      /\b(use only|only these|exact field targets|exactly these fields|do not guess)\b/i.test(instruction) ||
+      /\b(use only|only these|exact field targets|exactly these fields|do not guess|registry fields only|playwright registry fields only|use playwright registry fields only)\b/i.test(instruction) ||
+      /\bfield_[A-Za-z0-9_]+\s*=/.test(instruction) ||
       /\blp_(input|button|link|form)_\d+\b/i.test(instruction);
 
     if (
       registryDefaultFillCommand &&
+      checker?.command?.args?.skipGenericFormPreparedValues !== true &&
       !exactUserTargetFill &&
       checker?.approved === true &&
       ["browserFillFields", "browserFillAndSubmit"].includes(String(checker?.command?.tool || ""))
@@ -6182,6 +6248,67 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     };
   }
 
+  const completedRealFill = stepResults.some((item) =>
+    item?.ok === true &&
+    ["browserFillFields", "browserFillAndSubmit", "browserPrepareFormSubmission"].includes(String(item?.command?.tool || "")) &&
+    (
+      Array.isArray(item?.command?.args?.fields) ||
+      Array.isArray(item?.command?.args?.requestedValues)
+    )
+  );
+
+  const verifiedFillStep = [...stepResults].reverse().find((item) =>
+    item?.ok === true &&
+    ["browserFillFields", "browserFillAndSubmit", "browserPrepareFormSubmission"].includes(String(item?.command?.tool || "")) &&
+    (
+      Array.isArray(item?.command?.args?.fields) ||
+      Array.isArray(item?.command?.args?.requestedValues)
+    )
+  );
+
+  if (passedAllSteps && completedRealFill && verifiedFillStep) {
+    const fields = Array.isArray(verifiedFillStep.command?.args?.fields)
+      ? verifiedFillStep.command.args.fields
+      : Array.isArray(verifiedFillStep.command?.args?.requestedValues)
+        ? verifiedFillStep.command.args.requestedValues
+        : [];
+
+    const filledSummary = fields
+      .map((field) => {
+        const label = field.label || field.name || field.actionId || "field";
+        const value = field.secret ? "[redacted]" : String(field.value ?? "");
+        return `${label}: ${value}`;
+      })
+      .join(", ");
+
+    final = {
+      ...final,
+      success: true,
+      needsUser: false,
+      summary: [
+        filledSummary ? `Filled fields: ${filledSummary}.` : "Filled requested fields.",
+        "Submit button was not clicked.",
+      ].join(" "),
+      browserSummary: [
+        filledSummary ? `Filled fields: ${filledSummary}.` : "Filled requested fields.",
+        "Submit button was not clicked.",
+      ].join(" "),
+      nextSafeAction: null,
+      missingSteps: [],
+      reason: "",
+    };
+
+    trace.push(traceEntry({
+      role: "pipeline_supervisor",
+      title: "Verified fill final summary",
+      status: "summarized_verified_fill",
+      input: { verifiedFillStep },
+      output: final,
+      summary: final.summary,
+      ok: true,
+    }));
+  }
+
   const deterministicFormAssistSummary = finalBrowserAgentUserSummary({
     passedAllSteps,
     stoppedReason: "",
@@ -6192,6 +6319,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
   });
 
   if (
+    !completedRealFill &&
     passedAllSteps &&
     deterministicFormAssistSummary &&
     !/^Done\. Final page:/i.test(deterministicFormAssistSummary)
