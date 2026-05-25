@@ -3493,6 +3493,25 @@ function actionExplicitlyMentionedInText(action = {}, rawText = "") {
   });
 }
 
+function cleanUserFieldValue(value = "") {
+  let out = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Strip wrapping quotes only when they wrap the whole value.
+  // "'Riley'" -> "Riley", "\"Stone\"" -> "Stone"
+  for (let i = 0; i < 2; i += 1) {
+    const next = out.replace(/^['"“”‘’`]\s*(.*?)\s*['"“”‘’`]$/u, "$1").trim();
+    if (next === out) break;
+    out = next;
+  }
+
+  // Strip accidental trailing punctuation from parsed natural-language values.
+  out = out.replace(/[;,]+$/g, "").trim();
+
+  return out;
+}
+
 function resolveUserValuesAgainstActionRegistry(instruction = "", actionRegistry = null) {
   const actions = Array.isArray(actionRegistry?.actions) ? actionRegistry.actions : [];
   const fields = actions.filter((action) => String(action?.kind || "") === "field");
@@ -3513,7 +3532,7 @@ function resolveUserValuesAgainstActionRegistry(instruction = "", actionRegistry
     if (!actionId || seen.has(actionId)) continue;
     if (onlyMentionedMode && !explicitlyMentioned.has(actionId)) continue;
 
-    const value = valueForRegistryActionFromUser(action, instruction, fields);
+    const value = cleanUserFieldValue(valueForRegistryActionFromUser(action, instruction, fields));
     if (!String(value || "").trim()) continue;
     seen.add(actionId);
 
@@ -3524,7 +3543,7 @@ function resolveUserValuesAgainstActionRegistry(instruction = "", actionRegistry
       id: action.id || "",
       selector: action.selector || "",
       type: action.type || "",
-      value: String(value || "").trim(),
+      value,
       secret: String(action.type || "").toLowerCase() === "password",
     });
   }
