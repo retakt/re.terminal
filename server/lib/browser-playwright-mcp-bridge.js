@@ -3925,7 +3925,18 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
       ) ||
       domFillTextConfirmsNoMissingFields(domFallback.text || domFallback.error || "");
 
-    if (verifyAfterDom.ok === true) {
+    const structuredDomFillConfirmed =
+      domFallback.ok === true &&
+      domFallback.fillResult?.ok === true &&
+      Array.isArray(domFallback.fillResult?.missing) &&
+      domFallback.fillResult.missing.length === 0 &&
+      Array.isArray(domFallback.fillResult?.filled) &&
+      domFallback.fillResult.filled.length === fields.length &&
+      domFallback.fillResult.filled.every((item) =>
+        String(item?.expected ?? "") === String(item?.actual ?? "")
+      );
+
+    if (verifyAfterDom.ok === true || structuredDomFillConfirmed) {
       return {
         ok: true,
         domFallback,
@@ -3933,7 +3944,10 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
         fillResult: domFallback.fillResult || null,
         text: [
           domFallback.text || domFallback.error || "",
-          verifyAfterDom.text || "",
+          verifyAfterDom.text || verifyAfterDom.error || "",
+          structuredDomFillConfirmed && verifyAfterDom.ok !== true
+            ? "Accepted structured DOM fill readback because all requested fields matched expected values and missing=[]."
+            : "",
         ].filter(Boolean).join("\n"),
       };
     }
