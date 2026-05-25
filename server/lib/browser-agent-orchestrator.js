@@ -4385,8 +4385,14 @@ export async function runBrowserAgentOrchestrator(args = {}) {
     const startsWithPositiveMutation =
       /^\s*(fill|select|choose|pick|check|type|enter|input|set|click|press|tap|submit|register|send|save)\b/i.test(passiveInstruction);
 
+    const startsWithNegativeConstraint =
+      /^\s*(?:do\s+not|don't|dont|never|avoid|skip|exclude)\b/i.test(passiveInstruction);
+
     const isPassiveConstraintStep =
-      ["no_action", "observe", "verify", "report", "confirm", "none"].includes(passiveExpectedAction) &&
+      (
+        ["no_action", "observe", "verify", "report", "confirm", "none", "unknown", ""].includes(passiveExpectedAction) ||
+        startsWithNegativeConstraint
+      ) &&
       !startsWithPositiveMutation &&
       /\b(?:do\s+not\s+fill|not\s+clearly\s+requested|do\s+not\s+submit|no\s+submit|submit\s+button\s+was\s+not\s+clicked|not\s+clicked|confirm\s+no\s+submit)\b/i.test(passiveConstraintText);
 
@@ -5231,9 +5237,19 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       }
     }
 
+    const passiveNoMutationFallbackStep = (
+      /^\s*(?:do\s+not|don't|dont|never|avoid|skip|exclude)\b/i.test(String(step.instruction || "")) ||
+      ["no_action", "observe", "verify", "report", "confirm", "none", "unknown", ""].includes(String(step.expectedAction || "").toLowerCase())
+    ) && /\b(?:do\s+not\s+fill|not\s+clearly\s+requested|do\s+not\s+submit|no\s+submit|not\s+clicked)\b/i.test([
+      step.instruction,
+      step.expectedAction,
+      step.successCriteria,
+    ].map((value) => String(value || "")).join(" "));
+
     if (
       (!stepPlan || !stepPlan.command || !stepPlan.command.tool) &&
-      stepRequiresRealBrowserAction(step)
+      stepRequiresRealBrowserAction(step) &&
+      !passiveNoMutationFallbackStep
     ) {
       const explicitValues = explicitFormValuesFromInstructionV1(instruction);
       const formStepText = [
@@ -6080,8 +6096,12 @@ export async function runBrowserAgentOrchestrator(args = {}) {
         Array.isArray(executionCommand?.args?.fields)
       );
 
+    const fillResultHasFailureSignal =
+      execution.ok !== true ||
+      /registry-backed dom fill failed verification|field verification failed|fill failed verification|not confirmed|missing/i.test(fillResultText);
+
     if (isFieldFillResultCommand) {
-      if (browserFillFieldsConfirmedByExecutor(executionCommand, execution)) {
+      if (!fillResultHasFailureSignal && browserFillFieldsConfirmedByExecutor(executionCommand, execution)) {
         resultCheck = normalizeWatcherRepairResult({
           status: "passed",
           success: true,
@@ -6113,10 +6133,7 @@ export async function runBrowserAgentOrchestrator(args = {}) {
           tool: executionCommand.tool || "",
           ok: true,
         }));
-      } else if (
-        execution.ok !== true ||
-        /registry-backed dom fill failed verification|field verification failed|fill failed verification|not confirmed|missing/i.test(fillResultText)
-      ) {
+      } else if (fillResultHasFailureSignal) {
         resultCheck = normalizeWatcherRepairResult({
           status: "failed",
           success: false,
@@ -6409,7 +6426,10 @@ export async function runBrowserAgentOrchestrator(args = {}) {
       beforeState,
     });
 
-    if (browserFillFieldsConfirmedByExecutor(executionCommand, execution)) {
+    if (
+      !fillResultHasFailureSignal &&
+      browserFillFieldsConfirmedByExecutor(executionCommand, execution)
+    ) {
       execution = {
         ...execution,
         ok: true,
