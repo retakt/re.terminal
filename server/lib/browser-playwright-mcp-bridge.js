@@ -2905,7 +2905,13 @@ async function verifyFilledFields(fields = []) {
     return { ok: false, error: result.error || result.text || "Field verification failed.", text: result.text || "" };
   }
 
-  const parsed = parseMcpJsonResult(result.text);
+  const parsedRaw =
+    parseMcpWrappedJsonSafe(result.text || result.error || "") ||
+    parseMcpJsonResult(result.text || result.error || "");
+
+  const parsed = typeof parsedRaw === "string"
+    ? (parseMcpWrappedJsonSafe(parsedRaw) || parseMcpJsonResult(parsedRaw))
+    : parsedRaw;
   return {
     ...result,
     ok: parsed?.ok === true,
