@@ -17848,3 +17848,51 @@ display: flex !important;
     font-size: 12px !important;
   }
 }
+
+/* browser-overlay-only:start */
+/* Only the overlay frame should be visible. No inner side rails. */
+.browser-workbench {
+  --browser-overlay-line: color-mix(in srgb, var(--ansi-green, #9ece6a) 34%, transparent) !important;
+}
+
+.browser-split-group > [data-panel]:first-child {
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* remove inner content side lines */
+.browser-split-group > [data-panel]:first-child .browser-live,
+.browser-split-group > [data-panel]:first-child .browser-live-frame,
+.browser-split-group > [data-panel]:first-child .browser-process-view,
+.browser-split-group > [data-panel]:first-child .browser-process-grid {
+  border-left: 0 !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+}
+
+/* remove the divider/handle line that creates the extra right-side line */
+.browser-resize-handle,
+.browser-resize-handle > span,
+.browser-resize-handle > div {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* remove right panel left border only on desktop so it does not double with overlay */
+.browser-ai-panel--desktop {
+  border-left: 0 !important;
+}
+
+/* the only visible frame */
+.browser-split-group > [data-panel]:first-child::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 4px !important;
+  z-index: 80 !important;
+  pointer-events: none !important;
+  border: 1px solid var(--browser-overlay-line) !important;
+  border-radius: 4px !important;
+  box-sizing: border-box !important;
+}
+/* browser-overlay-only:end */
