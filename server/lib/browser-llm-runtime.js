@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { browserAgentJsonSchemaFor } from "./browser-agent-json-schemas.js";
 
 const ALLOWED_TOOLS = new Set([
@@ -21,6 +22,7 @@ const ALLOWED_TOOLS = new Set([
 const ALLOWED_BACKENDS = new Set(["auto", "lightpanda", "chrome_cdp", "playwright_mcp"]);
 const ALLOWED_RISKS = new Set(["low", "medium", "high"]);
 const warnedMissingPromptFiles = new Set();
+const runtimeOverrideStorage = new AsyncLocalStorage();
 
 function envFlag(name, fallback = false) {
   const raw = process.env[name];
@@ -40,12 +42,37 @@ function safeText(value = "", limit = 4000) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
+function runtimeOverrides() {
+  return runtimeOverrideStorage.getStore() || {};
+}
+
+function normalizeRuntimeOverrides(overrides = {}) {
+  const model = safeText(overrides.model || overrides.browserAgentModel || "", 240);
+  const baseUrl = safeText(overrides.baseUrl || overrides.browserAgentBaseUrl || "", 1000);
+  const models = overrides.models && typeof overrides.models === "object" ? overrides.models : {};
+  return {
+    ...(model ? { model } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
+    models: Object.fromEntries(
+      Object.entries(models)
+        .map(([key, value]) => [safeText(key, 80), safeText(value, 240)])
+        .filter(([key, value]) => key && value),
+    ),
+  };
+}
+
+export function withBrowserAgentRuntimeOverrides(overrides = {}, fn) {
+  return runtimeOverrideStorage.run(normalizeRuntimeOverrides(overrides), fn);
+}
+
 function redactBaseUrl(value = "") {
   return String(value || "").replace(/([?&](?:token|key|api_key)=)[^&]+/ig, "$1***");
 }
 
 function rawBaseUrl() {
+  const override = runtimeOverrides();
   return String(
+    override.baseUrl ||
     process.env.BROWSER_AGENT_BASE_URL ||
     process.env.BROWSER_AGENT_API_BASE_URL ||
     process.env.RUNTIME_BROWSER_AGENT_BASE_URL ||
@@ -159,7 +186,9 @@ function stageEnv(stage, suffix, route = "") {
 }
 
 function baseBrowserAgentModel() {
+  const override = runtimeOverrides();
   return String(
+    override.model ||
     process.env.BROWSER_AGENT_MODEL ||
     process.env.RUNTIME_BROWSER_AGENT_MODEL ||
     process.env.BROWSER_PLANNER_MODEL ||
@@ -172,6 +201,10 @@ function baseBrowserAgentModel() {
 }
 
 function stageModel(stage, fallback = "", route = "") {
+  const override = runtimeOverrides();
+  const key = stageKey(stage);
+  const overrideModel = override.models?.[stage] || override.models?.[key] || override.model || "";
+  if (overrideModel) return String(overrideModel).trim();
   return String(stageEnv(stage, "MODEL", route) || fallback || "").trim();
 }
 

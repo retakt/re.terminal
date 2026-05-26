@@ -396,8 +396,11 @@ export async function screenshotPlaywright(): Promise<PlaywrightMcpResult> {
   );
 }
 
-export async function getBrowserAgentStatus(sessionId?: string): Promise<BrowserAgentStatus> {
-  const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+export async function getBrowserAgentStatus(sessionId?: string, model?: string): Promise<BrowserAgentStatus> {
+  const params = new URLSearchParams();
+  if (sessionId) params.set("sessionId", sessionId);
+  if (model) params.set("model", model);
+  const query = params.toString() ? `?${params.toString()}` : "";
   return readJson<BrowserAgentStatus>(`/api/browser-agent/status${query}`);
 }
 
@@ -405,11 +408,11 @@ export async function getBrowserAgentSessions(): Promise<BrowserAgentSessionSumm
   return readJson<BrowserAgentSessionSummary[]>("/api/browser-agent/sessions");
 }
 
-export async function createBrowserAgentSession(sessionId?: string): Promise<BrowserAgentStatus> {
+export async function createBrowserAgentSession(sessionId?: string, model?: string): Promise<BrowserAgentStatus> {
   return readJson<BrowserAgentStatus>("/api/browser-agent/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(sessionId ? { sessionId } : {}),
+    body: JSON.stringify({ ...(sessionId ? { sessionId } : {}), ...(model ? { model } : {}) }),
   });
 }
 
@@ -420,8 +423,25 @@ export async function runBrowserAgent(args: {
   currentUrl?: string;
   currentTitle?: string;
   includeImages?: boolean;
+  model?: string;
 }): Promise<BrowserAgentRunResult> {
   return readJson<BrowserAgentRunResult>("/api/browser-agent/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+}
+
+export async function notifyBrowserAgentNavigation(args: {
+  sessionId?: string;
+  currentUrl: string;
+  currentTitle?: string;
+  textPreview?: string;
+  stats?: Record<string, number | string>;
+  instruction?: string;
+  model?: string;
+}): Promise<BrowserAgentStatus> {
+  return readJson<BrowserAgentStatus>("/api/browser-agent/navigation", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(args),

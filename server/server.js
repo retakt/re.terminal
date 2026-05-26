@@ -61,6 +61,7 @@ import {
   browserAgentReset,
   browserAgentCreateSession,
   browserAgentListSessions,
+  browserAgentRecordNavigation,
   browserAgentRun,
   browserAgentStatus,
 } from "./lib/browser-agent.js";
@@ -920,6 +921,8 @@ app.get("/api/browser-agent/status", async (req, res) => {
   try {
     res.json(await browserAgentStatus({
       sessionId: req.query?.sessionId || req.query?.session || "default-browser-session",
+      model: req.query?.model || req.query?.browserAgentModel || "",
+      baseUrl: req.query?.baseUrl || req.query?.browserAgentBaseUrl || "",
     }));
   } catch (err) {
     res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
@@ -945,6 +948,14 @@ app.post("/api/browser-agent/sessions", async (req, res) => {
 app.post("/api/browser-agent/run", async (req, res) => {
   try {
     res.json(await browserAgentRun(req.body || {}));
+  } catch (err) {
+    res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/api/browser-agent/navigation", async (req, res) => {
+  try {
+    res.json(await browserAgentRecordNavigation(req.body || {}));
   } catch (err) {
     res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
   }

@@ -105,6 +105,7 @@ function ChatToolbar({
             )}
           </Button>
         )}
+        <MessageSquareIcon className="chat-toolbar-icon size-3.5" />
         <button type="button" className="chat-session-title" onClick={renameSessionTitle} title="Rename chat session">
           <span>{sessionTitle}</span>
           <PencilIcon className="size-3" />
@@ -187,7 +188,7 @@ function ContextPanel() {
 
 function ChatSessionsSection() {
   const { sessionId: activeSessionId, setChatMode } = useChatContext();
-  const { pages, switchPage } = useApp();
+  const { pages, openProgram } = useApp();
   const chatPages = pages.flatMap((page, index) => {
     if (page.type !== "chat" || !("sessionId" in page) || !page.sessionId) return [];
     return [{
@@ -197,13 +198,13 @@ function ChatSessionsSection() {
     }];
   });
 
-  const linkBrowserSession = (pageId: string, sessionId: string) => {
+  const linkBrowserSession = (sessionId: string) => {
     try {
       window.localStorage.setItem(BROWSER_SESSION_ID_KEY, sessionId);
       window.dispatchEvent(new CustomEvent(BROWSER_SESSION_LINK_EVENT, { detail: { sessionId } }));
     } catch {}
     setChatMode("browser");
-    switchPage(pageId);
+    openProgram("browser");
   };
 
   return (
@@ -221,19 +222,16 @@ function ChatSessionsSection() {
             const active = sessionId === activeSessionId;
             return (
               <div key={page.pageId} className={cn("chat-session-switcher__row", active && "is-active")}>
-                <button type="button" className="chat-session-switcher__main" onClick={() => switchPage(page.pageId)}>
+                <button
+                  type="button"
+                  className="chat-session-switcher__main"
+                  onClick={() => linkBrowserSession(sessionId)}
+                  title="Attach this chat session to the browser agent and open browser"
+                >
                   <MessageSquareIcon className="size-3.5" />
                   <span>{page.title}</span>
                   <code>#{sessionHash(sessionId)}</code>
-                </button>
-                <button
-                  type="button"
-                  className="chat-session-switcher__browser"
-                  onClick={() => linkBrowserSession(page.pageId, sessionId)}
-                  title="Use this chat session as the browser-agent session"
-                >
-                  <GlobeIcon className="size-3" />
-                  browser
+                  <em><GlobeIcon className="size-3" /> browser</em>
                 </button>
               </div>
             );

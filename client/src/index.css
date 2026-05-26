@@ -13625,6 +13625,930 @@ display: flex !important;
 @media (max-width: 980px) { .browser-stage { grid-template-columns: minmax(0, 1fr); } .browser-ai-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) { .browser-workbench { padding: 8px; } .browser-topbar { align-items: flex-start; flex-direction: column; } .browser-commandbar { grid-template-columns: 34px 34px 34px minmax(0, 1fr); } .browser-commandbar select, .browser-commandbar .browser-primary-action, .browser-commandbar button:last-child { grid-column: span 2; } .browser-ai-panel { grid-template-columns: minmax(0, 1fr); } .browser-composer { min-height: 96px; } }
 
+.browser-view-toggle { display: inline-flex; align-items: center; gap: 3px; padding: 2px; border: 1px solid var(--browser-border); border-radius: 5px; background: color-mix(in srgb, var(--bg-base, #09090b) 64%, transparent); }
+.browser-view-toggle button { min-height: 20px !important; padding: 0 7px !important; border: 0 !important; border-radius: 3px !important; background: transparent !important; gap: 4px; }
+.browser-view-toggle button.is-active { color: var(--browser-accent) !important; background: color-mix(in srgb, var(--browser-accent) 14%, transparent) !important; }
+.browser-status-strip .browser-signal-chip { gap: 5px; color: color-mix(in srgb, var(--browser-accent) 78%, var(--text-muted, #94a3b8)); border-color: color-mix(in srgb, var(--browser-accent) 32%, transparent); }
+.browser-icon-action { gap: 5px; }
+.browser-sidebar-toggle { display: none !important; gap: 5px; }
+.browser-sidebar-backdrop { display: none; }
+.browser-process-view { min-height: 100%; padding: 14px; display: grid; align-content: start; gap: 12px; color: var(--text-primary, #f8fafc); background: radial-gradient(circle at 48% 14%, color-mix(in srgb, var(--browser-accent) 10%, transparent), transparent 32%), linear-gradient(180deg, color-mix(in srgb, var(--browser-panel-strong) 78%, transparent), color-mix(in srgb, var(--bg-base, #070a0a) 92%, transparent)); }
+.browser-process-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 32px; padding: 0 2px; }
+.browser-process-head span { display: inline-flex; align-items: center; gap: 7px; color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 11px; font-weight: 720; letter-spacing: .055em; text-transform: uppercase; }
+.browser-process-head strong { min-height: 22px; padding: 3px 8px; border: 1px solid var(--browser-border); border-radius: 4px; color: var(--text-muted, #94a3b8); font-size: 11px; text-transform: uppercase; }
+.browser-process-head strong.is-running { color: #fbbf24; border-color: color-mix(in srgb, #fbbf24 40%, transparent); }
+.browser-process-head strong.is-standby { color: var(--browser-accent); border-color: color-mix(in srgb, var(--browser-accent) 40%, transparent); }
+.browser-process-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); gap: 12px; align-items: start; }
+.browser-process-card { min-width: 0; border: 1px solid var(--browser-border); border-radius: 6px; padding: 12px; background: color-mix(in srgb, var(--browser-panel) 86%, transparent); box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+.browser-process-card-title { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; color: var(--browser-accent); font-size: 11px; font-weight: 760; letter-spacing: .055em; text-transform: uppercase; }
+.browser-process-list { display: grid; gap: 8px; }
+.browser-process-list article { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 9px; align-items: start; padding: 8px; border: 1px solid color-mix(in srgb, var(--browser-border) 72%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--bg-base, #09090b) 52%, transparent); }
+.browser-process-list strong { color: var(--browser-accent); font-size: 11px; white-space: nowrap; }
+.browser-process-list p { margin: 0; color: var(--text-muted, #94a3b8); font-size: 12px; line-height: 1.45; }
+.browser-process-list small { color: var(--fg-subtle, #64748b); font-size: 10px; text-transform: uppercase; }
+.browser-conversation-list,
+.browser-mini-conversation { display: grid; gap: 7px; }
+.browser-conversation-list article,
+.browser-mini-conversation article { display: grid; gap: 3px; padding: 8px; border: 1px solid color-mix(in srgb, var(--browser-border) 72%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--bg-base, #09090b) 50%, transparent); }
+.browser-conversation-list article.is-user,
+.browser-mini-conversation article.is-user { border-color: color-mix(in srgb, var(--browser-accent) 26%, var(--browser-border)); background: color-mix(in srgb, var(--browser-accent) 8%, transparent); }
+.browser-conversation-list strong,
+.browser-mini-conversation strong { color: var(--browser-accent); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.browser-conversation-list p,
+.browser-mini-conversation p { margin: 0; color: var(--text-muted, #94a3b8); font-size: 12px; line-height: 1.42; }
+.browser-conversation-list em,
+.browser-mini-conversation em { color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 12px; font-style: normal; line-height: 1.45; }
+.browser-readable-card strong { display: block; margin-bottom: 8px; color: var(--text-primary, #f8fafc); font-size: 14px; }
+.browser-readable-card p { margin: 0; color: var(--text-muted, #94a3b8); font-size: 12px; line-height: 1.58; white-space: pre-wrap; }
+.browser-card-head small { color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 11px; }
+.browser-link-list strong { display: inline-flex; align-items: center; gap: 5px; }
+.browser-link-list button:hover,
+.browser-session-list button:hover { border-color: color-mix(in srgb, var(--browser-accent) 40%, var(--browser-border)); background: color-mix(in srgb, var(--browser-accent) 8%, var(--ui-input, transparent)); }
+
+[data-theme="light"] .browser-workbench {
+  --browser-panel: color-mix(in srgb, var(--ui-card, #ffffff) 88%, #dffaf5 12%);
+  --browser-panel-strong: color-mix(in srgb, var(--ui-card, #ffffff) 78%, #c9f3ec 22%);
+  --browser-border: color-mix(in srgb, var(--border-subtle, #d7dee8) 86%, transparent);
+  background: radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--browser-accent) 10%, transparent), transparent 34%), linear-gradient(135deg, var(--bg-base, #f6f8fb), color-mix(in srgb, var(--bg-base, #f6f8fb) 92%, #e6fffb 8%));
+}
+[data-theme="light"] .browser-topbar,
+[data-theme="light"] .browser-commandbar,
+[data-theme="light"] .browser-live,
+[data-theme="light"] .browser-card,
+[data-theme="light"] .browser-process-card { box-shadow: 0 8px 18px rgba(15, 23, 42, .07); }
+[data-theme="light"] .browser-commandbar button,
+[data-theme="light"] .browser-commandbar select,
+[data-theme="light"] .browser-address,
+[data-theme="light"] .browser-composer,
+[data-theme="light"] .browser-session-list button,
+[data-theme="light"] .browser-link-list button { background: color-mix(in srgb, var(--ui-input, #ffffff) 92%, #e6fffb 8%); color: var(--ui-text, #0f172a); }
+[data-theme="light"] .browser-live-frame { background: linear-gradient(90deg, rgba(15,23,42,.045) 1px, transparent 1px), linear-gradient(180deg, rgba(15,23,42,.045) 1px, transparent 1px), #f8fafc; background-size: 32px 32px; }
+[data-theme="light"] .browser-process-view { color: var(--ui-text, #0f172a); background: radial-gradient(circle at 48% 14%, color-mix(in srgb, var(--browser-accent) 12%, transparent), transparent 32%), linear-gradient(180deg, #f8fafc, #eef7f5); }
+[data-theme="light"] .browser-process-list article,
+[data-theme="light"] .browser-conversation-list article,
+[data-theme="light"] .browser-mini-conversation article { background: rgba(255,255,255,.82); }
+[data-theme="light"] .browser-card pre,
+[data-theme="light"] .browser-composer-error { color: #be123c; background: #fff1f2; }
+[data-theme="light"] .browser-screenshot-error,
+[data-theme="light"] .browser-live-footer .is-down { color: #be123c; }
+
+@media (max-width: 980px) {
+  .browser-stage { position: relative; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+  .browser-process-grid { grid-template-columns: minmax(0, 1fr); }
+  .browser-ai-panel {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 14;
+    width: min(420px, 92vw);
+    height: 100%;
+    padding: 8px;
+    border-left: 1px solid var(--browser-border);
+    background: color-mix(in srgb, var(--browser-panel) 96%, var(--bg-base, #09090b) 4%);
+    box-shadow: -18px 0 36px rgba(0,0,0,.32);
+    transform: translateX(calc(100% + 12px));
+    transition: transform .16s ease;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .browser-ai-panel.is-open { transform: translateX(0); }
+  .browser-sidebar-backdrop {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 13;
+    border: 0;
+    background: rgba(0,0,0,.34);
+    cursor: pointer;
+  }
+  .browser-sidebar-backdrop.is-open { display: block; }
+  .browser-sidebar-toggle { display: inline-flex !important; }
+}
+
+@media (max-width: 720px) {
+  .browser-workbench { padding: 4px; }
+  .browser-topbar { align-items: center; flex-direction: row; min-height: 38px; }
+  .browser-title div span { display: none; }
+  .browser-status-strip { flex: 1; justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .browser-status-strip::-webkit-scrollbar { display: none; }
+  .browser-commandbar { grid-template-columns: 30px 30px 30px minmax(128px, 1fr) 82px 58px; gap: 4px; padding: 5px; overflow-x: auto; }
+  .browser-commandbar select,
+  .browser-commandbar .browser-primary-action,
+  .browser-commandbar button:last-child { grid-column: auto !important; }
+  .browser-commandbar button,
+  .browser-commandbar select,
+  .browser-address { height: 32px; border-radius: 4px; }
+  .browser-commandbar button:last-child { display: none; }
+  .browser-live-chrome { min-height: 32px; padding: 0 8px; }
+  .browser-live-footer { gap: 8px; min-height: 30px; padding: 0 8px; overflow-x: auto; }
+  .browser-process-view { padding: 10px; }
+  .browser-process-list article { grid-template-columns: minmax(0, 1fr); }
+  .browser-empty-state { min-height: 280px; }
+}
+
+/* Browser workbench alignment pass: reuse the same shell, typography, drawer,
+   and resizable-panel feel as AI chat instead of a separate card layout. */
+.browser-workbench,
+.browser-workbench button,
+.browser-workbench input,
+.browser-workbench select,
+.browser-workbench textarea {
+  font-family: var(--font-ui) !important;
+}
+
+.browser-workbench {
+  --browser-accent: var(--ui-teal);
+  --browser-panel: var(--ui-panel);
+  --browser-panel-strong: var(--ui-panel);
+  --browser-border: var(--ui-border-soft);
+  height: 100%;
+  padding: 0 !important;
+  gap: 0 !important;
+  color: var(--ui-text) !important;
+  background: var(--ui-page) !important;
+  background-image: none !important;
+}
+
+.browser-topbar,
+.browser-commandbar,
+.browser-live {
+  border-color: var(--ui-border-soft) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background:
+    linear-gradient(180deg, rgba(240,246,252,0.022), transparent),
+    var(--ui-panel) !important;
+}
+
+.browser-topbar {
+  min-height: 36px !important;
+  padding: 4px 8px !important;
+  border-width: 0 0 1px !important;
+}
+
+.browser-title {
+  gap: 7px !important;
+}
+
+.browser-title-icon {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 4px !important;
+}
+
+.browser-title-icon svg {
+  width: 13px !important;
+  height: 13px !important;
+}
+
+.browser-title strong {
+  color: var(--ui-text) !important;
+  font-size: 13px !important;
+  line-height: 1.1;
+}
+
+.browser-title span:not(.browser-title-icon) {
+  color: var(--ui-muted) !important;
+  font-size: 11px !important;
+}
+
+.browser-status-strip {
+  min-width: 0;
+  gap: 5px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.browser-status-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.browser-status-strip span,
+.browser-status-strip button,
+.browser-view-toggle {
+  min-height: 24px !important;
+  border-radius: 4px !important;
+  background: var(--ui-input) !important;
+  border-color: var(--ui-border-soft) !important;
+  color: var(--ui-muted) !important;
+  font-size: 11px !important;
+  box-shadow: none !important;
+}
+
+.browser-status-strip .is-ready,
+.browser-view-toggle button.is-active {
+  color: var(--ui-teal) !important;
+  border-color: var(--ui-teal-border) !important;
+  background: var(--ui-teal-soft) !important;
+}
+
+.browser-view-toggle {
+  padding: 2px !important;
+}
+
+.browser-view-toggle button {
+  min-height: 20px !important;
+  padding: 0 7px !important;
+  gap: 4px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.browser-sidebar-toggle {
+  display: inline-flex !important;
+}
+
+.browser-commandbar {
+  grid-template-columns: 32px 32px 32px minmax(180px, 1fr) 132px 72px 92px !important;
+  gap: 5px !important;
+  padding: 6px 8px !important;
+  border-width: 0 0 1px !important;
+}
+
+.browser-commandbar button,
+.browser-commandbar select,
+.browser-address {
+  height: 32px !important;
+  border-radius: 4px !important;
+  border-color: var(--ui-border-soft) !important;
+  color: var(--ui-text) !important;
+  background: var(--ui-input) !important;
+}
+
+.browser-address {
+  gap: 7px !important;
+  padding: 0 9px !important;
+}
+
+.browser-address svg {
+  width: 13px !important;
+  height: 13px !important;
+  color: var(--ui-muted) !important;
+}
+
+.browser-address input {
+  color: var(--ui-text) !important;
+  font-size: 12px !important;
+}
+
+.browser-address input::placeholder,
+.browser-composer textarea::placeholder {
+  color: color-mix(in srgb, var(--ui-muted) 80%, transparent) !important;
+}
+
+.browser-stage {
+  display: block !important;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.browser-split-group {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.browser-resize-handle {
+  width: 8px !important;
+}
+
+.browser-live {
+  height: 100%;
+  min-height: 0;
+  border-width: 0 0 0 0 !important;
+}
+
+.browser-live-chrome {
+  min-height: 32px !important;
+  padding: 0 10px !important;
+  border-bottom-color: var(--ui-border-soft) !important;
+  background: var(--ui-panel) !important;
+}
+
+.browser-live-chrome code {
+  color: var(--ui-text) !important;
+  font-size: 10px !important;
+}
+
+.browser-live-chrome strong {
+  color: var(--ui-teal) !important;
+  font-size: 10px !important;
+}
+
+.browser-live-frame {
+  color: var(--ui-text) !important;
+  background: var(--ui-page) !important;
+  background-image: none !important;
+}
+
+.browser-process-view {
+  min-height: 100%;
+  padding: 10px !important;
+  gap: 8px !important;
+  color: var(--ui-text) !important;
+  background: var(--ui-page) !important;
+  background-image: none !important;
+}
+
+.browser-process-head {
+  min-height: 30px;
+}
+
+.browser-process-head span,
+.browser-process-card-title,
+.browser-card > span,
+.browser-card-head span,
+.browser-composer-head span {
+  color: var(--ui-text) !important;
+  font-size: 11px !important;
+  font-weight: 720 !important;
+  letter-spacing: .045em !important;
+}
+
+.browser-process-head strong {
+  border-radius: 4px !important;
+  font-size: 10px !important;
+}
+
+.browser-process-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, .75fr);
+  gap: 8px !important;
+}
+
+.browser-process-card {
+  border-color: var(--ui-border-soft) !important;
+  border-radius: 4px !important;
+  padding: 10px !important;
+  background: var(--ui-panel) !important;
+  box-shadow: none !important;
+}
+
+.browser-process-list article,
+.browser-conversation-list article,
+.browser-mini-conversation article {
+  border-color: var(--ui-border-soft) !important;
+  border-radius: 4px !important;
+  background: var(--ui-input) !important;
+}
+
+.browser-process-list p,
+.browser-conversation-list p,
+.browser-mini-conversation p,
+.browser-card p,
+.browser-card small,
+.browser-session-list small,
+.browser-session-list em,
+.browser-link-list small,
+.browser-link-list em,
+.browser-agent-model,
+.browser-session-summary {
+  color: var(--ui-muted) !important;
+  font-size: 12px !important;
+}
+
+.browser-process-list strong,
+.browser-conversation-list strong,
+.browser-mini-conversation strong,
+.browser-session-id {
+  color: var(--ui-teal) !important;
+}
+
+.browser-live-footer {
+  min-height: 30px !important;
+  padding: 0 10px !important;
+  gap: 10px !important;
+  border-top-color: var(--ui-border-soft) !important;
+  color: var(--ui-muted) !important;
+  background: var(--ui-panel) !important;
+}
+
+.browser-live-footer span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.browser-ai-panel {
+  display: grid !important;
+  align-content: start !important;
+  gap: 0 !important;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 !important;
+  color: var(--ui-text) !important;
+  background: var(--ui-panel) !important;
+  border-left: 1px solid var(--ui-border-soft);
+  box-shadow: none !important;
+  scrollbar-color: var(--ui-scrollbar-thumb, var(--ui-border-strong)) transparent;
+}
+
+.browser-card {
+  border-width: 0 0 1px !important;
+  border-color: var(--ui-border-soft) !important;
+  border-radius: 0 !important;
+  padding: 10px 12px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.browser-card h2 {
+  color: var(--ui-text) !important;
+  font-size: 14px !important;
+}
+
+.browser-composer {
+  min-height: 108px !important;
+  border-radius: 4px !important;
+  border-color: var(--ui-border-soft) !important;
+  background: var(--ui-input) !important;
+}
+
+.browser-composer textarea {
+  color: var(--ui-text) !important;
+  font-size: 12px !important;
+}
+
+.browser-card-action,
+.browser-composer-actions button,
+.browser-session-list button,
+.browser-link-list button {
+  border-radius: 4px !important;
+  border-color: var(--ui-border-soft) !important;
+  color: var(--ui-text) !important;
+  background: var(--ui-input) !important;
+}
+
+.browser-session-list button,
+.browser-link-list button {
+  padding: 8px 9px !important;
+}
+
+.browser-session-list strong {
+  color: var(--ui-text) !important;
+}
+
+.browser-session-list button.is-active {
+  border-color: var(--ui-teal-border) !important;
+  background: var(--ui-teal-soft) !important;
+}
+
+.browser-mobile-panel-drawer {
+  width: min(96vw, 560px) !important;
+  min-width: min(96vw, 560px) !important;
+}
+
+.browser-mobile-panel-drawer .browser-ai-panel {
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  height: 100%;
+  border-left: 0 !important;
+}
+
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .browser-stage--compact {
+    display: block !important;
+  }
+
+  .browser-stage--compact .browser-live {
+    border-width: 0 !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .browser-topbar {
+    min-height: 34px !important;
+    padding: 3px 6px !important;
+  }
+
+  .browser-title-icon {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .browser-title div span {
+    display: none !important;
+  }
+
+  .browser-status-strip span {
+    max-width: 156px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .browser-view-toggle button {
+    padding: 0 6px !important;
+  }
+
+  .browser-commandbar {
+    grid-template-columns: 30px 30px 30px minmax(0, 1fr) !important;
+    grid-auto-rows: 32px;
+    gap: 4px !important;
+    padding: 5px 6px !important;
+  }
+
+  .browser-commandbar select {
+    grid-column: 1 / span 2 !important;
+  }
+
+  .browser-commandbar .browser-primary-action {
+    grid-column: 3 / span 2 !important;
+  }
+
+  .browser-commandbar button:last-child {
+    display: none !important;
+  }
+
+  .browser-address input {
+    font-size: 12px !important;
+  }
+
+  .browser-live-chrome {
+    min-height: 30px !important;
+    padding: 0 7px !important;
+  }
+
+  .browser-live-footer {
+    min-height: 28px !important;
+    padding: 0 7px !important;
+    gap: 7px !important;
+  }
+
+  .browser-live-footer span:nth-child(n+4) {
+    display: none !important;
+  }
+
+  .browser-process-view {
+    padding: 8px !important;
+  }
+
+  .browser-process-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .browser-process-list article {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 4px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .browser-mobile-panel-drawer {
+    width: min(88vw, 340px) !important;
+    min-width: min(88vw, 340px) !important;
+  }
+
+  .browser-view-toggle button {
+    width: 28px;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+}
+
+/* Browser final shell trim: make the page behave like chat, not a card stack. */
+.browser-workbench {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-rows: none !important;
+  line-height: 1.35;
+}
+
+.browser-workbench code,
+.browser-workbench pre,
+.browser-workbench kbd,
+.browser-workbench samp {
+  font-family: var(--font-ui) !important;
+  letter-spacing: 0 !important;
+}
+
+.browser-topbar,
+.browser-commandbar,
+.browser-stage,
+.browser-live {
+  margin: 0 !important;
+}
+
+.browser-topbar,
+.browser-commandbar {
+  flex: 0 0 auto !important;
+}
+
+.browser-stage {
+  flex: 1 1 auto !important;
+  width: 100%;
+}
+
+.browser-title-icon {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.browser-title-icon svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.browser-status-strip {
+  flex: 1 1 auto;
+  justify-content: flex-end !important;
+}
+
+.browser-status-chip,
+.browser-status-strip .browser-latency,
+.browser-icon-action {
+  flex: 0 0 auto;
+  line-height: 1 !important;
+}
+
+.browser-sidebar-toggle {
+  flex: 0 0 32px !important;
+  margin-left: 2px !important;
+}
+
+.browser-process-view,
+.browser-process-grid {
+  gap: 0 !important;
+}
+
+.browser-process-card {
+  border-radius: 0 !important;
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+}
+
+.browser-process-card + .browser-process-card,
+.browser-readable-card {
+  border-left-width: 1px !important;
+}
+
+.browser-process-list p,
+.browser-conversation-list p,
+.browser-mini-conversation p,
+.browser-card p,
+.browser-card small,
+.browser-session-list small,
+.browser-session-list em,
+.browser-link-list small,
+.browser-link-list em,
+.browser-agent-model,
+.browser-session-summary {
+  color: color-mix(in srgb, var(--ui-text) 70%, transparent) !important;
+}
+
+.browser-mobile-panel-drawer {
+  width: min(88vw, 340px) !important;
+  min-width: min(88vw, 340px) !important;
+}
+
+@media (max-width: 720px) {
+  .browser-topbar {
+    gap: 4px !important;
+  }
+
+  .browser-title {
+    min-width: max-content;
+  }
+
+  .browser-status-strip {
+    gap: 3px !important;
+    min-width: 0;
+    overflow: hidden !important;
+  }
+
+  .browser-status-chip--lightpanda,
+  .browser-status-chip--playwright,
+  .browser-icon-action {
+    display: none !important;
+  }
+
+  .browser-status-chip--session {
+    max-width: 148px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .browser-latency {
+    max-width: 78px !important;
+  }
+
+  .browser-sidebar-toggle {
+    display: inline-flex !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .browser-commandbar {
+    grid-template-columns: 28px 28px 28px minmax(0, 1fr) !important;
+  }
+
+  .browser-commandbar button,
+  .browser-commandbar select,
+  .browser-address {
+    min-width: 0 !important;
+  }
+
+  .browser-commandbar .browser-primary-action {
+    font-size: 0 !important;
+    gap: 0 !important;
+  }
+
+  .browser-commandbar .browser-primary-action svg {
+    margin: 0 !important;
+  }
+
+  .browser-status-chip--session,
+  .browser-latency {
+    display: none !important;
+  }
+}
+
+/* Browser fixed-header fit pass: same compact rhythm as chat/logs. */
+.browser-workbench {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.browser-topbar {
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  padding: 0 8px !important;
+  overflow: hidden !important;
+}
+
+.browser-title {
+  align-items: center !important;
+  min-width: 0 !important;
+  gap: 6px !important;
+}
+
+.browser-title-icon {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 4px !important;
+}
+
+.browser-title-icon svg {
+  width: 11px !important;
+  height: 11px !important;
+}
+
+.browser-title strong {
+  color: color-mix(in srgb, var(--ui-text) 76%, var(--ui-muted)) !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+}
+
+.browser-title div span {
+  display: none !important;
+}
+
+.browser-status-strip {
+  min-height: 0 !important;
+  height: 100%;
+  align-items: center !important;
+}
+
+.browser-status-strip span,
+.browser-status-strip button,
+.browser-view-toggle {
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  color: color-mix(in srgb, var(--ui-muted) 88%, var(--ui-text)) !important;
+  font-weight: 560 !important;
+}
+
+.browser-commandbar {
+  height: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  padding: 5px 8px !important;
+  overflow: hidden !important;
+}
+
+.browser-commandbar button,
+.browser-commandbar select,
+.browser-address {
+  height: 30px !important;
+  min-height: 30px !important;
+}
+
+.browser-address {
+  min-width: 0 !important;
+}
+
+.browser-address input {
+  min-width: 0 !important;
+  color: color-mix(in srgb, var(--ui-text) 82%, var(--ui-muted)) !important;
+}
+
+.browser-stage,
+.browser-split-group,
+.browser-live,
+.browser-live-frame,
+.browser-process-view,
+.browser-ai-panel {
+  min-height: 0 !important;
+}
+
+.browser-stage,
+.browser-split-group,
+.browser-live {
+  height: 100% !important;
+}
+
+.browser-live {
+  display: grid !important;
+  grid-template-rows: 30px minmax(0, 1fr) 28px !important;
+}
+
+.browser-live-chrome {
+  min-height: 30px !important;
+  height: 30px !important;
+  max-height: 30px !important;
+  padding: 0 8px !important;
+}
+
+.browser-live-footer {
+  min-height: 28px !important;
+  height: 28px !important;
+  max-height: 28px !important;
+  padding: 0 8px !important;
+}
+
+.browser-process-view {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  align-content: stretch !important;
+  height: 100% !important;
+  padding: 8px !important;
+}
+
+.browser-process-grid {
+  align-items: stretch !important;
+  height: 100%;
+}
+
+.browser-process-grid > .browser-process-card {
+  height: 100%;
+}
+
+[data-theme="light"] .browser-topbar,
+[data-theme="light"] .browser-commandbar,
+[data-theme="light"] .browser-live-chrome,
+[data-theme="light"] .browser-live-footer {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 74%, var(--ui-page) 26%), color-mix(in srgb, var(--ui-panel) 92%, transparent)),
+    var(--ui-panel) !important;
+}
+
+[data-theme="light"] .browser-title strong,
+[data-theme="light"] .browser-process-head span,
+[data-theme="light"] .browser-process-card-title,
+[data-theme="light"] .browser-card > span,
+[data-theme="light"] .browser-card-head span,
+[data-theme="light"] .browser-composer-head span {
+  color: color-mix(in srgb, var(--ui-text) 72%, var(--ui-muted)) !important;
+}
+
+@media (max-width: 720px) {
+  .browser-topbar {
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    padding: 0 6px !important;
+  }
+
+  .browser-commandbar {
+    height: 70px !important;
+    min-height: 70px !important;
+    max-height: 70px !important;
+    align-content: center !important;
+    overflow: hidden !important;
+  }
+
+  .browser-live {
+    grid-template-rows: 28px minmax(0, 1fr) 26px !important;
+  }
+
+  .browser-live-chrome {
+    min-height: 28px !important;
+    height: 28px !important;
+    max-height: 28px !important;
+  }
+
+  .browser-live-footer {
+    min-height: 26px !important;
+    height: 26px !important;
+    max-height: 26px !important;
+  }
+}
+
 
 /* ─── Terminal frame: contained like Logs ───────────────────────────────── */
 
@@ -14291,7 +15215,7 @@ display: flex !important;
   text-align: center;
 }
 
-[ data-theme="light" ] .telegram-missing-card {
+[data-theme="light"] .telegram-missing-card {
   background: linear-gradient(180deg, #ffffff, var(--bg-surface));
   box-shadow:
     0 20px 50px rgba(31, 35, 40, 0.14),
@@ -14547,4 +15471,1196 @@ display: flex !important;
     width: min(94vw, 430px);
     min-width: min(94vw, 430px);
   }
+}
+
+/* ─── Final compact panel + browser edge polish ──────────────────────────── */
+.chat-context-panel [data-radix-scroll-area-viewport] > div > div {
+  padding: 8px !important;
+}
+
+.chat-context-panel .chat-panel-section {
+  gap: 6px !important;
+}
+
+.chat-context-panel .chat-panel-section + .chat-panel-section {
+  margin-top: 10px !important;
+}
+
+.chat-context-panel .chat-panel-section-title {
+  min-height: 20px !important;
+  gap: 5px !important;
+  color: color-mix(in srgb, var(--ui-text) 68%, var(--ui-muted)) !important;
+  font-size: 11px !important;
+  font-weight: 640 !important;
+}
+
+.chat-context-panel .chat-panel-section-title svg,
+.chat-context-panel label svg,
+.chat-session-switcher svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.chat-context-panel .chat-select-field {
+  height: 26px !important;
+  min-height: 26px !important;
+  border-radius: 4px !important;
+  padding-inline: 7px !important;
+  color: color-mix(in srgb, var(--ui-text) 78%, var(--ui-muted)) !important;
+  font-family: var(--font-ui) !important;
+  font-size: 10.5px !important;
+  box-shadow: none !important;
+}
+
+.chat-context-panel .chat-model-status {
+  min-height: 24px !important;
+  padding-inline: 7px !important;
+  gap: 5px !important;
+  border-radius: 4px !important;
+  color: var(--ui-muted) !important;
+  font-size: 10.5px !important;
+  box-shadow: none !important;
+}
+
+.chat-context-panel .chat-model-status strong,
+.chat-context-panel .chat-mode-pill,
+.chat-context-panel .chat-count-pill {
+  color: color-mix(in srgb, var(--ui-text) 70%, var(--ui-muted)) !important;
+  font-family: var(--font-ui) !important;
+  font-size: 9px !important;
+  font-weight: 650 !important;
+}
+
+.chat-context-panel .chat-setting-row {
+  min-height: 20px !important;
+}
+
+.chat-context-panel .chat-setting-row label,
+.chat-context-panel .chat-panel-section label.grid {
+  color: var(--ui-muted) !important;
+  font-size: 10.5px !important;
+}
+
+.chat-context-panel .chat-panel-section label.grid {
+  grid-template-columns: 70px minmax(0, 1fr) 28px !important;
+  gap: 6px !important;
+}
+
+.chat-context-panel .chat-panel-section label.grid > span:last-child {
+  color: color-mix(in srgb, var(--ui-text) 66%, var(--ui-muted)) !important;
+  font-family: var(--font-ui) !important;
+  font-size: 9.5px !important;
+}
+
+.chat-context-panel input[type="checkbox"] {
+  width: 12px !important;
+  height: 12px !important;
+  accent-color: var(--ui-teal);
+}
+
+.chat-context-panel .chat-range {
+  width: 100%;
+  height: 14px !important;
+  margin: 0 !important;
+  accent-color: var(--ui-teal);
+  background: transparent !important;
+}
+
+.chat-context-panel .chat-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-teal) 26%, var(--ui-border-soft));
+}
+
+.chat-context-panel .chat-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border: 1px solid color-mix(in srgb, var(--ui-teal) 40%, var(--ui-border-strong));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-teal) 82%, var(--ui-panel));
+  box-shadow: none;
+}
+
+.chat-context-panel .chat-range::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-teal) 26%, var(--ui-border-soft));
+}
+
+.chat-context-panel .chat-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 1px solid color-mix(in srgb, var(--ui-teal) 40%, var(--ui-border-strong));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-teal) 82%, var(--ui-panel));
+  box-shadow: none;
+}
+
+.chat-session-switcher {
+  gap: 6px !important;
+  padding: 8px !important;
+  border-radius: 5px !important;
+  box-shadow: none !important;
+}
+
+.chat-session-switcher__head span,
+.chat-session-switcher__head small {
+  color: var(--ui-muted) !important;
+  font-size: 9.5px !important;
+  font-weight: 620 !important;
+}
+
+.chat-session-switcher__row {
+  display: block !important;
+}
+
+.chat-session-switcher__main {
+  grid-template-columns: auto minmax(0, 1fr) auto auto !important;
+  width: 100%;
+  height: 28px !important;
+  padding: 0 7px !important;
+  gap: 6px !important;
+  border-radius: 4px !important;
+  color: color-mix(in srgb, var(--ui-text) 76%, var(--ui-muted)) !important;
+  box-shadow: none !important;
+}
+
+.chat-session-switcher__main span {
+  font-size: 11px !important;
+  font-weight: 560 !important;
+}
+
+.chat-session-switcher__main code {
+  border: 1px solid color-mix(in srgb, var(--ui-border-soft) 72%, transparent);
+  border-radius: 999px;
+  padding: 1px 5px;
+  background: color-mix(in srgb, var(--ui-input) 74%, transparent) !important;
+  color: color-mix(in srgb, var(--ui-muted) 88%, var(--ui-text)) !important;
+  font-family: var(--font-ui) !important;
+  font-size: 9px !important;
+  line-height: 1.25;
+}
+
+.chat-session-switcher__row.is-active .chat-session-switcher__main code {
+  border-color: color-mix(in srgb, var(--ui-teal) 28%, var(--ui-border-soft));
+  background: color-mix(in srgb, var(--ui-teal) 10%, var(--ui-panel)) !important;
+  color: color-mix(in srgb, var(--ui-teal) 74%, var(--ui-muted)) !important;
+}
+
+[data-theme="light"] .chat-session-switcher__main code {
+  background: color-mix(in srgb, var(--ui-page) 86%, var(--ui-teal) 4%) !important;
+}
+
+[data-theme="light"] .chat-session-switcher__row.is-active .chat-session-switcher__main code {
+  background: color-mix(in srgb, var(--ui-teal) 8%, var(--ui-page)) !important;
+}
+
+.chat-session-switcher__main em {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--ui-teal) 74%, var(--ui-muted));
+  background: var(--ui-teal-soft);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.chat-session-switcher__browser {
+  display: none !important;
+}
+
+.chat-context-pane,
+.chat-context-panel,
+.chat-activity-pane,
+.chat-activity-panel,
+.browser-ai-panel,
+.browser-live,
+.browser-topbar,
+.browser-commandbar {
+  border-color: color-mix(in srgb, var(--ui-border-soft) 72%, transparent) !important;
+}
+
+.chat-context-panel,
+.chat-activity-panel,
+.browser-ai-panel {
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--ui-page) 28%, transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--ui-page) 20%, transparent) !important;
+}
+
+.browser-workbench,
+.browser-workbench button,
+.browser-workbench input,
+.browser-workbench select,
+.browser-workbench textarea,
+.browser-workbench code,
+.browser-workbench pre {
+  font-size: 11px !important;
+}
+
+.browser-title strong,
+.browser-process-head span,
+.browser-process-card-title,
+.browser-card > span,
+.browser-card-head span,
+.browser-composer-head span,
+.browser-card h2,
+.browser-session-list strong,
+.browser-link-list strong {
+  color: color-mix(in srgb, var(--ui-text) 70%, var(--ui-muted)) !important;
+  font-weight: 630 !important;
+}
+
+.browser-process-list p,
+.browser-conversation-list p,
+.browser-mini-conversation p,
+.browser-card p,
+.browser-composer textarea,
+.browser-address input {
+  color: color-mix(in srgb, var(--ui-text) 70%, var(--ui-muted)) !important;
+}
+
+.browser-status-strip span,
+.browser-status-strip button,
+.browser-view-toggle,
+.browser-commandbar button,
+.browser-commandbar select,
+.browser-address,
+.browser-card-action,
+.browser-composer-actions button,
+.browser-session-list button,
+.browser-link-list button {
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+/* Browser header split: title matches chat/logs; controls live in browser chrome. */
+.browser-workbench,
+.browser-workbench * {
+  font-family: var(--font-ui) !important;
+}
+
+.browser-topbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  padding: 0 8px !important;
+  border-bottom: 1px solid var(--ui-border-soft) !important;
+  background:
+    linear-gradient(180deg, rgba(240,246,252,0.026), transparent),
+    var(--ui-panel) !important;
+}
+
+.browser-topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.browser-title {
+  min-height: 0 !important;
+}
+
+.browser-title-icon {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.browser-title strong {
+  color: color-mix(in srgb, var(--ui-text) 68%, var(--ui-muted)) !important;
+  font-size: 12px !important;
+  font-weight: 560 !important;
+}
+
+.browser-commandbar {
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  padding: 4px 8px !important;
+  border-bottom: 1px solid var(--ui-border-soft) !important;
+  background: var(--ui-panel) !important;
+}
+
+.browser-commandbar button,
+.browser-commandbar select,
+.browser-address {
+  height: 28px !important;
+  min-height: 28px !important;
+  color: color-mix(in srgb, var(--ui-text) 70%, var(--ui-muted)) !important;
+  font-size: 11px !important;
+  font-weight: 480 !important;
+}
+
+.browser-live {
+  grid-template-rows: 24px minmax(0, 1fr) 26px !important;
+}
+
+.browser-live-chrome {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 0 8px !important;
+  overflow: hidden !important;
+  border-bottom: 1px solid var(--ui-border-soft) !important;
+  background: var(--ui-panel) !important;
+}
+
+.browser-page-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.browser-page-line > span {
+  flex: 0 0 auto;
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 999px !important;
+}
+
+.browser-page-line > span:nth-child(1) {
+  background: #fb7185 !important;
+}
+
+.browser-page-line > span:nth-child(2) {
+  background: #facc15 !important;
+}
+
+.browser-page-line > span:nth-child(3) {
+  background: var(--ui-teal) !important;
+}
+
+.browser-page-line code {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--ui-text) 64%, var(--ui-muted)) !important;
+  font-size: 10px !important;
+  font-weight: 450 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-page-line strong {
+  flex: 0 0 auto;
+  color: var(--ui-teal) !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+  letter-spacing: .06em !important;
+}
+
+.browser-status-strip--chrome {
+  flex: 0 1 auto !important;
+  height: 100%;
+  max-width: 68%;
+  justify-content: flex-end !important;
+  overflow: hidden !important;
+}
+
+.browser-live-chrome .browser-status-strip--chrome span,
+.browser-live-chrome .browser-status-strip--chrome button,
+.browser-live-chrome .browser-view-toggle {
+  width: auto !important;
+  height: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  padding: 0 6px !important;
+  border-radius: 4px !important;
+  background: var(--ui-input) !important;
+  color: color-mix(in srgb, var(--ui-text) 66%, var(--ui-muted)) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+}
+
+.browser-live-chrome .browser-view-toggle {
+  padding: 1px !important;
+}
+
+.browser-live-chrome .browser-view-toggle button {
+  min-width: 24px;
+  padding: 0 5px !important;
+}
+
+.browser-live-footer {
+  height: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+  color: var(--ui-muted) !important;
+  font-size: 10.5px !important;
+}
+
+.browser-workbench strong,
+.browser-workbench h2,
+.browser-workbench h3,
+.browser-workbench button {
+  font-weight: 560 !important;
+}
+
+.browser-card-action--icon {
+  min-width: 26px !important;
+  height: 22px !important;
+  padding: 0 7px !important;
+  color: color-mix(in srgb, var(--ui-text) 62%, var(--ui-muted)) !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
+@media (max-width: 720px) {
+  .browser-topbar {
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+  }
+
+  .browser-commandbar {
+    height: 64px !important;
+    min-height: 64px !important;
+    max-height: 64px !important;
+  }
+
+  .browser-status-strip--chrome {
+    max-width: 42%;
+  }
+
+  .browser-status-strip--chrome .browser-status-chip,
+  .browser-status-strip--chrome .browser-icon-action {
+    display: none !important;
+  }
+
+  .browser-live-chrome .browser-view-toggle button {
+    width: 24px !important;
+    font-size: 0 !important;
+  }
+}
+
+/* Browser title-bar correction: keep controls in header without increasing height. */
+.browser-topbar {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  overflow: hidden !important;
+}
+
+.browser-topbar-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 5px !important;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.browser-topbar .browser-status-strip--topbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 5px !important;
+  flex: 1 1 auto !important;
+  min-width: 0;
+  height: 100%;
+  max-width: 100%;
+  overflow: hidden !important;
+}
+
+.browser-topbar .browser-status-strip--topbar span,
+.browser-topbar .browser-status-strip--topbar button,
+.browser-topbar .browser-view-toggle {
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  padding: 0 7px !important;
+  border-radius: 4px !important;
+  color: color-mix(in srgb, var(--ui-text) 66%, var(--ui-muted)) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  white-space: nowrap;
+}
+
+.browser-topbar .browser-view-toggle {
+  flex: 0 0 auto;
+  padding: 1px !important;
+}
+
+.browser-topbar .browser-view-toggle button {
+  min-width: 28px;
+  padding: 0 6px !important;
+}
+
+.browser-topbar .browser-status-chip {
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.browser-topbar .browser-status-chip--session {
+  max-width: 260px;
+}
+
+.browser-live-chrome {
+  justify-content: flex-start !important;
+}
+
+.browser-page-line {
+  flex: 1 1 auto;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .browser-topbar-actions {
+    flex: 0 0 auto;
+  }
+
+  .browser-topbar .browser-status-strip--topbar {
+    flex: 0 0 auto !important;
+    overflow: visible !important;
+  }
+
+  .browser-topbar .browser-status-strip--topbar .browser-status-chip,
+  .browser-topbar .browser-status-strip--topbar .browser-latency,
+  .browser-topbar .browser-status-strip--topbar .browser-icon-action,
+  .browser-topbar .browser-status-strip--topbar > button:not(.browser-sidebar-toggle) {
+    display: none !important;
+  }
+
+  .browser-topbar .browser-view-toggle button {
+    width: 26px !important;
+    min-width: 26px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .browser-sidebar-toggle {
+    flex: 0 0 30px !important;
+  }
+}
+
+/* Browser chrome final alignment: match chat/logs toolbar rhythm and avoid stacked divider lines. */
+.browser-workbench {
+  display: grid !important;
+  grid-template-rows: 40px 34px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: var(--ui-page) !important;
+}
+
+.browser-topbar {
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--ui-panel) !important;
+  box-shadow: inset 0 -1px 0 rgba(1, 4, 9, 0.22) !important;
+}
+
+[data-theme="light"] .browser-topbar {
+  box-shadow: inset 0 -1px 0 rgba(31, 35, 40, 0.08) !important;
+}
+
+.browser-title {
+  align-items: center !important;
+  gap: 7px !important;
+  min-width: 0 !important;
+  height: 100% !important;
+}
+
+.browser-title > div {
+  min-width: 0 !important;
+}
+
+.browser-title > div > span {
+  display: none !important;
+}
+
+.browser-title-icon {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.browser-title strong {
+  font-size: 12px !important;
+  line-height: 1 !important;
+}
+
+.browser-topbar-actions {
+  height: 100% !important;
+}
+
+.browser-commandbar {
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  padding: 3px 6px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--ui-panel) !important;
+  box-shadow: none !important;
+}
+
+.browser-commandbar button,
+.browser-commandbar select,
+.browser-address {
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+}
+
+.browser-live {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--ui-page) !important;
+  box-shadow: none !important;
+  grid-template-rows: 22px minmax(0, 1fr) 24px !important;
+}
+
+.browser-live-chrome {
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--ui-panel) !important;
+  box-shadow: inset 0 -1px 0 rgba(1, 4, 9, 0.22) !important;
+}
+
+[data-theme="light"] .browser-live-chrome {
+  box-shadow: inset 0 -1px 0 rgba(31, 35, 40, 0.08) !important;
+}
+
+.browser-live-footer {
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  border: 0 !important;
+  background: var(--ui-panel) !important;
+  box-shadow: none !important;
+}
+
+.browser-stage,
+.browser-split-group,
+.browser-live {
+  min-height: 0 !important;
+}
+
+@media (max-width: 720px) {
+  .browser-workbench {
+    grid-template-rows: 40px 66px minmax(0, 1fr) !important;
+  }
+
+  .browser-topbar {
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
+  }
+
+  .browser-commandbar {
+    height: 66px !important;
+    min-height: 66px !important;
+    max-height: 66px !important;
+    padding: 4px 6px !important;
+  }
+}
+
+/* Browser/log typography sync: use the Logs page mono scale and one clean toolbar divider. */
+.chat-toolbar-icon {
+  flex: 0 0 auto;
+  color: var(--accent-blue);
+  opacity: .9;
+}
+
+.browser-workbench,
+.browser-workbench button,
+.browser-workbench input,
+.browser-workbench select,
+.browser-workbench textarea,
+.browser-workbench code,
+.browser-workbench pre,
+.browser-workbench small,
+.browser-workbench span,
+.browser-workbench strong,
+.browser-workbench p,
+.browser-workbench em {
+  font-family: var(--font-mono) !important;
+}
+
+.browser-workbench {
+  color: var(--fg-base) !important;
+  font-size: 11px !important;
+  line-height: 1.4 !important;
+}
+
+.browser-topbar {
+  min-height: 36px !important;
+  height: 36px !important;
+  max-height: 36px !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  box-shadow: none !important;
+}
+
+.browser-workbench {
+  grid-template-rows: 36px 34px minmax(0, 1fr) !important;
+}
+
+.browser-title-icon {
+  color: #2ea043 !important;
+}
+
+.browser-title strong {
+  color: var(--fg-base) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  text-transform: lowercase !important;
+}
+
+.browser-topbar .browser-status-strip--topbar span,
+.browser-topbar .browser-status-strip--topbar button,
+.browser-topbar .browser-view-toggle,
+.browser-commandbar button,
+.browser-commandbar select,
+.browser-address,
+.browser-card-action,
+.browser-composer-actions button {
+  color: var(--fg-muted) !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  text-transform: lowercase !important;
+}
+
+.browser-address input,
+.browser-composer textarea {
+  color: var(--fg-base) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+}
+
+.browser-page-line code,
+.browser-live-footer,
+.browser-card p,
+.browser-card small,
+.browser-session-summary,
+.browser-agent-model,
+.browser-link-list small,
+.browser-link-list em,
+.browser-process-list p,
+.browser-mini-conversation p,
+.browser-mini-conversation em,
+.browser-readable-card p {
+  color: var(--fg-muted) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+}
+
+.browser-page-line strong,
+.browser-latency,
+.browser-status-chip,
+.browser-card > span,
+.browser-card-head span,
+.browser-composer-head span,
+.browser-process-head span,
+.browser-process-card-title,
+.browser-process-list strong,
+.browser-mini-conversation strong,
+.browser-session-id {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  text-transform: lowercase !important;
+}
+
+.browser-card h2,
+.browser-readable-card strong,
+.browser-session-list strong,
+.browser-link-list strong,
+.browser-empty-state strong,
+.browser-extraction-preview strong {
+  color: var(--fg-base) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+.browser-live-chrome {
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent) !important;
+  box-shadow: inset 0 -1px 0 rgba(1, 4, 9, 0.22) !important;
+}
+
+[data-theme="light"] .browser-live-chrome {
+  box-shadow: inset 0 -1px 0 rgba(31, 35, 40, 0.08) !important;
+}
+
+@media (max-width: 720px) {
+  .browser-workbench {
+    grid-template-rows: 36px 66px minmax(0, 1fr) !important;
+  }
+
+  .browser-topbar {
+    min-height: 36px !important;
+    height: 36px !important;
+    max-height: 36px !important;
+  }
+}
+
+/* Final typography pass: Browser is Logs-style mono, one notch larger; Chat mono is scoped to chrome/panels only. */
+.chat-toolbar-row,
+.chat-toolbar-row *,
+.chat-context-pane,
+.chat-context-pane *,
+.chat-context-panel,
+.chat-context-panel *,
+.chat-activity-pane,
+.chat-activity-pane *,
+.chat-activity-panel,
+.chat-activity-panel * {
+  font-family: var(--font-mono) !important;
+}
+
+.chat-session-title span,
+.chat-context-header span,
+.chat-panel-section-title,
+.chat-session-switcher__head span,
+.chat-activity-header h2,
+.right-panel-title {
+  font-weight: 700 !important;
+}
+
+.chat-toolbar-row,
+.chat-context-panel,
+.chat-activity-panel {
+  font-size: 11px !important;
+}
+
+.browser-workbench {
+  font-size: 12px !important;
+}
+
+.browser-title strong {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.browser-title-icon svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+.browser-topbar .browser-status-strip--topbar span,
+.browser-topbar .browser-status-strip--topbar button,
+.browser-topbar .browser-view-toggle,
+.browser-commandbar button,
+.browser-commandbar select,
+.browser-address,
+.browser-card-action,
+.browser-composer-actions button {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+
+.browser-address input,
+.browser-composer textarea,
+.browser-page-line code,
+.browser-live-footer,
+.browser-card p,
+.browser-card small,
+.browser-session-summary,
+.browser-agent-model,
+.browser-link-list small,
+.browser-link-list em,
+.browser-process-list p,
+.browser-mini-conversation p,
+.browser-mini-conversation em,
+.browser-readable-card p {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+.browser-page-line strong,
+.browser-latency,
+.browser-status-chip,
+.browser-card > span,
+.browser-card-head span,
+.browser-composer-head span,
+.browser-process-head span,
+.browser-process-card-title,
+.browser-process-list strong,
+.browser-mini-conversation strong,
+.browser-session-id {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+
+.browser-card h2,
+.browser-readable-card strong,
+.browser-session-list strong,
+.browser-link-list strong,
+.browser-empty-state strong,
+.browser-extraction-preview strong {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+/* Logs mono scale bump: keep Logs and Browser visually aligned. */
+.log-page,
+.log-page *,
+.terminal-logs-page,
+.terminal-logs-page * {
+  font-family: var(--font-mono) !important;
+}
+
+.log-toolbar-title,
+.terminal-toolbar-title {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.log-status,
+.terminal-status,
+.log-search input,
+.terminal-search input {
+  font-size: 11px !important;
+}
+
+.log-filter-label,
+.terminal-filter-label,
+.log-chip,
+.terminal-chip {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+
+.log-feed,
+.terminal-feed {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+.log-segment,
+.terminal-segment {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+.log-message,
+.terminal-message {
+  font-size: 12px !important;
+}
+
+.log-cursor,
+.terminal-cursor {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.log-empty,
+.terminal-empty {
+  font-size: 12px !important;
+}
+
+/* Program header alignment: logs, chat sessions, and browser share one baseline. */
+.log-toolbar,
+.chat-toolbar-row,
+.browser-topbar {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  max-height: 36px !important;
+  padding: 0 10px !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  border-radius: 0 !important;
+  background: var(--bg-surface) !important;
+  box-shadow: none !important;
+}
+
+.log-toolbar-left,
+.log-toolbar-right,
+.chat-toolbar-row > .flex,
+.browser-title,
+.browser-topbar-actions {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+.log-toolbar-left,
+.chat-toolbar-row > .flex:first-child,
+.browser-title {
+  gap: 6px !important;
+}
+
+.log-icon,
+.chat-toolbar-icon,
+.browser-title-icon,
+.browser-title-icon svg {
+  width: 14px !important;
+  min-width: 14px !important;
+  max-width: 14px !important;
+  height: 14px !important;
+  min-height: 14px !important;
+  max-height: 14px !important;
+}
+
+.log-icon,
+.chat-toolbar-icon,
+.browser-title-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 14px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  line-height: 1 !important;
+}
+
+.browser-title-icon {
+  color: #2ea043 !important;
+}
+
+.chat-session-title,
+.log-toolbar-title,
+.browser-title strong {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  max-height: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--fg-base) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  line-height: 16px !important;
+  text-transform: none !important;
+}
+
+.chat-session-title span {
+  line-height: 16px !important;
+}
+
+.chat-toolbar-row .chat-tool-button {
+  align-self: center !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+}
+
+.browser-title > div {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 16px !important;
+}
+
+/* Final shell edge pass: the second line belongs to the content container, not an empty row. */
+.chat-workspace {
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent) !important;
+  background: var(--bg-base) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+}
+
+[data-theme="light"] .chat-workspace {
+  border-top-color: rgba(31, 35, 40, 0.1) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+.browser-workbench {
+  --browser-accent: #a3e635 !important;
+  --browser-accent-strong: #84cc16 !important;
+  --browser-accent-soft: color-mix(in srgb, var(--browser-accent) 12%, transparent) !important;
+  --browser-accent-border: color-mix(in srgb, var(--browser-accent) 38%, var(--border-subtle)) !important;
+}
+
+.browser-stage {
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 74%, transparent) !important;
+  background: var(--ui-page) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+}
+
+[data-theme="light"] .browser-stage {
+  border-top-color: rgba(31, 35, 40, 0.1) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+.browser-title-icon,
+.browser-title strong,
+.browser-process-card-title,
+.browser-card-head span,
+.browser-composer-head span,
+.browser-session-id,
+.browser-link-list strong svg {
+  color: var(--browser-accent) !important;
+}
+
+.browser-topbar .browser-view-toggle,
+.browser-topbar .browser-status-chip.is-ready,
+.browser-topbar .browser-icon-action.is-ready,
+.browser-signal-chip,
+.browser-card-action--icon {
+  border-color: var(--browser-accent-border) !important;
+  background: color-mix(in srgb, var(--browser-accent) 8%, transparent) !important;
+  color: color-mix(in srgb, var(--browser-accent) 82%, var(--fg-base)) !important;
+}
+
+.browser-topbar .browser-view-toggle button.is-active,
+.browser-primary-action:not(:disabled),
+.browser-card-action:not(:disabled):hover,
+.browser-session-list button.is-active,
+.browser-link-list button:hover,
+.browser-process-head strong.is-standby {
+  border-color: var(--browser-accent-border) !important;
+  background: color-mix(in srgb, var(--browser-accent) 10%, var(--bg-base)) !important;
+  color: color-mix(in srgb, var(--browser-accent) 86%, var(--fg-base)) !important;
+}
+
+.browser-primary-action:not(:disabled) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--browser-accent) 10%, transparent) !important;
+}
+
+.browser-session-list button.is-active {
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--browser-accent) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--browser-accent) 10%, transparent) !important;
+}
+
+.browser-card h2,
+.browser-readable-card strong,
+.browser-session-list strong,
+.browser-empty-state strong,
+.browser-extraction-preview strong {
+  color: color-mix(in srgb, var(--fg-base) 88%, var(--browser-accent) 12%) !important;
+}
+
+[data-theme="light"] .browser-workbench {
+  --browser-accent: #65a30d !important;
+  --browser-accent-strong: #4d7c0f !important;
 }

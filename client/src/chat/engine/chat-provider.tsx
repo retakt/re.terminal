@@ -45,6 +45,7 @@ const CHAT_MODEL_KEY = "reterm.chat.model";
 const CHAT_OPTIONS_KEY = "reterm.chat.options";
 const CHAT_MODE_KEY = "reterm.chat.mode";
 const CHAT_RUNTIME_PREFIX = "reterm.chat.runtime.";
+const CHAT_MODEL_CHANGE_EVENT = "reterm.chat.model-change";
 const BROWSER_SESSION_ID_KEY = "reterm.browser.agentSessionId";
 const BROWSER_SESSION_LINK_EVENT = "reterm.browser.session-link";
 const MAX_TOOL_LOGS = 80;
@@ -74,6 +75,12 @@ function linkBrowserSessionToChat(sessionId: string) {
   try {
     storage?.setItem(BROWSER_SESSION_ID_KEY, sessionId);
     window.dispatchEvent(new CustomEvent(BROWSER_SESSION_LINK_EVENT, { detail: { sessionId } }));
+  } catch {}
+}
+
+function emitChatModelChange(model: string) {
+  try {
+    window.dispatchEvent(new CustomEvent(CHAT_MODEL_CHANGE_EVENT, { detail: { model } }));
   } catch {}
 }
 
@@ -1167,6 +1174,7 @@ export function ChatProvider({
         setSelectedModelState(list[0]);
         selectedModelRef.current = list[0];
         safeLocalStorage()?.setItem(CHAT_MODEL_KEY, list[0]);
+        emitChatModelChange(list[0]);
       }
     } catch (err) {
       setModelError(err instanceof Error ? err.message : "model refresh failed");
@@ -1179,6 +1187,7 @@ export function ChatProvider({
     setSelectedModelState(model);
     selectedModelRef.current = model;
     safeLocalStorage()?.setItem(CHAT_MODEL_KEY, model);
+    emitChatModelChange(model);
   }, []);
 
   const setChatMode = useCallback((mode: ChatMode) => {
@@ -1771,19 +1780,22 @@ export function ChatProvider({
           toolCalls = [{ function: { name: forced.name, arguments: forced.args } }];
         }
       }
-      if (mode === "browser" && toolCalls && toolCalls.length > 0) {
-        toolCalls = toolCalls.map((call) => call.function.name.startsWith("mcp__browser_agent__")
-          ? {
-              function: {
-                ...call.function,
-                arguments: {
-                  ...asToolArgs(call.function.arguments),
-                  useExtensions: String(browserUseExtensions),
-                  currentUrl: asToolArgs(call.function.arguments).currentUrl || browserCurrentUrl,
-                },
+      if (toolCalls && toolCalls.length > 0) {
+        toolCalls = toolCalls.map((call) => {
+          if (!call.function.name.startsWith("mcp__browser_agent__")) return call;
+          const args = asToolArgs(call.function.arguments);
+          return {
+            function: {
+              ...call.function,
+              arguments: {
+                ...args,
+                model: args.model || currentModel,
+                ...(mode === "browser" ? { useExtensions: String(browserUseExtensions) } : {}),
+                currentUrl: args.currentUrl || browserCurrentUrl,
               },
-            }
-          : call);
+            },
+          };
+        });
       }
       if ((mode === "browser" || mode === "scraper") && toolCalls && toolCalls.length > 1) {
         toolCalls = [toolCalls[0]];

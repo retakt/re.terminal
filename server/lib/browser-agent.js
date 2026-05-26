@@ -1,8 +1,9 @@
-import { browserAgentRuntimeConfig } from "./browser-llm-runtime.js";
+import { browserAgentRuntimeConfig, withBrowserAgentRuntimeOverrides } from "./browser-llm-runtime.js";
 import { runBrowserAgentOrchestrator } from "./browser-agent/orchestrator.js";
 import {
   defaultBrowserAgentState,
   loadBrowserAgentState,
+  mergeBrowserAgentObservation,
   resetBrowserAgentState,
   saveBrowserAgentState,
   listBrowserAgentSessions,
@@ -35,6 +36,14 @@ function withUiReport(result = {}, args = {}) {
   };
 }
 
+function runtimeOverridesFromArgs(args = {}) {
+  return {
+    model: safeText(args.model || args.browserAgentModel || "", 240),
+    baseUrl: safeText(args.baseUrl || args.browserAgentBaseUrl || "", 1000),
+    models: args.models && typeof args.models === "object" ? args.models : {},
+  };
+}
+
 // Kept as a no-op compatibility hook for the MCP gateway. The route-isolated
 // browser agent now talks to Playwright through the external MCP client.
 export function setBrowserAgentMcpCaller() {
@@ -42,12 +51,14 @@ export function setBrowserAgentMcpCaller() {
 }
 
 export async function browserAgentRun(args = {}) {
-  const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
-  const result = await runBrowserAgentOrchestrator({
-    ...args,
-    sessionId,
+  return withBrowserAgentRuntimeOverrides(runtimeOverridesFromArgs(args), async () => {
+    const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
+    const result = await runBrowserAgentOrchestrator({
+      ...args,
+      sessionId,
+    });
+    return withUiReport(result, args);
   });
-  return withUiReport(result, args);
 }
 
 export async function browserAgentObserve(args = {}) {
@@ -77,33 +88,80 @@ export async function browserAgentReset(args = {}) {
 export async function browserAgentCreateSession(args = {}) {
   const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
   saveBrowserAgentState(defaultBrowserAgentState(sessionId));
-  return browserAgentStatus({ sessionId });
+  return browserAgentStatus({ ...args, sessionId });
 }
 
 export async function browserAgentStatus(args = {}) {
-  const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
-  const state = loadBrowserAgentState(sessionId);
-  const status = {
-    ok: true,
-    status: "success",
-    sessionId,
-    state,
-    runtime: browserAgentRuntimeConfig({ display: true }),
-    browserHealth: {
+  return withBrowserAgentRuntimeOverrides(runtimeOverridesFromArgs(args), async () => {
+    const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
+    const state = loadBrowserAgentState(sessionId);
+    const status = {
       ok: true,
-      status: "route-isolated",
-      route: state.route || "",
-      backend: state.routeEngine || "",
-    },
-  };
-  return {
-    ...status,
-    uiReport: buildBrowserAgentStatusReport(status),
-  };
+      status: "success",
+      sessionId,
+      state,
+      runtime: browserAgentRuntimeConfig({ display: true }),
+      browserHealth: {
+        ok: true,
+        status: "route-isolated",
+        route: state.route || "",
+        backend: state.routeEngine || "",
+      },
+    };
+    return {
+      ...status,
+      uiReport: buildBrowserAgentStatusReport(status),
+    };
+  });
 }
 
 export async function browserAgentListSessions() {
   return listBrowserAgentSessions();
+}
+
+export async function browserAgentRecordNavigation(args = {}) {
+  const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
+  const currentUrl = safeText(args.currentUrl || args.url || "", 1000);
+  const currentTitle = safeText(args.currentTitle || args.title || "", 300);
+  const instruction = safeText(
+    args.instruction || "User manually changed the active browser page from the UI.",
+    1000,
+  );
+  const state = loadBrowserAgentState(sessionId);
+  mergeBrowserAgentObservation(
+    state,
+    {
+      ok: true,
+      status: "success",
+      engine: "browser_ui",
+      url: currentUrl,
+      title: currentTitle,
+      textPreview: safeText(args.textPreview || "", 3000),
+      stats: args.stats && typeof args.stats === "object" ? args.stats : {},
+    },
+    "manual",
+    {
+      instruction,
+      routeEngine: "browser_ui",
+      command: {
+        tool: "manualNavigation",
+        backend: "browser_ui",
+        args: {
+          url: currentUrl,
+          title: currentTitle,
+        },
+      },
+      result: {
+        ok: true,
+        status: "manual_navigation",
+        engine: "browser_ui",
+        currentUrl,
+        currentTitle,
+        summary: instruction,
+      },
+    },
+  );
+  return browserAgentStatus({ ...args, sessionId });
 }
 
 export async function browserAgentLearn(args = {}) {

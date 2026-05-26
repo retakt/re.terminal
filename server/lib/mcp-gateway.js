@@ -1041,6 +1041,7 @@ const builtinServers = [
             sessionId: { type: "string" },
             instruction: { type: "string" },
             currentUrl: { type: "string" },
+            model: { type: "string" },
             extensionId: { type: "string" },
             maxSteps: { type: "number" },
             useExtensions: { type: "boolean" },
@@ -1059,6 +1060,7 @@ const builtinServers = [
           properties: {
             sessionId: { type: "string" },
             currentUrl: { type: "string" },
+            model: { type: "string" },
             extensionId: { type: "string" },
             useExtensions: { type: "boolean" },
           },
@@ -1074,6 +1076,7 @@ const builtinServers = [
           properties: {
             sessionId: { type: "string" },
             instruction: { type: "string" },
+            model: { type: "string" },
             label: { type: "string" },
             selector: { type: "string" },
             href: { type: "string" },
@@ -1092,6 +1095,7 @@ const builtinServers = [
           type: "object",
           properties: {
             sessionId: { type: "string" },
+            model: { type: "string" },
           },
         },
         execute: browserAgentResetTool,
@@ -1116,6 +1120,7 @@ const builtinServers = [
             sessionId: { type: "string" },
             instruction: { type: "string" },
             currentUrl: { type: "string" },
+            model: { type: "string" },
             error: { type: "string" },
             browserResult: { type: "string" },
           },

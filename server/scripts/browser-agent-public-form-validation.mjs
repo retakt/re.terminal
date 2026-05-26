@@ -35,7 +35,7 @@ function setBaseUrlEnv(name, fallback) {
   }
 }
 
-const validationModel = "qwen3.5:2b";
+const validationModel = "llama3.2:latest";
 const validationBaseUrl =
   String(process.env.BROWSER_AGENT_MAIN_BASE_URL || "").trim() ||
   String(process.env.BROWSER_AGENT_ORCHESTRATOR_BASE_URL || "").trim() ||
@@ -73,12 +73,12 @@ process.env.BROWSER_AGENT_WATCHER_TEMPERATURE = "0";
 process.env.BROWSER_AGENT_RESULT_REVIEWER_TEMPERATURE = "0";
 process.env.BROWSER_AGENT_REPORTER_TEMPERATURE = "0";
 process.env.BROWSER_AGENT_EXECUTOR_TEMPERATURE = "0.1";
-process.env.BROWSER_AGENT_CHECKER_MODEL = "qwen2.5-coder:7b";
-process.env.BROWSER_AGENT_REVIEWER_MODEL = "qwen2.5-coder:7b";
-process.env.BROWSER_AGENT_WATCHER_MODEL = "qwen2.5-coder:7b";
-process.env.BROWSER_AGENT_RESULT_REVIEWER_MODEL = "qwen2.5-coder:7b";
-process.env.BROWSER_AGENT_REPORTER_MODEL = "qwen2.5-coder:7b";
-process.env.BROWSER_AGENT_FINAL_VERIFIER_MODEL = "qwen2.5-coder:7b";
+process.env.BROWSER_AGENT_CHECKER_MODEL = "llama3.2:latest";
+process.env.BROWSER_AGENT_REVIEWER_MODEL = "llama3.2:latest";
+process.env.BROWSER_AGENT_WATCHER_MODEL = "llama3.2:latest";
+process.env.BROWSER_AGENT_RESULT_REVIEWER_MODEL = "llama3.2:latest";
+process.env.BROWSER_AGENT_REPORTER_MODEL = "llama3.2:latest";
+process.env.BROWSER_AGENT_FINAL_VERIFIER_MODEL = "llama3.2:latest";
 
 const {
   browserAgentReset,

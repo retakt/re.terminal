@@ -5,17 +5,31 @@ import {
   Bot,
   Clock,
   ExternalLink,
+  FileText,
   Globe,
+  Link as LinkIcon,
+  ListChecks,
   Loader2,
+  MessageSquare,
+  Monitor,
+  PanelRightCloseIcon,
+  PanelRightOpenIcon,
   RefreshCcw,
   Search,
   Sparkles,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import {
   getLightpandaStatus,
   getBrowserAgentStatus,
   getBrowserAgentSessions,
   createBrowserAgentSession,
+  notifyBrowserAgentNavigation,
   runBrowserAgent,
   resetBrowserAgent,
   getPlaywrightMcpStatus,
@@ -36,11 +50,39 @@ import {
   type PlaywrightMcpStatus,
 } from "@/lib/browser-api";
 import { focusInputShell } from "@/lib/focus-input-shell";
+import { cn } from "@/lib/utils";
 import { useApp } from "@/contexts/app-context";
 
 const CHAT_SESSION_ID_KEY = "reterm.chat.sessionId";
+const CHAT_MODEL_KEY = "reterm.chat.model";
+const CHAT_MODEL_CHANGE_EVENT = "reterm.chat.model-change";
 const BROWSER_SESSION_ID_KEY = "reterm.browser.agentSessionId";
 const BROWSER_SESSION_LINK_EVENT = "reterm.browser.session-link";
+const MOBILE_QUERY = "(max-width: 1024px), (hover: none) and (pointer: coarse)";
+const MOBILE_PANEL_EXIT_MS = 380;
+
+type BrowserViewMode = "headless" | "headful";
+
+type BrowserConversationEntry = {
+  id: string;
+  role: "user" | "orchestrator";
+  text: string;
+  at: number;
+  status?: string;
+};
+
+type BrowserProcessItem = {
+  role: "Orchestrator" | "Planner" | "Watcher" | "Reporter" | "Browser";
+  text: string;
+  status?: string;
+};
+
+type BrowserNavigationObservation = {
+  url: string;
+  title?: string;
+  textPreview?: string;
+  stats?: Record<string, number | string>;
+};
 
 type BrowserSessionRecord = {
   sessionId: string;
@@ -87,6 +129,34 @@ function currentChatSessionId() {
   }
 }
 
+function useIsCompactBrowserLayout() {
+  const getIsCompact = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia(MOBILE_QUERY).matches;
+
+  const [isCompact, setIsCompact] = React.useState(getIsCompact);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const query = window.matchMedia(MOBILE_QUERY);
+    const handleChange = () => setIsCompact(query.matches);
+    handleChange();
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
+
+  return isCompact;
+}
+
+function currentChatModel() {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(CHAT_MODEL_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
 function browserSessionIdSeed() {
   const chatSession = currentChatSessionId();
   return chatSession || `browser-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -107,6 +177,47 @@ function browserSessionLabel(session: BrowserSessionRecord | BrowserAgentSession
     || session.currentUrl?.trim()
     || session.summary?.trim()
     || `session ${session.sessionId.slice(0, 8)}`;
+}
+
+function conversationStorageKey(sessionId: string) {
+  return `reterm.browser.conversation.${sessionId || "default-browser-session"}`;
+}
+
+function entryId(prefix = "entry") {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function loadConversation(sessionId: string): BrowserConversationEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(conversationStorageKey(sessionId)) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry): BrowserConversationEntry => {
+        const role: BrowserConversationEntry["role"] = entry?.role === "user" ? "user" : "orchestrator";
+        return {
+          id: String(entry?.id || entryId("conversation")),
+          role,
+          text: compact(entry?.text || "", 360),
+          at: Number(entry?.at || Date.now()),
+          status: String(entry?.status || "").trim(),
+        };
+      })
+      .filter((entry) => entry.text)
+      .slice(-30);
+  } catch {
+    return [];
+  }
+}
+
+function saveConversation(sessionId: string, entries: BrowserConversationEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(conversationStorageKey(sessionId), JSON.stringify(entries.slice(-30)));
+  } catch {}
 }
 
 function browserSessionSubtitle(session: BrowserSessionRecord | BrowserAgentSessionSummary | null | undefined) {
@@ -187,6 +298,87 @@ function browserSessionFromRun(
   };
 }
 
+function processItemsFromAgent(
+  result: BrowserAgentRunResult | null,
+  status: BrowserAgentStatus | null,
+  running: boolean,
+): BrowserProcessItem[] {
+  const report = result?.uiReport || null;
+  const statusReport = status?.uiReport as Record<string, any> | undefined;
+  const state = status?.state as Record<string, any> | undefined;
+  const items: BrowserProcessItem[] = [];
+
+  if (running) {
+    items.push({
+      role: "Orchestrator",
+      status: "running",
+      text: "Working on the current browser instruction. I will report back here when the run finishes.",
+    });
+  }
+
+  if (report?.plan?.userIntent || report?.plan?.reason || report?.plan?.steps?.length) {
+    const stepCount = Array.isArray(report.plan.steps) ? report.plan.steps.length : 0;
+    items.push({
+      role: "Planner",
+      status: report.plan.status || "planned",
+      text: compact(
+        [
+          report.plan.userIntent ? `Intent: ${report.plan.userIntent}` : "",
+          report.plan.reason || "",
+          stepCount ? `Planned ${stepCount} step${stepCount === 1 ? "" : "s"}.` : "",
+        ].filter(Boolean).join(" "),
+        360,
+      ),
+    });
+  }
+
+  const steps = Array.isArray(report?.steps) ? report.steps.slice(-5) : [];
+  steps.forEach((step) => {
+    items.push({
+      role: step.tool === "browserVerify" ? "Watcher" : "Browser",
+      status: step.status || (step.ok ? "success" : "failed"),
+      text: compact(
+        [
+          step.tool || step.kind || "browser step",
+          step.summary || step.text || "",
+          step.currentTitle || step.currentUrl || "",
+        ].filter(Boolean).join(": "),
+        360,
+      ),
+    });
+  });
+
+  const summary = result?.summary || report?.summary || state?.lastResult?.summary || "";
+  const next = result?.nextSafeAction || report?.nextSafeAction || "";
+  if (summary || next) {
+    items.push({
+      role: "Orchestrator",
+      status: result?.ok === false ? "failed" : "standby",
+      text: compact([summary, next ? `Standing by: ${next}` : "Standing by for your next instruction."].filter(Boolean).join(" "), 420),
+    });
+  }
+
+  const history = Array.isArray(statusReport?.history) ? statusReport.history.slice(-3) : [];
+  history.forEach((entry) => {
+    if (items.some((item) => item.text.includes(entry.title || entry.url || "never-match"))) return;
+    items.push({
+      role: "Watcher",
+      status: entry.status || "observed",
+      text: compact([entry.tool || entry.route || "observed", entry.title || entry.url || ""].filter(Boolean).join(": "), 260),
+    });
+  });
+
+  if (items.length === 0) {
+    items.push({
+      role: "Orchestrator",
+      status: "standby",
+      text: "Standing by. Give me a URL, ask me to read a page, scrape a table, or fill a form.",
+    });
+  }
+
+  return items.slice(-8);
+}
+
 function observationToPage(observation?: BrowserAgentObservation | null): LightpandaPageResult["page"] | null {
   if (!observation) return null;
   const links = Array.isArray(observation.links)
@@ -257,6 +449,7 @@ function backendLabel(backend: BrowserBackend) {
 
 export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const { pages, openProgram } = useApp();
+  const isCompact = useIsCompactBrowserLayout();
   const [address, setAddress] = React.useState("");
   const [visualUrl, setVisualUrl] = React.useState("");
   const [backend, setBackend] = React.useState<BrowserBackend>("auto");
@@ -266,7 +459,13 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const [playwrightStatus, setPlaywrightStatus] = React.useState<PlaywrightMcpStatus | null>(null);
   const [agentStatus, setAgentStatus] = React.useState<BrowserAgentStatus | null>(null);
   const [agentSessionId, setAgentSessionId] = React.useState(() => currentBrowserSessionId());
+  const [selectedBrowserModel, setSelectedBrowserModel] = React.useState(() => currentChatModel());
+  const [viewMode, setViewMode] = React.useState<BrowserViewMode>("headless");
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [sidebarClosing, setSidebarClosing] = React.useState(false);
   const [browserSessions, setBrowserSessions] = React.useState<BrowserSessionRecord[]>([]);
+  const [conversation, setConversation] = React.useState<BrowserConversationEntry[]>(() => loadConversation(currentBrowserSessionId()));
+  const [linksExpanded, setLinksExpanded] = React.useState(false);
   const [browserInstruction, setBrowserInstruction] = React.useState("");
   const [browserRunResult, setBrowserRunResult] = React.useState<BrowserAgentRunResult | null>(null);
   const [browserRunError, setBrowserRunError] = React.useState("");
@@ -282,6 +481,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const [error, setError] = React.useState("");
   const agentStatusRef = React.useRef<BrowserAgentStatus | null>(null);
   const agentSessionIdRef = React.useRef(agentSessionId);
+  const sidebarCloseTimerRef = React.useRef<number | null>(null);
 
   const agentState = agentStatus?.state;
   const agentObservation = agentState?.lastValidObservation || agentState?.lastObservation || null;
@@ -313,6 +513,86 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   React.useEffect(() => {
     agentSessionIdRef.current = agentSessionId;
   }, [agentSessionId]);
+
+  const clearSidebarTimer = React.useCallback(() => {
+    if (sidebarCloseTimerRef.current === null) return;
+    window.clearTimeout(sidebarCloseTimerRef.current);
+    sidebarCloseTimerRef.current = null;
+  }, []);
+
+  const closeSidebar = React.useCallback(() => {
+    if (!sidebarOpen) return;
+    clearSidebarTimer();
+    setSidebarOpen(false);
+    setSidebarClosing(true);
+    sidebarCloseTimerRef.current = window.setTimeout(() => {
+      setSidebarClosing(false);
+      sidebarCloseTimerRef.current = null;
+    }, MOBILE_PANEL_EXIT_MS);
+  }, [clearSidebarTimer, sidebarOpen]);
+
+  const toggleSidebar = React.useCallback(() => {
+    clearSidebarTimer();
+    if (sidebarOpen) {
+      setSidebarOpen(false);
+      setSidebarClosing(true);
+      sidebarCloseTimerRef.current = window.setTimeout(() => {
+        setSidebarClosing(false);
+        sidebarCloseTimerRef.current = null;
+      }, MOBILE_PANEL_EXIT_MS);
+      return;
+    }
+    setSidebarClosing(false);
+    setSidebarOpen(true);
+  }, [clearSidebarTimer, sidebarOpen]);
+
+  React.useEffect(() => {
+    clearSidebarTimer();
+    setSidebarOpen(false);
+    setSidebarClosing(false);
+  }, [clearSidebarTimer, isCompact]);
+
+  React.useEffect(() => clearSidebarTimer, [clearSidebarTimer]);
+
+  React.useEffect(() => {
+    setConversation(loadConversation(agentSessionId));
+    setLinksExpanded(false);
+  }, [agentSessionId]);
+
+  const appendConversation = React.useCallback((
+    entry: Omit<BrowserConversationEntry, "id" | "at">,
+    sessionId = agentSessionIdRef.current,
+  ) => {
+    const nextEntry: BrowserConversationEntry = {
+      id: entryId("browser-chat"),
+      at: Date.now(),
+      ...entry,
+      text: compact(entry.text, 420),
+    };
+    const next = [...loadConversation(sessionId), nextEntry].slice(-30);
+    saveConversation(sessionId, next);
+    if (sessionId === agentSessionIdRef.current) setConversation(next);
+  }, []);
+
+  React.useEffect(() => {
+    const applyModel = (model = "") => {
+      const next = String(model || currentChatModel()).trim();
+      if (next) setSelectedBrowserModel(next);
+    };
+    const handleModelChange = (event: Event) => {
+      applyModel((event as CustomEvent<{ model?: string }>).detail?.model || "");
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === CHAT_MODEL_KEY) applyModel(event.newValue || "");
+    };
+    window.addEventListener(CHAT_MODEL_CHANGE_EVENT, handleModelChange as EventListener);
+    window.addEventListener("storage", handleStorage);
+    applyModel();
+    return () => {
+      window.removeEventListener(CHAT_MODEL_CHANGE_EVENT, handleModelChange as EventListener);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   const refreshPlaywrightScreenshot = React.useCallback(async ({ includeSnapshot = true } = {}) => {
     setScreenshotError("");
@@ -406,7 +686,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     if (!sessionId) return null;
     setAgentSessionId(sessionId);
     try {
-      const next = await getBrowserAgentStatus(sessionId);
+      const next = await getBrowserAgentStatus(sessionId, selectedBrowserModel);
       setAgentStatus(next);
       setAgentStatusError("");
       const record = browserSessionFromStatus(next, sessionId);
@@ -417,7 +697,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       setAgentStatus(null);
       return null;
     }
-  }, [upsertBrowserSession]);
+  }, [selectedBrowserModel, upsertBrowserSession]);
 
   const activateBrowserSession = React.useCallback(async (sessionId: string) => {
     setError("");
@@ -512,14 +792,14 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     setBrowserRunError("");
     setBrowserInstruction("");
     try {
-      const created = await createBrowserAgentSession(sessionId);
+      const created = await createBrowserAgentSession(sessionId, selectedBrowserModel);
       const record = browserSessionFromStatus(created, sessionId);
       if (record) upsertBrowserSession(record);
       await refreshBrowserSessions();
     } catch (err) {
       setAgentStatusError(err instanceof Error ? err.message : String(err));
     }
-  }, [openProgram, refreshBrowserSessions, upsertBrowserSession]);
+  }, [openProgram, refreshBrowserSessions, selectedBrowserModel, upsertBrowserSession]);
 
   const resetBrowserSession = React.useCallback(async () => {
     if (!agentSessionId) return;
@@ -546,6 +826,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     setBrowserRunning(true);
     setError("");
     setBrowserRunError("");
+    appendConversation({ role: "user", text: instruction }, runSessionId);
     try {
       const route = explicitInstructionRoute(instruction);
       const result = await runBrowserAgent({
@@ -555,6 +836,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         currentUrl: visualUrl || page?.url || address || "",
         currentTitle: page?.title || "",
         includeImages: route === "playwright" || selectedBackend === "playwright",
+        model: selectedBrowserModel,
       });
       const stillCurrent = agentSessionIdRef.current === runSessionId;
       if (stillCurrent) setBrowserRunResult(result);
@@ -573,14 +855,31 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       if (stillCurrent && !result.ok && result.error) {
         setBrowserRunError(result.error);
       }
+      appendConversation({
+        role: "orchestrator",
+        status: result.ok ? "success" : "failed",
+        text: compact(
+          [
+            result.summary || result.uiReport?.summary || (result.ok ? "Finished the browser task." : "The browser task did not complete."),
+            result.nextSafeAction || result.uiReport?.nextSafeAction || "Standing by for your next instruction.",
+          ].filter(Boolean).join(" "),
+          420,
+        ),
+      }, runSessionId);
     } catch (err) {
       if (agentSessionIdRef.current === runSessionId) {
-        setBrowserRunError(err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        setBrowserRunError(message);
+        appendConversation({
+          role: "orchestrator",
+          status: "failed",
+          text: `I could not complete that browser task: ${compact(message, 260)}. Standing by for the next instruction.`,
+        }, runSessionId);
       }
     } finally {
       setBrowserRunning(false);
     }
-  }, [address, agentSessionId, browserInstruction, browserRunning, loadAgentStatus, page?.title, page?.url, refreshBrowserSessions, selectedBackend, upsertBrowserSession, visualUrl]);
+  }, [address, agentSessionId, appendConversation, browserInstruction, browserRunning, loadAgentStatus, page?.title, page?.url, refreshBrowserSessions, selectedBackend, selectedBrowserModel, upsertBrowserSession, visualUrl]);
 
   const ensurePlaywrightReady = React.useCallback(async () => {
     let status = await getPlaywrightMcpStatus();
@@ -599,7 +898,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
 
   const navigate = React.useCallback(async (target: string, pushHistory = true) => {
     const nextUrl = normalizeBrowserUrl(target);
-    if (!nextUrl) return;
+    if (!nextUrl) return null;
     setAddress(nextUrl);
     setVisualUrl(nextUrl);
     setLoading(true);
@@ -611,6 +910,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       setHistoryIndex(nextHistory.length - 1);
     }
 
+    let observed: BrowserNavigationObservation | null = null;
     try {
       if (selectedBackend === "playwright") {
         await ensurePlaywrightReady();
@@ -631,6 +931,12 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         });
         setPlaywrightResult(snap);
         setLightpandaResult(null);
+        observed = {
+          url: nextUrl,
+          title: "",
+          textPreview: mcpResultText(snap, 1600),
+          stats: {},
+        };
         if (nav.isError || snap.isError) setError(mcpResultText(snap, 700) || "Playwright navigation failed.");
       } else {
         const next = await navigateLightpanda(nextUrl);
@@ -638,17 +944,66 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         setPlaywrightResult(null);
         setScreenshotImage("");
         setScreenshotError("");
+        observed = {
+          url: next.page?.url || nextUrl,
+          title: next.page?.title || "",
+          textPreview: next.page?.text || next.page?.accessibility?.textPreview || next.page?.markdown || "",
+          stats: next.page?.stats || {},
+        };
         if (!next.ok && next.error) setError(next.error);
       }
     } catch (err) {
       setLightpandaResult(null);
       setPlaywrightResult(null);
       setError(err instanceof Error ? err.message : String(err));
+      observed = null;
     } finally {
       setLoading(false);
       void loadStatus();
     }
+    return observed;
   }, [ensurePlaywrightReady, history, historyIndex, loadStatus, selectedBackend]);
+
+  const notifyManualNavigation = React.useCallback(async (
+    observed: BrowserNavigationObservation | null,
+    fallbackUrl: string,
+    label = "page",
+  ) => {
+    const currentUrl = observed?.url || normalizeBrowserUrl(fallbackUrl);
+    if (!currentUrl) return null;
+    const currentTitle = observed?.title || "";
+    const nextStatus = await notifyBrowserAgentNavigation({
+      sessionId: agentSessionIdRef.current,
+      currentUrl,
+      currentTitle,
+      textPreview: observed?.textPreview || "",
+      stats: observed?.stats || {},
+      model: selectedBrowserModel,
+      instruction: `User switched the active browser page from the UI via ${label}. Continue future browser work from this URL.`,
+    });
+    setAgentStatus(nextStatus);
+    const record = browserSessionFromStatus(nextStatus, agentSessionIdRef.current);
+    if (record) upsertBrowserSession(record);
+    appendConversation({
+      role: "orchestrator",
+      status: "standby",
+      text: `Noted the page switch to ${currentTitle || currentUrl}. I will continue from there. Standing by.`,
+    });
+    return nextStatus;
+  }, [appendConversation, selectedBrowserModel, upsertBrowserSession]);
+
+  const handleVisibleLinkClick = React.useCallback(async (link: { text: string; href: string }) => {
+    if (!link.href) return;
+    const label = compact(link.text || link.href, 90);
+    appendConversation({ role: "user", text: `Clicked visible link: ${label}` });
+    const observed = await navigate(link.href);
+    if (!observed) return;
+    try {
+      await notifyManualNavigation(observed, link.href, `visible link "${label}"`);
+    } catch (err) {
+      setAgentStatusError(err instanceof Error ? err.message : String(err));
+    }
+  }, [appendConversation, navigate, notifyManualNavigation]);
 
   const goHistory = React.useCallback((delta: number) => {
     const nextIndex = Math.max(0, Math.min(history.length - 1, historyIndex + delta));
@@ -706,8 +1061,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         text: String(link.text || "").trim(),
         href: String(link.href || "").trim(),
       }))
-      .filter((link) => link.text || link.href)
-      .slice(0, 8),
+      .filter((link) => link.text || link.href),
     [page?.links],
   );
 
@@ -715,9 +1069,20 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const inputsCount = numberish(page?.stats?.inputs) || (Array.isArray(page?.inputs) ? page.inputs.length : 0);
   const buttonsCount = numberish(page?.stats?.buttons) || (Array.isArray(page?.buttons) ? page.buttons.length : 0);
   const linksCount = Number(page?.stats?.links || page?.links?.length || 0);
+  const pageSignals = [
+    { label: "forms", value: formsCount },
+    { label: "inputs", value: inputsCount },
+    { label: "buttons", value: buttonsCount },
+    { label: "links", value: linksCount },
+  ].filter((signal) => signal.value > 0);
+  const visibleLinksToShow = linksExpanded ? visibleLinks : visibleLinks.slice(0, 5);
+  const processItems = React.useMemo(
+    () => processItemsFromAgent(browserRunResult, agentStatus, browserRunning),
+    [agentStatus, browserRunResult, browserRunning],
+  );
   const extractionPath = page?.extractionPath || page?.extractionSources?.join(", ") || (playwrightResult ? "playwright_mcp.snapshot" : "none");
   const aiRuntimeTitle = agentState?.currentTitle || page?.title || (playwrightResult ? "Playwright snapshot" : "No page yet");
-  const agentModel = agentStatus?.runtime?.models?.planner || agentStatus?.runtime?.model || "";
+  const agentModel = selectedBrowserModel || agentStatus?.runtime?.models?.planner || agentStatus?.runtime?.model || "";
   const currentBrowserSession = React.useMemo(() => {
     return browserSessions.find((session) => session.sessionId === agentSessionId)
       || browserSessionFromStatus(agentStatus, agentSessionId)
@@ -734,6 +1099,342 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     ? playwrightResponseMs(playwrightStatus)
     : lightpandaResult?.durationMs || lightpandaStatus?.durationMs;
   const activeLatencyTone = latencyTone(activeLatencyMs);
+  const sidebarMounted = isCompact && (sidebarOpen || sidebarClosing);
+  const sidebarMotionClass = sidebarClosing ? "is-closing" : "is-open";
+
+  const browserStatusStrip = (
+    <div className="browser-status-strip browser-status-strip--topbar">
+      <div className="browser-view-toggle" aria-label="Browser view mode">
+        <button
+          type="button"
+          className={viewMode === "headless" ? "is-active" : ""}
+          onClick={() => setViewMode("headless")}
+          title="Show formatted extraction and agent process"
+        >
+          <FileText size={13} />
+          Headless
+        </button>
+        <button
+          type="button"
+          className={viewMode === "headful" ? "is-active" : ""}
+          onClick={() => {
+            setViewMode("headful");
+            setBackend("playwright");
+          }}
+          title="Show the visual controlled browser"
+        >
+          <Monitor size={13} />
+          Headful
+        </button>
+      </div>
+      <span className={cn("browser-status-chip browser-status-chip--lightpanda", lightpandaStatus?.ok ? "is-ready" : "is-down")}>
+        Lightpanda: {lightpandaStatus?.ok ? "ready" : "not ready"}
+      </span>
+      <span className={cn("browser-status-chip browser-status-chip--playwright", playwrightReady(playwrightStatus) ? "is-ready" : "")}>
+        Playwright: {playwrightStatusLabel(playwrightStatus)}
+        {playwrightStatus?.server?.toolCount ? ` (${playwrightStatus.server.toolCount} tools)` : ""}
+      </span>
+      {agentSessionId && (
+        <span
+          className={cn("browser-status-chip browser-status-chip--session", agentStatus?.ok ? "is-ready" : "is-down")}
+          title={currentBrowserSession?.summary || currentBrowserSession?.lastInstruction || ""}
+        >
+          AI session: {linkedChatSession?.title || "browser-only"} · #{agentSessionId.slice(0, 8)} · {agentStatus?.ok ? "following" : "offline"}
+        </span>
+      )}
+      <span className={`browser-latency browser-latency--${activeLatencyTone}`}>
+        response {duration(activeLatencyMs)}
+      </span>
+      {pageSignals.length > 0 && (
+        <span className="browser-signal-chip" title="Current extracted page signals">
+          <ListChecks size={13} />
+          {pageSignals.map((signal) => `${signal.value} ${signal.label}`).join(" · ")}
+        </span>
+      )}
+      <button
+        type="button"
+        className={screenshotPolling ? "is-ready browser-icon-action" : "browser-icon-action"}
+        onClick={() => setScreenshotPolling((value) => !value)}
+        title="Poll the real Playwright browser screenshot while active"
+      >
+        <Monitor size={13} />
+        screenshots {screenshotPolling ? "on" : "off"}
+      </button>
+      {selectedBackend === "playwright" && !playwrightReady(playwrightStatus) && (
+        <button type="button" onClick={() => void startPlaywright()} disabled={loading}>
+          Start Playwright
+        </button>
+      )}
+    </div>
+  );
+
+  const browserLive = (
+    <section className="browser-live">
+      <div className="browser-live-chrome">
+        <div className="browser-page-line">
+          <span />
+          <span />
+          <span />
+          <code>{previewUrl || "no page loaded"}</code>
+          <strong>{backendLabel(backend)}</strong>
+        </div>
+      </div>
+      <div className="browser-live-frame">
+        {viewMode === "headless" ? (
+          <div className="browser-process-view">
+            <div className="browser-process-head">
+              <span><Sparkles size={14} /> orchestrator console</span>
+              <strong className={browserRunning ? "is-running" : "is-standby"}>
+                {browserRunning ? "running" : "standby"}
+              </strong>
+            </div>
+            <div className="browser-process-grid">
+              <section className="browser-process-card">
+                <div className="browser-process-card-title">
+                  <ListChecks size={14} />
+                  agent process
+                </div>
+                <div className="browser-process-list">
+                  {processItems.map((item, index) => (
+                    <article key={`${item.role}-${index}`}>
+                      <strong>[{item.role}]</strong>
+                      <p>{item.text}</p>
+                      {item.status && <small>{item.status}</small>}
+                    </article>
+                  ))}
+                </div>
+              </section>
+              <section className="browser-process-card">
+                <div className="browser-process-card-title">
+                  <MessageSquare size={14} />
+                  compact conversation
+                </div>
+                <div className="browser-conversation-list">
+                  {conversation.length === 0 ? (
+                    <em>No browser conversation yet. Send a prompt and I will summarize the key turns here.</em>
+                  ) : (
+                    conversation.slice(-6).map((entry) => (
+                      <article key={entry.id} className={`is-${entry.role}`}>
+                        <strong>{entry.role === "user" ? "You" : "Orchestrator"}</strong>
+                        <p>{entry.text}</p>
+                      </article>
+                    ))
+                  )}
+                </div>
+              </section>
+            </div>
+            {readablePreview && (
+              <section className="browser-process-card browser-readable-card">
+                <div className="browser-process-card-title">
+                  <FileText size={14} />
+                  extracted page
+                </div>
+                <strong>{page?.title || page?.url || "Extracted page"}</strong>
+                <p>{compact(readablePreview, 1600)}</p>
+              </section>
+            )}
+          </div>
+        ) : loading ? (
+          <div className="browser-empty-state">
+            <Loader2 size={30} className="animate-spin" />
+            <strong>loading browser action</strong>
+            <span>{visualUrl || "starting runtime browser..."}</span>
+          </div>
+        ) : selectedBackend === "playwright" ? (
+          screenshotImage ? (
+            <img src={screenshotImage} alt="Playwright browser screenshot preview" />
+          ) : (
+            <div className="browser-empty-state">
+              <Sparkles size={30} />
+              <strong>No Playwright screenshot yet. Click Start Playwright or Go.</strong>
+              <span>Playwright preview uses screenshot polling, not video streaming.</span>
+              {screenshotError && <em className="browser-screenshot-error">{screenshotError}</em>}
+            </div>
+          )
+        ) : readablePreview ? (
+          <div className="browser-extraction-preview">
+            <strong>{page?.title || page?.url || "Extracted page"}</strong>
+            <p>{readablePreview}</p>
+          </div>
+        ) : (
+          <div className="browser-empty-state">
+            <Sparkles size={30} />
+            <strong>ready for extraction</strong>
+            <span>Auto and Lightpanda show extracted page text/signals. Switch to Playwright for screenshot polling of the controlled browser.</span>
+          </div>
+        )}
+      </div>
+      <div className="browser-live-footer">
+        <span><Bot size={13} /> AI backend: {selectedBackend === "playwright" ? "playwright_mcp" : "lightpanda"}</span>
+        {agentSessionId && <span>AI session {linkedChatSession?.title || `#${agentSessionId.slice(0, 8)}`}</span>}
+        <span className={`browser-latency browser-latency--${activeLatencyTone}`}><Clock size={13} /> {duration(activeLatencyMs)}</span>
+        {selectedBackend === "playwright" && <span>Playwright preview uses screenshot polling, not video streaming.</span>}
+        {lastScreenshotAt && selectedBackend === "playwright" && <span>screenshot updated {lastScreenshotAt}</span>}
+        {screenshotError && selectedBackend === "playwright" && <span className="is-down">screenshot error: {compact(screenshotError, 120)}</span>}
+        <span>{extractionPath}</span>
+      </div>
+    </section>
+  );
+
+  const renderBrowserPanel = (className = "browser-ai-panel") => (
+    <aside className={className}>
+      <section className="browser-card browser-card--hero">
+        <span>what the AI sees</span>
+        <h2>{aiRuntimeTitle}</h2>
+        <p>{compact(readablePreview || playwrightPreview || "Navigate to a page and the browser agent preview will appear here.", 420)}</p>
+        {error && <pre>{error}</pre>}
+        {agentStatusError && <pre>{agentStatusError}</pre>}
+        {browserRunSummary && <small className="browser-session-summary">last run: {compact(browserRunSummary, 220)}</small>}
+        {browserRunNextAction && <small className="browser-session-summary browser-session-summary--next">next: {compact(browserRunNextAction, 220)}</small>}
+        <div className="browser-hero-meta">
+          {currentBrowserSession && <small className="browser-agent-model">session: {browserSessionLabel(currentBrowserSession)}</small>}
+          {agentModel && <small className="browser-agent-model">planner: {compact(agentModel, 54)}</small>}
+          {browserRunRoute && <small className="browser-agent-model">route: {browserRunRoute}</small>}
+        </div>
+      </section>
+
+      <form
+        className="browser-card browser-composer-shell"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void runBrowserInstruction();
+        }}
+      >
+        <div className="browser-composer-head">
+          <span>browser prompt</span>
+          <small>direct to orchestrator · {linkedChatSession?.title || "browser-only session"}</small>
+        </div>
+        <label className="browser-composer input-shell" onPointerDown={focusInputShell}>
+          <textarea
+            value={browserInstruction}
+            onChange={(event) => setBrowserInstruction(event.target.value)}
+            placeholder="Go to a page, read the table, scrape the contents, fill a form, or compare two pages."
+            rows={4}
+          />
+        </label>
+        <div className="browser-composer-actions">
+          <button type="submit" className="browser-primary-action" disabled={browserRunning || !browserInstruction.trim()}>
+            {browserRunning ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            Run prompt
+          </button>
+        </div>
+        {(browserRunError || browserRunSummary) && (
+          <div className="browser-composer-output">
+            {browserRunError && <pre className="browser-composer-error">{browserRunError}</pre>}
+            {!browserRunError && browserRunSummary && <p>{compact(browserRunSummary, 260)}</p>}
+          </div>
+        )}
+      </form>
+
+      <section className="browser-card browser-conversation-card">
+        <div className="browser-card-head">
+          <span>conversation summary</span>
+          <small>{conversation.length ? `${Math.min(conversation.length, 6)} key turns` : "standby"}</small>
+        </div>
+        <div className="browser-mini-conversation">
+          {conversation.length === 0 ? (
+            <em>Prompt the browser agent and the important ask/reply pairs will appear here.</em>
+          ) : (
+            conversation.slice(-6).map((entry) => (
+              <article key={entry.id} className={`is-${entry.role}`}>
+                <strong>{entry.role === "user" ? "you" : "ai"}</strong>
+                <p>{entry.text}</p>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="browser-card">
+        <div className="browser-card-head">
+          <span>linked chat sessions</span>
+          <button
+            type="button"
+            className="browser-card-action browser-card-action--icon"
+            onClick={() => void createLinkedChatSession()}
+            disabled={browserRunning}
+            title="New chat tab"
+            aria-label="New chat tab"
+          >
+            +
+          </button>
+        </div>
+        <div className="browser-session-list">
+          {chatSessions.length === 0 ? (
+            <em>No chat sessions yet. Create one to link chat and browser state.</em>
+          ) : (
+            chatSessions.map((session) => {
+              const active = session.sessionId === agentSessionId;
+              return (
+                <button
+                  key={session.sessionId}
+                  type="button"
+                  className={active ? "is-active" : ""}
+                  onClick={() => void linkChatSessionToBrowser(session.sessionId)}
+                >
+                  <strong>{session.title}</strong>
+                  <small>{active ? "browser agent attached" : "attach browser agent to this chat"}</small>
+                  <span className="browser-session-id">#{compact(session.sessionId, 10)}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </section>
+
+      <section className="browser-card">
+        <div className="browser-card-head">
+          <span>browser-only sessions</span>
+          <div className="browser-hero-meta">
+            <button type="button" className="browser-card-action" onClick={() => void resetBrowserSession()} disabled={browserRunning || !agentSessionId}>
+              Reset current
+            </button>
+          </div>
+        </div>
+        <div className="browser-session-list">
+          {browserOnlySessions.length === 0 ? (
+            <em>No standalone browser sessions yet.</em>
+          ) : (
+            browserOnlySessions.map((session) => {
+              const active = session.sessionId === agentSessionId;
+              return (
+                <button
+                  key={session.sessionId}
+                  type="button"
+                  className={active ? "is-active" : ""}
+                  onClick={() => void activateBrowserSession(session.sessionId)}
+                >
+                  <strong>{browserSessionLabel(session)}</strong>
+                  <small>{browserSessionSubtitle(session) || "session ready"}</small>
+                  <span className="browser-session-id">#{compact(session.sessionId, 10)}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </section>
+
+      <section className="browser-card">
+        <div className="browser-card-head">
+          <span>visible links</span>
+          {visibleLinks.length > 5 && (
+            <button type="button" className="browser-card-action" onClick={() => setLinksExpanded((value) => !value)}>
+              {linksExpanded ? "Top 5" : `All ${visibleLinks.length}`}
+            </button>
+          )}
+        </div>
+        <div className="browser-link-list">
+          {visibleLinks.length === 0 && <em>No links extracted yet.</em>}
+          {visibleLinksToShow.map((link, index) => (
+            <button key={`${link.href}-${index}`} type="button" onClick={() => void handleVisibleLinkClick(link)}>
+              <strong><LinkIcon size={12} /> {compact(link.text || link.href || "untitled", 46)}</strong>
+              <small>{compact(link.href || "no href", 58)}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+    </aside>
+  );
 
   return (
     <div className="program-shell browser-workbench">
@@ -745,35 +1446,26 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
             <span>Browser preview + AI page understanding</span>
           </div>
         </div>
-        <div className="browser-status-strip">
-          <span className={lightpandaStatus?.ok ? "is-ready" : "is-down"}>Lightpanda: {lightpandaStatus?.ok ? "ready" : "not ready"}</span>
-          <span className={playwrightReady(playwrightStatus) ? "is-ready" : ""}>
-            Playwright: {playwrightStatusLabel(playwrightStatus)}
-            {playwrightStatus?.server?.toolCount ? ` (${playwrightStatus.server.toolCount} tools)` : ""}
-          </span>
-          {agentSessionId && (
-            <span
-              className={agentStatus?.ok ? "is-ready" : "is-down"}
-              title={currentBrowserSession?.summary || currentBrowserSession?.lastInstruction || ""}
+        <div className="browser-topbar-actions">
+          {browserStatusStrip}
+          {isCompact && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "chat-tool-button browser-sidebar-toggle size-8 rounded-sm transition-all duration-150",
+                sidebarOpen ? "is-active text-primary" : "text-muted-foreground",
+              )}
+              onClick={toggleSidebar}
+              title={sidebarOpen ? "Close browser agent panel" : "Open browser agent panel"}
+              aria-label={sidebarOpen ? "Close browser agent panel" : "Open browser agent panel"}
             >
-              AI session: {linkedChatSession?.title || "browser-only"} · #{agentSessionId.slice(0, 8)} · {agentStatus?.ok ? "following" : "offline"}
-            </span>
-          )}
-          <span className={`browser-latency browser-latency--${activeLatencyTone}`}>
-            response {duration(activeLatencyMs)}
-          </span>
-          <button
-            type="button"
-            className={screenshotPolling ? "is-ready" : ""}
-            onClick={() => setScreenshotPolling((value) => !value)}
-            title="Poll the real Playwright browser screenshot while active"
-          >
-            Screenshot polling {screenshotPolling ? "on" : "off"}
-          </button>
-          {selectedBackend === "playwright" && !playwrightReady(playwrightStatus) && (
-            <button type="button" onClick={() => void startPlaywright()} disabled={loading}>
-              Start Playwright
-            </button>
+              {sidebarOpen ? (
+                <PanelRightCloseIcon className="size-4" />
+              ) : (
+                <PanelRightOpenIcon className="size-4" />
+              )}
+            </Button>
           )}
         </div>
       </header>
@@ -782,7 +1474,11 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         className="browser-commandbar"
         onSubmit={(event) => {
           event.preventDefault();
-          void navigate(address);
+          void navigate(address).then((observed) => (
+            observed ? notifyManualNavigation(observed, address, "address bar") : null
+          )).catch((err) => {
+            setAgentStatusError(err instanceof Error ? err.message : String(err));
+          });
         }}
       >
         <button type="button" onClick={() => goHistory(-1)} disabled={historyIndex <= 0} title="Back">
@@ -820,200 +1516,41 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         </button>
       </form>
 
-      <main className="browser-stage">
-        <section className="browser-live">
-          <div className="browser-live-chrome">
-            <span />
-            <span />
-            <span />
-            <code>{previewUrl || "no page loaded"}</code>
-            <strong>{backendLabel(backend)}</strong>
-          </div>
-          <div className="browser-live-frame">
-            {loading ? (
-              <div className="browser-empty-state">
-                <Loader2 size={30} className="animate-spin" />
-                <strong>loading browser action</strong>
-                <span>{visualUrl || "starting runtime browser..."}</span>
-              </div>
-            ) : selectedBackend === "playwright" ? (
-              screenshotImage ? (
-                <img src={screenshotImage} alt="Playwright browser screenshot preview" />
-              ) : (
-                <div className="browser-empty-state">
-                  <Sparkles size={30} />
-                  <strong>No Playwright screenshot yet. Click Start Playwright or Go.</strong>
-                  <span>Playwright preview uses screenshot polling, not video streaming.</span>
-                  {screenshotError && <em className="browser-screenshot-error">{screenshotError}</em>}
-                </div>
-              )
-            ) : readablePreview ? (
-              <div className="browser-extraction-preview">
-                <strong>{page?.title || page?.url || "Extracted page"}</strong>
-                <p>{readablePreview}</p>
-              </div>
-            ) : (
-              <div className="browser-empty-state">
-                <Sparkles size={30} />
-                <strong>ready for extraction</strong>
-                <span>Auto and Lightpanda show extracted page text/signals. Switch to Playwright for screenshot polling of the controlled browser.</span>
-              </div>
+      <main className={cn("browser-stage", isCompact && "browser-stage--compact")}>
+        {isCompact ? (
+          <>
+            {browserLive}
+            {sidebarMounted && (
+              <>
+                <button
+                  type="button"
+                  className={cn("chat-mobile-panel-backdrop", sidebarMotionClass)}
+                  aria-label="Close browser agent panel"
+                  disabled={sidebarClosing}
+                  onClick={closeSidebar}
+                />
+                <aside className={cn("chat-mobile-panel-drawer browser-mobile-panel-drawer", sidebarMotionClass)}>
+                  {renderBrowserPanel("browser-ai-panel browser-ai-panel--drawer")}
+                </aside>
+              </>
             )}
-          </div>
-          <div className="browser-live-footer">
-            <span><Bot size={13} /> AI backend: {selectedBackend === "playwright" ? "playwright_mcp" : "lightpanda"}</span>
-            {agentSessionId && <span>AI session {linkedChatSession?.title || `#${agentSessionId.slice(0, 8)}`}</span>}
-            <span className={`browser-latency browser-latency--${activeLatencyTone}`}><Clock size={13} /> {duration(activeLatencyMs)}</span>
-            {selectedBackend === "playwright" && <span>Playwright preview uses screenshot polling, not video streaming.</span>}
-            {lastScreenshotAt && selectedBackend === "playwright" && <span>screenshot updated {lastScreenshotAt}</span>}
-            {screenshotError && selectedBackend === "playwright" && <span className="is-down">screenshot error: {compact(screenshotError, 120)}</span>}
-            <span>{extractionPath}</span>
-          </div>
-        </section>
-
-        <aside className="browser-ai-panel">
-          <section className="browser-card browser-card--hero">
-            <span>what the AI sees</span>
-            <h2>{aiRuntimeTitle}</h2>
-            <p>{compact(readablePreview || playwrightPreview || "Navigate to a page and the browser agent preview will appear here.", 420)}</p>
-            {error && <pre>{error}</pre>}
-            {agentStatusError && <pre>{agentStatusError}</pre>}
-            {browserRunSummary && <small className="browser-session-summary">last run: {compact(browserRunSummary, 220)}</small>}
-            {browserRunNextAction && <small className="browser-session-summary browser-session-summary--next">next: {compact(browserRunNextAction, 220)}</small>}
-            <div className="browser-hero-meta">
-              {currentBrowserSession && <small className="browser-agent-model">session: {browserSessionLabel(currentBrowserSession)}</small>}
-              {agentModel && <small className="browser-agent-model">planner: {compact(agentModel, 54)}</small>}
-              {browserRunRoute && <small className="browser-agent-model">route: {browserRunRoute}</small>}
-            </div>
-          </section>
-
-          <form
-            className="browser-card browser-composer-shell"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runBrowserInstruction();
-            }}
-          >
-            <div className="browser-composer-head">
-              <span>browser prompt</span>
-              <small>direct to orchestrator · {linkedChatSession?.title || "browser-only session"}</small>
-            </div>
-            <label className="browser-composer input-shell" onPointerDown={focusInputShell}>
-              <textarea
-                value={browserInstruction}
-                onChange={(event) => setBrowserInstruction(event.target.value)}
-                placeholder="Go to a page, read the table, scrape the contents, fill a form, or compare two pages."
-                rows={4}
-              />
-            </label>
-            <div className="browser-composer-actions">
-              <button type="submit" className="browser-primary-action" disabled={browserRunning || !browserInstruction.trim()}>
-                {browserRunning ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                Run prompt
-              </button>
-            </div>
-            {(browserRunError || browserRunSummary) && (
-              <div className="browser-composer-output">
-                {browserRunError && <pre className="browser-composer-error">{browserRunError}</pre>}
-                {!browserRunError && browserRunSummary && <p>{compact(browserRunSummary, 260)}</p>}
-              </div>
-            )}
-          </form>
-
-          <section className="browser-card">
-            <div className="browser-card-head">
-              <span>linked chat sessions</span>
-              <button type="button" className="browser-card-action" onClick={() => void createLinkedChatSession()} disabled={browserRunning}>
-                New chat tab
-              </button>
-            </div>
-            <div className="browser-session-list">
-              {chatSessions.length === 0 ? (
-                <em>No chat sessions yet. Create one to link chat and browser state.</em>
-              ) : (
-                chatSessions.map((session) => {
-                  const active = session.sessionId === agentSessionId;
-                  return (
-                    <button
-                      key={session.sessionId}
-                      type="button"
-                      className={active ? "is-active" : ""}
-                      onClick={() => void linkChatSessionToBrowser(session.sessionId)}
-                    >
-                      <strong>{session.title}</strong>
-                      <small>{active ? "browser agent attached" : "attach browser agent to this chat"}</small>
-                      <span className="browser-session-id">#{compact(session.sessionId, 10)}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </section>
-
-          <section className="browser-card">
-            <div className="browser-card-head">
-              <span>browser-only sessions</span>
-              <div className="browser-hero-meta">
-                <button type="button" className="browser-card-action" onClick={() => void resetBrowserSession()} disabled={browserRunning || !agentSessionId}>
-                  Reset current
-                </button>
-              </div>
-            </div>
-            <div className="browser-session-list">
-              {browserOnlySessions.length === 0 ? (
-                <em>No standalone browser sessions yet.</em>
-              ) : (
-                browserOnlySessions.map((session) => {
-                  const active = session.sessionId === agentSessionId;
-                  return (
-                    <button
-                      key={session.sessionId}
-                      type="button"
-                      className={active ? "is-active" : ""}
-                      onClick={() => void activateBrowserSession(session.sessionId)}
-                    >
-                      <strong>{browserSessionLabel(session)}</strong>
-                      <small>{browserSessionSubtitle(session) || "session ready"}</small>
-                      <span className="browser-session-id">#{compact(session.sessionId, 10)}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </section>
-
-          <section className="browser-card">
-            <span>page signals</span>
-            <div className="browser-signal-grid">
-              <strong>{formsCount}<em>forms</em></strong>
-              <strong>{inputsCount}<em>inputs</em></strong>
-              <strong>{buttonsCount}<em>buttons</em></strong>
-              <strong>{linksCount}<em>links</em></strong>
-            </div>
-          </section>
-
-          <section className="browser-card">
-            <span>useful next actions</span>
-            <div className="browser-action-list">
-              <button type="button" onClick={() => setBackend("playwright")}>Use real browser</button>
-              <button type="button" onClick={() => void snapshot()} disabled={loading || !playwrightReady(playwrightStatus)}>Read Playwright snapshot</button>
-              <button type="button" onClick={() => setBackend("lightpanda")}>Fast extract mode</button>
-            </div>
-          </section>
-
-          <section className="browser-card">
-            <span>visible links</span>
-            <div className="browser-link-list">
-              {visibleLinks.length === 0 && <em>No links extracted yet.</em>}
-              {visibleLinks.map((link, index) => (
-                <button key={`${link.href}-${index}`} type="button" onClick={() => void navigate(link.href)}>
-                  <strong>{compact(link.text || link.href || "untitled", 46)}</strong>
-                  <small>{compact(link.href || "no href", 58)}</small>
-                </button>
-              ))}
-            </div>
-          </section>
-        </aside>
+          </>
+        ) : (
+          <ResizablePanelGroup orientation="horizontal" className="browser-split-group">
+            <ResizablePanel minSize="420px">
+              {browserLive}
+            </ResizablePanel>
+            <ResizableHandle className="chat-resize-handle browser-resize-handle" />
+            <ResizablePanel
+              defaultSize="560px"
+              minSize="320px"
+              maxSize="760px"
+              groupResizeBehavior="preserve-pixel-size"
+            >
+              {renderBrowserPanel("browser-ai-panel browser-ai-panel--desktop")}
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        )}
       </main>
     </div>
   );
