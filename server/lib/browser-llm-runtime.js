@@ -69,6 +69,27 @@ function redactBaseUrl(value = "") {
   return String(value || "").replace(/([?&](?:token|key|api_key)=)[^&]+/ig, "$1***");
 }
 
+function browserAgentStageBaseUrl() {
+  const names = [
+    "BROWSER_AGENT_MAIN_BASE_URL",
+    "BROWSER_AGENT_ORCHESTRATOR_BASE_URL",
+    "BROWSER_AGENT_PLANNER_BASE_URL",
+    "BROWSER_AGENT_STEP_AGENT_BASE_URL",
+    "BROWSER_AGENT_REVIEWER_BASE_URL",
+    "BROWSER_AGENT_CHECKER_BASE_URL",
+    "BROWSER_AGENT_RESULT_REVIEWER_BASE_URL",
+    "BROWSER_AGENT_WATCHER_BASE_URL",
+    "BROWSER_AGENT_FINAL_VERIFIER_BASE_URL",
+    "BROWSER_AGENT_REPORTER_BASE_URL",
+    "BROWSER_AGENT_EXECUTOR_BASE_URL",
+  ];
+  for (const name of names) {
+    const value = String(process.env[name] || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
 function rawBaseUrl() {
   const override = runtimeOverrides();
   return String(
@@ -76,6 +97,10 @@ function rawBaseUrl() {
     process.env.BROWSER_AGENT_BASE_URL ||
     process.env.BROWSER_AGENT_API_BASE_URL ||
     process.env.RUNTIME_BROWSER_AGENT_BASE_URL ||
+    // Browser-agent stages should not silently inherit the chat API base.
+    // If only stage URLs are configured, use the first stage URL as the
+    // fallback for roles without their own endpoint, such as reporter/executor.
+    browserAgentStageBaseUrl() ||
     process.env.OLLAMA_BASE_URL ||
     "https://chat-api.retakt.cc"
   ).trim().replace(/\/+$/, "").replace(/\/api$/, "");

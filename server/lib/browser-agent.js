@@ -38,7 +38,10 @@ function withUiReport(result = {}, args = {}) {
 
 function runtimeOverridesFromArgs(args = {}) {
   return {
-    model: safeText(args.model || args.browserAgentModel || "", 240),
+    // `model` is commonly the chat UI model. Browser-agent has its own
+    // configured model stack, so only the explicit browser-agent override may
+    // replace it.
+    model: safeText(args.browserAgentModel || "", 240),
     baseUrl: safeText(args.baseUrl || args.browserAgentBaseUrl || "", 1000),
     models: args.models && typeof args.models === "object" ? args.models : {},
   };

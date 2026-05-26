@@ -208,6 +208,123 @@ function parseSnapshotMetadata(text = "", fallbackUrl = "") {
   };
 }
 
+function resolveSnapshotHref(href = "", baseUrl = "") {
+  const raw = String(href || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw, baseUrl || undefined).href;
+  } catch {
+    return raw;
+  }
+}
+
+function uniqueSnapshotItems(items = [], keyFor = (item) => JSON.stringify(item)) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const key = keyFor(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function extractPlaywrightSnapshotControls(text = "", baseUrl = "") {
+  const raw = String(text || "");
+  const lines = raw.split(/\r?\n/);
+  const links = [];
+  const buttons = [];
+  const inputs = [];
+
+  const refFromLine = (line = "") => line.match(/\[ref=([^\]]+)\]/i)?.[1] || "";
+  const quotedFromLine = (line = "") => line.match(/"([^"]+)"/)?.[1] || "";
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+
+    const linkMatch = line.match(/^-\s+link(?:\s+"([^"]*)")?/i);
+    if (linkMatch) {
+      let href = "";
+      for (let lookahead = index + 1; lookahead < Math.min(lines.length, index + 6); lookahead += 1) {
+        const candidate = lines[lookahead].trim();
+        const urlMatch = candidate.match(/^-\s*\/url:\s*(\S+)/i) || candidate.match(/^\/url:\s*(\S+)/i);
+        if (urlMatch) {
+          href = urlMatch[1];
+          break;
+        }
+        if (/^-\s+(link|button|textbox|generic|heading|paragraph)\b/i.test(candidate)) break;
+      }
+      links.push({
+        text: safeText(linkMatch[1] || quotedFromLine(line) || href || "link", 180),
+        href: resolveSnapshotHref(href, baseUrl),
+        ref: refFromLine(line),
+        role: "link",
+      });
+      continue;
+    }
+
+    const buttonMatch = line.match(/^-\s+button(?:\s+"([^"]*)")?/i);
+    if (buttonMatch) {
+      buttons.push({
+        text: safeText(buttonMatch[1] || quotedFromLine(line) || "button", 180),
+        ref: refFromLine(line),
+        tag: "button",
+      });
+      continue;
+    }
+
+    const inputMatch = line.match(/^-\s+(textbox|searchbox|combobox|checkbox|radio|spinbutton|textarea)(?:\s+"([^"]*)")?/i);
+    if (inputMatch) {
+      const type = inputMatch[1].toLowerCase();
+      inputs.push({
+        name: safeText(inputMatch[2] || quotedFromLine(line) || type, 180),
+        type: type === "textbox" ? "text" : type,
+        ref: refFromLine(line),
+      });
+    }
+  }
+
+  const cleanLinks = uniqueSnapshotItems(
+    links.filter((link) => link.text || link.href),
+    (link) => `${link.text}|${link.href}|${link.ref}`,
+  ).slice(0, 160);
+  const cleanButtons = uniqueSnapshotItems(
+    buttons.filter((button) => button.text || button.ref),
+    (button) => `${button.text}|${button.ref}`,
+  ).slice(0, 120);
+  const cleanInputs = uniqueSnapshotItems(
+    inputs.filter((input) => input.name || input.ref),
+    (input) => `${input.name}|${input.type}|${input.ref}`,
+  ).slice(0, 120);
+  const forms = cleanInputs.length
+    ? [{
+        index: 0,
+        selector: "",
+        fields: cleanInputs,
+        buttons: cleanButtons,
+      }]
+    : [];
+
+  return {
+    links: cleanLinks,
+    buttons: cleanButtons,
+    inputs: cleanInputs,
+    forms,
+    interactiveElements: [
+      ...cleanLinks.map((link) => ({ ...link, kind: "link" })),
+      ...cleanButtons.map((button) => ({ ...button, kind: "button" })),
+      ...cleanInputs.map((input) => ({ ...input, kind: "input" })),
+    ],
+    stats: {
+      links: cleanLinks.length,
+      buttons: cleanButtons.length,
+      inputs: cleanInputs.length,
+      forms: forms.length,
+    },
+  };
+}
+
 async function availableToolNames() {
   const tools = await listExternalMcpTools(SERVER_ID);
   return tools.map((tool) => String(tool.name || "").trim()).filter(Boolean);
@@ -472,6 +589,8 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
     },
   };
 
+  const controls = extractPlaywrightSnapshotControls(snapshotCall.text, snapshot.url || currentUrl);
+
   return {
     ok: Boolean(snapshot.text || snapshot.imageBase64),
     status: "captured",
@@ -483,12 +602,12 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
       title: snapshot.title,
       textPreview: safeText(snapshot.text, 5000),
       engine: "playwright_mcp",
-      links: [],
-      buttons: [],
-      inputs: [],
-      forms: [],
-      interactiveElements: [],
-      stats: {},
+      links: controls.links,
+      buttons: controls.buttons,
+      inputs: controls.inputs,
+      forms: controls.forms,
+      interactiveElements: controls.interactiveElements,
+      stats: controls.stats,
       scroll,
     },
     error: screenshotCall.error || "",
@@ -4215,6 +4334,10 @@ export async function executePlaywrightMcpBrowserCommand({
   let before;
 
   if (beforeSnapshot) {
+    const beforeControls = extractPlaywrightSnapshotControls(
+      beforeSnapshot.text || beforeSnapshot.dom?.rawText || beforeSnapshot.dom?.textPreview || "",
+      beforeSnapshot.url || currentUrlFromInput(args, state),
+    );
     before = {
       ok: true,
       status: "reused",
@@ -4226,12 +4349,12 @@ export async function executePlaywrightMcpBrowserCommand({
         title: beforeSnapshot.title || "",
         textPreview: safeText(beforeSnapshot.text || beforeSnapshot.dom?.textPreview || "", 5000),
         engine: "playwright_mcp",
-        links: [],
-        buttons: [],
-        inputs: [],
-        forms: [],
-        interactiveElements: [],
-        stats: {},
+        links: beforeControls.links,
+        buttons: beforeControls.buttons,
+        inputs: beforeControls.inputs,
+        forms: beforeControls.forms,
+        interactiveElements: beforeControls.interactiveElements,
+        stats: beforeControls.stats,
       },
       error: "",
     };

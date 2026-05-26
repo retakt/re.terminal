@@ -48,6 +48,8 @@ const CHAT_RUNTIME_PREFIX = "reterm.chat.runtime.";
 const CHAT_MODEL_CHANGE_EVENT = "reterm.chat.model-change";
 const BROWSER_SESSION_ID_KEY = "reterm.browser.agentSessionId";
 const BROWSER_SESSION_LINK_EVENT = "reterm.browser.session-link";
+const BROWSER_CONVERSATION_EVENT = "reterm.browser.conversation-change";
+const BROWSER_CONVERSATION_PREFIX = "reterm.browser.conversation.";
 const MAX_TOOL_LOGS = 80;
 const MAX_RUN_LOGS = 40;
 const MAX_REASONING_LOGS = 30;
@@ -76,6 +78,49 @@ function linkBrowserSessionToChat(sessionId: string) {
     storage?.setItem(BROWSER_SESSION_ID_KEY, sessionId);
     window.dispatchEvent(new CustomEvent(BROWSER_SESSION_LINK_EVENT, { detail: { sessionId } }));
   } catch {}
+}
+
+function browserConversationStorageKey(sessionId: string) {
+  return `${BROWSER_CONVERSATION_PREFIX}${sessionId || "default-browser-session"}`;
+}
+
+function appendBrowserConversation(
+  sessionId: string,
+  entry: { role: "user" | "orchestrator"; text: string; status?: string },
+) {
+  const storage = safeLocalStorage();
+  const text = cleanOneLine(entry.text, 520);
+  if (!storage || !sessionId || !text) return;
+
+  try {
+    const key = browserConversationStorageKey(sessionId);
+    const parsed = JSON.parse(storage.getItem(key) || "[]");
+    const list = Array.isArray(parsed) ? parsed : [];
+    const next = [
+      ...list,
+      {
+        id: generateUUID(),
+        role: entry.role,
+        text,
+        status: cleanOneLine(entry.status || "", 80),
+        at: Date.now(),
+      },
+    ].slice(-30);
+    storage.setItem(key, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent(BROWSER_CONVERSATION_EVENT, { detail: { sessionId } }));
+  } catch {}
+}
+
+function browserConversationSummary(payload: any, fallback = "") {
+  const reporter = payload?.reporter && typeof payload.reporter === "object" ? payload.reporter : null;
+  const currentUrl = payload?.currentUrl || payload?.whatFound?.url || payload?.state?.currentUrl || "";
+  return cleanOneLine([
+    reporter?.summary,
+    payload?.summary,
+    reporter?.whatHappened,
+    currentUrl ? `page=${currentUrl}` : "",
+    payload?.nextSafeAction || reporter?.nextSafeAction,
+  ].filter(Boolean).join(" "), 520) || cleanOneLine(fallback, 520);
 }
 
 function emitChatModelChange(model: string) {
@@ -1315,6 +1360,11 @@ export function ChatProvider({
       const promptMode = chatModeRef.current;
       if (promptMode === "browser") {
         linkBrowserSessionToChat(sessionId);
+        appendBrowserConversation(sessionId, {
+          role: "user",
+          status: "queued",
+          text: lastText.trim(),
+        });
       }
       void warmupModels({
         model: currentModel,
@@ -1789,12 +1839,19 @@ export function ChatProvider({
               ...call.function,
               arguments: {
                 ...args,
-                model: args.model || currentModel,
                 ...(mode === "browser" ? { useExtensions: String(browserUseExtensions) } : {}),
                 currentUrl: args.currentUrl || browserCurrentUrl,
               },
             },
           };
+        });
+      }
+      const selectedBrowserAgentTool = toolCalls?.find((call) => call.function.name.startsWith("mcp__browser_agent__")) || null;
+      if (promptMode === "browser" && selectedBrowserAgentTool) {
+        appendBrowserConversation(sessionId, {
+          role: "orchestrator",
+          status: "running",
+          text: "Starting the browser agent now. I will update the linked browser panel as soon as the agent reports progress or a final result.",
         });
       }
       if ((mode === "browser" || mode === "scraper") && toolCalls && toolCalls.length > 1) {
@@ -1920,6 +1977,11 @@ export function ChatProvider({
           const parsed = parseToolJsonResult(browserAgentResult.result);
           const responseText = formatBrowserAgentDirectResponse(parsed);
           const browserReasoning = formatBrowserAgentReasoning(parsed);
+          appendBrowserConversation(sessionId, {
+            role: "orchestrator",
+            status: parsed?.ok === false ? "needs review" : "complete",
+            text: browserConversationSummary(parsed, responseText),
+          });
 
           if (browserReasoning) {
             appendReasoningLog({
@@ -1955,6 +2017,14 @@ export function ChatProvider({
 
         const toolErrors = toolResults.filter((tr) => tr.error);
         if (toolErrors.length > 0) {
+          if (promptMode === "browser") {
+            const browserToolError = toolErrors.find((tr) => tr.name.startsWith("mcp__browser_agent__")) || toolErrors[0];
+            appendBrowserConversation(sessionId, {
+              role: "orchestrator",
+              status: "failed",
+              text: `Browser task failed: ${String(browserToolError.result).replace(/^Error:\s*/i, "")}`,
+            });
+          }
           const responseText = [
             "I could not complete this because a required MCP tool failed.",
             "",

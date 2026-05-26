@@ -921,7 +921,7 @@ app.get("/api/browser-agent/status", async (req, res) => {
   try {
     res.json(await browserAgentStatus({
       sessionId: req.query?.sessionId || req.query?.session || "default-browser-session",
-      model: req.query?.model || req.query?.browserAgentModel || "",
+      browserAgentModel: req.query?.browserAgentModel || "",
       baseUrl: req.query?.baseUrl || req.query?.browserAgentBaseUrl || "",
     }));
   } catch (err) {

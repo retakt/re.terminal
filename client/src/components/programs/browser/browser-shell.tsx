@@ -54,10 +54,9 @@ import { cn } from "@/lib/utils";
 import { useApp } from "@/contexts/app-context";
 
 const CHAT_SESSION_ID_KEY = "reterm.chat.sessionId";
-const CHAT_MODEL_KEY = "reterm.chat.model";
-const CHAT_MODEL_CHANGE_EVENT = "reterm.chat.model-change";
 const BROWSER_SESSION_ID_KEY = "reterm.browser.agentSessionId";
 const BROWSER_SESSION_LINK_EVENT = "reterm.browser.session-link";
+const BROWSER_CONVERSATION_EVENT = "reterm.browser.conversation-change";
 const MOBILE_QUERY = "(max-width: 1024px), (hover: none) and (pointer: coarse)";
 const MOBILE_PANEL_EXIT_MS = 380;
 
@@ -148,15 +147,6 @@ function useIsCompactBrowserLayout() {
   return isCompact;
 }
 
-function currentChatModel() {
-  if (typeof window === "undefined") return "";
-  try {
-    return window.localStorage.getItem(CHAT_MODEL_KEY) || "";
-  } catch {
-    return "";
-  }
-}
-
 function browserSessionIdSeed() {
   const chatSession = currentChatSessionId();
   return chatSession || `browser-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -217,6 +207,7 @@ function saveConversation(sessionId: string, entries: BrowserConversationEntry[]
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(conversationStorageKey(sessionId), JSON.stringify(entries.slice(-30)));
+    window.dispatchEvent(new CustomEvent(BROWSER_CONVERSATION_EVENT, { detail: { sessionId } }));
   } catch {}
 }
 
@@ -459,7 +450,6 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const [playwrightStatus, setPlaywrightStatus] = React.useState<PlaywrightMcpStatus | null>(null);
   const [agentStatus, setAgentStatus] = React.useState<BrowserAgentStatus | null>(null);
   const [agentSessionId, setAgentSessionId] = React.useState(() => currentBrowserSessionId());
-  const [selectedBrowserModel, setSelectedBrowserModel] = React.useState(() => currentChatModel());
   const [viewMode, setViewMode] = React.useState<BrowserViewMode>("headless");
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [sidebarClosing, setSidebarClosing] = React.useState(false);
@@ -574,26 +564,6 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     if (sessionId === agentSessionIdRef.current) setConversation(next);
   }, []);
 
-  React.useEffect(() => {
-    const applyModel = (model = "") => {
-      const next = String(model || currentChatModel()).trim();
-      if (next) setSelectedBrowserModel(next);
-    };
-    const handleModelChange = (event: Event) => {
-      applyModel((event as CustomEvent<{ model?: string }>).detail?.model || "");
-    };
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === CHAT_MODEL_KEY) applyModel(event.newValue || "");
-    };
-    window.addEventListener(CHAT_MODEL_CHANGE_EVENT, handleModelChange as EventListener);
-    window.addEventListener("storage", handleStorage);
-    applyModel();
-    return () => {
-      window.removeEventListener(CHAT_MODEL_CHANGE_EVENT, handleModelChange as EventListener);
-      window.removeEventListener("storage", handleStorage);
-    };
-  }, []);
-
   const refreshPlaywrightScreenshot = React.useCallback(async ({ includeSnapshot = true } = {}) => {
     setScreenshotError("");
     const [shotResult, snapResult] = await Promise.allSettled([
@@ -686,7 +656,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     if (!sessionId) return null;
     setAgentSessionId(sessionId);
     try {
-      const next = await getBrowserAgentStatus(sessionId, selectedBrowserModel);
+      const next = await getBrowserAgentStatus(sessionId);
       setAgentStatus(next);
       setAgentStatusError("");
       const record = browserSessionFromStatus(next, sessionId);
@@ -697,7 +667,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       setAgentStatus(null);
       return null;
     }
-  }, [selectedBrowserModel, upsertBrowserSession]);
+  }, [upsertBrowserSession]);
 
   const activateBrowserSession = React.useCallback(async (sessionId: string) => {
     setError("");
@@ -727,14 +697,22 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       if (!nextSessionId || nextSessionId === agentSessionIdRef.current) return;
       void activateBrowserSession(nextSessionId);
     };
+    const handleBrowserConversationChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string }>).detail || {};
+      const changedSessionId = detail.sessionId || agentSessionIdRef.current;
+      if (changedSessionId !== agentSessionIdRef.current) return;
+      setConversation(loadConversation(agentSessionIdRef.current));
+    };
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== BROWSER_SESSION_ID_KEY || !event.newValue || event.newValue === agentSessionIdRef.current) return;
       void activateBrowserSession(event.newValue);
     };
     window.addEventListener(BROWSER_SESSION_LINK_EVENT, handleBrowserSessionLink as EventListener);
+    window.addEventListener(BROWSER_CONVERSATION_EVENT, handleBrowserConversationChange as EventListener);
     window.addEventListener("storage", handleStorage);
     return () => {
       window.removeEventListener(BROWSER_SESSION_LINK_EVENT, handleBrowserSessionLink as EventListener);
+      window.removeEventListener(BROWSER_CONVERSATION_EVENT, handleBrowserConversationChange as EventListener);
       window.removeEventListener("storage", handleStorage);
     };
   }, [activateBrowserSession]);
@@ -792,14 +770,14 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     setBrowserRunError("");
     setBrowserInstruction("");
     try {
-      const created = await createBrowserAgentSession(sessionId, selectedBrowserModel);
+      const created = await createBrowserAgentSession(sessionId);
       const record = browserSessionFromStatus(created, sessionId);
       if (record) upsertBrowserSession(record);
       await refreshBrowserSessions();
     } catch (err) {
       setAgentStatusError(err instanceof Error ? err.message : String(err));
     }
-  }, [openProgram, refreshBrowserSessions, selectedBrowserModel, upsertBrowserSession]);
+  }, [openProgram, refreshBrowserSessions, upsertBrowserSession]);
 
   const resetBrowserSession = React.useCallback(async () => {
     if (!agentSessionId) return;
@@ -836,7 +814,6 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         currentUrl: visualUrl || page?.url || address || "",
         currentTitle: page?.title || "",
         includeImages: route === "playwright" || selectedBackend === "playwright",
-        model: selectedBrowserModel,
       });
       const stillCurrent = agentSessionIdRef.current === runSessionId;
       if (stillCurrent) setBrowserRunResult(result);
@@ -879,7 +856,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     } finally {
       setBrowserRunning(false);
     }
-  }, [address, agentSessionId, appendConversation, browserInstruction, browserRunning, loadAgentStatus, page?.title, page?.url, refreshBrowserSessions, selectedBackend, selectedBrowserModel, upsertBrowserSession, visualUrl]);
+  }, [address, agentSessionId, appendConversation, browserInstruction, browserRunning, loadAgentStatus, page?.title, page?.url, refreshBrowserSessions, selectedBackend, upsertBrowserSession, visualUrl]);
 
   const ensurePlaywrightReady = React.useCallback(async () => {
     let status = await getPlaywrightMcpStatus();
@@ -978,7 +955,6 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       currentTitle,
       textPreview: observed?.textPreview || "",
       stats: observed?.stats || {},
-      model: selectedBrowserModel,
       instruction: `User switched the active browser page from the UI via ${label}. Continue future browser work from this URL.`,
     });
     setAgentStatus(nextStatus);
@@ -990,7 +966,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       text: `Noted the page switch to ${currentTitle || currentUrl}. I will continue from there. Standing by.`,
     });
     return nextStatus;
-  }, [appendConversation, selectedBrowserModel, upsertBrowserSession]);
+  }, [appendConversation, upsertBrowserSession]);
 
   const handleVisibleLinkClick = React.useCallback(async (link: { text: string; href: string }) => {
     if (!link.href) return;
@@ -1082,7 +1058,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   );
   const extractionPath = page?.extractionPath || page?.extractionSources?.join(", ") || (playwrightResult ? "playwright_mcp.snapshot" : "none");
   const aiRuntimeTitle = agentState?.currentTitle || page?.title || (playwrightResult ? "Playwright snapshot" : "No page yet");
-  const agentModel = selectedBrowserModel || agentStatus?.runtime?.models?.planner || agentStatus?.runtime?.model || "";
+  const agentModel = agentStatus?.runtime?.models?.planner || agentStatus?.runtime?.model || "";
   const currentBrowserSession = React.useMemo(() => {
     return browserSessions.find((session) => session.sessionId === agentSessionId)
       || browserSessionFromStatus(agentStatus, agentSessionId)
@@ -1101,6 +1077,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const activeLatencyTone = latencyTone(activeLatencyMs);
   const sidebarMounted = isCompact && (sidebarOpen || sidebarClosing);
   const sidebarMotionClass = sidebarClosing ? "is-closing" : "is-open";
+  const playwrightToolCount = playwrightStatus?.server?.toolCount;
 
   const browserStatusStrip = (
     <div className="browser-status-strip browser-status-strip--topbar">
@@ -1112,7 +1089,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
           title="Show formatted extraction and agent process"
         >
           <FileText size={13} />
-          Headless
+          <span>{isCompact ? "read" : "headless"}</span>
         </button>
         <button
           type="button"
@@ -1124,26 +1101,26 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
           title="Show the visual controlled browser"
         >
           <Monitor size={13} />
-          Headful
+          <span>{isCompact ? "view" : "headful"}</span>
         </button>
       </div>
       <span className={cn("browser-status-chip browser-status-chip--lightpanda", lightpandaStatus?.ok ? "is-ready" : "is-down")}>
-        Lightpanda: {lightpandaStatus?.ok ? "ready" : "not ready"}
+        LP: {lightpandaStatus?.ok ? "ready" : "down"}
       </span>
       <span className={cn("browser-status-chip browser-status-chip--playwright", playwrightReady(playwrightStatus) ? "is-ready" : "")}>
-        Playwright: {playwrightStatusLabel(playwrightStatus)}
-        {playwrightStatus?.server?.toolCount ? ` (${playwrightStatus.server.toolCount} tools)` : ""}
+        PW: {playwrightStatusLabel(playwrightStatus)}
+        {playwrightToolCount ? ` (${playwrightToolCount})` : ""}
       </span>
       {agentSessionId && (
         <span
           className={cn("browser-status-chip browser-status-chip--session", agentStatus?.ok ? "is-ready" : "is-down")}
           title={currentBrowserSession?.summary || currentBrowserSession?.lastInstruction || ""}
         >
-          AI session: {linkedChatSession?.title || "browser-only"} · #{agentSessionId.slice(0, 8)} · {agentStatus?.ok ? "following" : "offline"}
+          session: {linkedChatSession?.title || "browser"} · #{agentSessionId.slice(0, 8)}
         </span>
       )}
       <span className={`browser-latency browser-latency--${activeLatencyTone}`}>
-        response {duration(activeLatencyMs)}
+        resp {duration(activeLatencyMs)}
       </span>
       {pageSignals.length > 0 && (
         <span className="browser-signal-chip" title="Current extracted page signals">
@@ -1158,14 +1135,36 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         title="Poll the real Playwright browser screenshot while active"
       >
         <Monitor size={13} />
-        screenshots {screenshotPolling ? "on" : "off"}
+        shot {screenshotPolling ? "on" : "off"}
       </button>
       {selectedBackend === "playwright" && !playwrightReady(playwrightStatus) && (
         <button type="button" onClick={() => void startPlaywright()} disabled={loading}>
-          Start Playwright
+          Start PW
         </button>
       )}
     </div>
+  );
+
+  const renderVisibleLinksCard = (className = "") => (
+    <section className={cn("browser-card browser-visible-links-card", className)}>
+      <div className="browser-card-head">
+        <span>visible links</span>
+        {visibleLinks.length > 5 && (
+          <button type="button" className="browser-card-action" onClick={() => setLinksExpanded((value) => !value)}>
+            {linksExpanded ? "Top 5" : `All ${visibleLinks.length}`}
+          </button>
+        )}
+      </div>
+      <div className="browser-link-list">
+        {visibleLinks.length === 0 && <em>No links extracted yet.</em>}
+        {visibleLinksToShow.map((link, index) => (
+          <button key={`${link.href}-${index}`} type="button" onClick={() => void handleVisibleLinkClick(link)}>
+            <strong><LinkIcon size={12} /> {compact(link.text || link.href || "untitled", 46)}</strong>
+            <small>{compact(link.href || "no href", 58)}</small>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 
   const browserLive = (
@@ -1233,6 +1232,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
                 <p>{compact(readablePreview, 1600)}</p>
               </section>
             )}
+            {isCompact && renderVisibleLinksCard("browser-visible-links-card--inline")}
           </div>
         ) : loading ? (
           <div className="browser-empty-state">
@@ -1287,9 +1287,9 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         {browserRunSummary && <small className="browser-session-summary">last run: {compact(browserRunSummary, 220)}</small>}
         {browserRunNextAction && <small className="browser-session-summary browser-session-summary--next">next: {compact(browserRunNextAction, 220)}</small>}
         <div className="browser-hero-meta">
-          {currentBrowserSession && <small className="browser-agent-model">session: {browserSessionLabel(currentBrowserSession)}</small>}
-          {agentModel && <small className="browser-agent-model">planner: {compact(agentModel, 54)}</small>}
-          {browserRunRoute && <small className="browser-agent-model">route: {browserRunRoute}</small>}
+          {currentBrowserSession && <small className="browser-agent-model browser-agent-model--session">session: {browserSessionLabel(currentBrowserSession)}</small>}
+          {agentModel && <small className="browser-agent-model browser-agent-model--planner">planner: {compact(agentModel, 54)}</small>}
+          {browserRunRoute && <small className="browser-agent-model browser-agent-model--route">route: {browserRunRoute}</small>}
         </div>
       </section>
 
@@ -1386,7 +1386,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         <div className="browser-card-head">
           <span>browser-only sessions</span>
           <div className="browser-hero-meta">
-            <button type="button" className="browser-card-action" onClick={() => void resetBrowserSession()} disabled={browserRunning || !agentSessionId}>
+            <button type="button" className="browser-card-action browser-card-action--reset" onClick={() => void resetBrowserSession()} disabled={browserRunning || !agentSessionId}>
               Reset current
             </button>
           </div>
@@ -1414,25 +1414,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         </div>
       </section>
 
-      <section className="browser-card">
-        <div className="browser-card-head">
-          <span>visible links</span>
-          {visibleLinks.length > 5 && (
-            <button type="button" className="browser-card-action" onClick={() => setLinksExpanded((value) => !value)}>
-              {linksExpanded ? "Top 5" : `All ${visibleLinks.length}`}
-            </button>
-          )}
-        </div>
-        <div className="browser-link-list">
-          {visibleLinks.length === 0 && <em>No links extracted yet.</em>}
-          {visibleLinksToShow.map((link, index) => (
-            <button key={`${link.href}-${index}`} type="button" onClick={() => void handleVisibleLinkClick(link)}>
-              <strong><LinkIcon size={12} /> {compact(link.text || link.href || "untitled", 46)}</strong>
-              <small>{compact(link.href || "no href", 58)}</small>
-            </button>
-          ))}
-        </div>
-      </section>
+      {renderVisibleLinksCard()}
     </aside>
   );
 
@@ -1503,9 +1485,9 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
           />
         </label>
         <select value={backend} onChange={(event) => setBackend(event.target.value as BrowserBackend)} title="Browser backend">
-          <option value="auto">Auto</option>
-          <option value="lightpanda">Lightpanda</option>
-          <option value="playwright">Playwright</option>
+          <option value="auto">auto</option>
+          <option value="lightpanda">{isCompact ? "lp" : "lightpanda"}</option>
+          <option value="playwright">{isCompact ? "pw" : "playwright"}</option>
         </select>
         <button type="submit" className="browser-primary-action" disabled={loading || !address}>
           {loading ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
