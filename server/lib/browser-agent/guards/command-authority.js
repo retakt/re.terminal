@@ -6,6 +6,7 @@ const ROUTE_TOOLS = {
     "browserFillFields",
     "browserSubmitForm",
     "browserFillAndSubmit",
+    "browserScroll",
     "browserScrape",
     "browserExtract",
     "browserScreenshot",
@@ -20,6 +21,7 @@ const ROUTE_TOOLS = {
     "browserFillFields",
     "browserSubmitForm",
     "browserFillAndSubmit",
+    "browserScroll",
     "browserScrape",
     "browserExtract",
     "browserVerify",
@@ -80,6 +82,15 @@ export function checkCommandAuthority({
     };
   }
 
+  if (String(step.kind || "").toLowerCase() === "scroll" && String(route || "").toLowerCase() === "lightpanda") {
+    return {
+      approved: false,
+      blocked: true,
+      reason: "Lightpanda scroll execution is not enabled in this route yet.",
+      messageToPlanner: "Use the Playwright route for scroll-and-screenshot tasks, or restart the whole task on Playwright.",
+    };
+  }
+
   return {
     approved: true,
     blocked: false,
@@ -95,4 +106,3 @@ export function commandSummary(command = {}) {
     kind: safeText(command?.kind || "", 80),
   };
 }
-

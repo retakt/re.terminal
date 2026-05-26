@@ -190,6 +190,17 @@ export function createLightpandaEngine() {
       return routeResult("browserSubmitForm", await lightpandaSubmitForm(args), command);
     },
 
+    async scroll(command = {}, context = {}) {
+      return {
+        ok: false,
+        route: "lightpanda",
+        backend: "lightpanda_cdp",
+        tool: "browserScroll",
+        observation: context.currentObservation || null,
+        error: "Lightpanda scroll execution is not enabled for this route yet. Use Playwright for scroll-and-screenshot tasks.",
+      };
+    },
+
     async screenshot(command = {}, context = {}) {
       return {
         ok: false,

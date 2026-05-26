@@ -8,6 +8,7 @@ function resolveHandler(engine, command = {}) {
   if (tool === "browserClickByText") return engine.click.bind(engine);
   if (tool === "browserFillFields") return engine.fill.bind(engine);
   if (tool === "browserSubmitForm" || tool === "browserFillAndSubmit") return engine.submit.bind(engine);
+  if (tool === "browserScroll") return engine.scroll.bind(engine);
   if (tool === "browserScrape") return engine.scrape.bind(engine);
   if (tool === "browserExtract") return engine.extract.bind(engine);
   if (tool === "browserScreenshot") return engine.screenshot.bind(engine);

@@ -86,6 +86,11 @@ export function compactBrowserSnapshot(snapshot = null) {
     ? snapshot.observation
     : snapshot;
   const stats = source.stats && typeof source.stats === "object" ? source.stats : {};
+  const scroll = source.scroll && typeof source.scroll === "object"
+    ? source.scroll
+    : snapshot.scroll && typeof snapshot.scroll === "object"
+      ? snapshot.scroll
+      : null;
   const links = compactSnapshotList(source.links, 5);
   const buttons = compactSnapshotList(source.buttons, 5);
   const inputs = compactSnapshotList(source.inputs, 8);
@@ -100,7 +105,13 @@ export function compactBrowserSnapshot(snapshot = null) {
       buttons: Number.isFinite(Number(stats.buttons)) ? Number(stats.buttons) : buttons.length,
       forms: Number.isFinite(Number(stats.forms)) ? Number(stats.forms) : forms.length,
       inputs: Number.isFinite(Number(stats.inputs)) ? Number(stats.inputs) : inputs.length,
+      scrollY: Number.isFinite(Number(scroll?.scrollY)) ? Number(scroll.scrollY) : 0,
+      viewportHeight: Number.isFinite(Number(scroll?.viewportHeight)) ? Number(scroll.viewportHeight) : 0,
+      scrollHeight: Number.isFinite(Number(scroll?.scrollHeight)) ? Number(scroll.scrollHeight) : 0,
+      hasMoreBelow: Boolean(scroll?.hasMoreBelow),
+      atBottom: Boolean(scroll?.atBottom),
     },
+    scroll,
     links,
     buttons,
     inputs,
@@ -135,6 +146,7 @@ export function compareBrowserSnapshots(before = null, after = null) {
   compareCount("Buttons", prior.stats?.buttons || 0, next.stats?.buttons || 0);
   compareCount("Forms", prior.stats?.forms || 0, next.stats?.forms || 0);
   compareCount("Inputs", prior.stats?.inputs || 0, next.stats?.inputs || 0);
+  compareCount("Scroll Y", prior.stats?.scrollY || 0, next.stats?.scrollY || 0);
 
   if (Boolean(prior.hasImage) !== Boolean(next.hasImage)) {
     changes.push(`Image evidence: ${prior.hasImage ? "present" : "absent"} -> ${next.hasImage ? "present" : "absent"}`);

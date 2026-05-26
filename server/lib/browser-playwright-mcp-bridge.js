@@ -33,6 +33,35 @@ function parseMcpWrappedJsonSafe(value = "") {
 
   const first = raw.indexOf("{");
   const last = raw.lastIndexOf("}");
+  if (first >= 0) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = first; i < raw.length; i += 1) {
+      const ch = raw[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === "{") depth += 1;
+      if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          candidates.push(raw.slice(first, i + 1));
+          break;
+        }
+      }
+    }
+  }
   if (first >= 0 && last > first) {
     candidates.push(raw.slice(first, last + 1));
   }
@@ -269,6 +298,107 @@ async function navigatePlaywrightIfNeeded(url = "") {
   return { skipped: false, reason: "navigated", currentUrl: target };
 }
 
+async function capturePlaywrightScrollMetrics() {
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: `() => {
+      const scrollingElement = document.scrollingElement || document.documentElement || document.body;
+      const scrollY = Math.max(0, Number(window.scrollY || scrollingElement?.scrollTop || 0));
+      const viewportHeight = Math.max(0, Number(window.innerHeight || document.documentElement.clientHeight || 0));
+      const scrollHeight = Math.max(
+        Number(scrollingElement?.scrollHeight || 0),
+        Number(document.body?.scrollHeight || 0),
+        Number(document.documentElement?.scrollHeight || 0)
+      );
+      const maxScrollY = Math.max(0, scrollHeight - viewportHeight);
+      return {
+        scrollY,
+        viewportHeight,
+        scrollHeight,
+        maxScrollY,
+        progress: maxScrollY > 0 ? Math.min(1, scrollY / maxScrollY) : 1,
+        hasMoreBelow: scrollY < maxScrollY - 8,
+        atBottom: scrollY >= maxScrollY - 8
+      };
+    }`,
+  }).catch(() => null);
+
+  const parsed =
+    parseMcpWrappedJsonSafe(result?.text || result?.error || "") ||
+    parseMcpJsonResult(result?.text || "") ||
+    null;
+
+  return parsed && typeof parsed === "object" ? parsed : null;
+}
+
+async function scrollPlaywrightPage(command = {}) {
+  const args = command.args || {};
+  const direction = safeText(args.direction || args.to || "down", 40).toLowerCase();
+  const amount = safeText(args.amount || "viewport", 40).toLowerCase();
+  const pixels = Number(args.pixels || args.y || 0);
+
+  const result = await callPlaywrightTool(["browser_evaluate", "evaluate"], {
+    function: `async () => {
+      const payload = ${JSON.stringify({ direction, amount, pixels })};
+      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const scrollingElement = document.scrollingElement || document.documentElement || document.body;
+      const metrics = () => {
+        const scrollY = Math.max(0, Number(window.scrollY || scrollingElement?.scrollTop || 0));
+        const viewportHeight = Math.max(0, Number(window.innerHeight || document.documentElement.clientHeight || 0));
+        const scrollHeight = Math.max(
+          Number(scrollingElement?.scrollHeight || 0),
+          Number(document.body?.scrollHeight || 0),
+          Number(document.documentElement?.scrollHeight || 0)
+        );
+        const maxScrollY = Math.max(0, scrollHeight - viewportHeight);
+        return {
+          scrollY,
+          viewportHeight,
+          scrollHeight,
+          maxScrollY,
+          progress: maxScrollY > 0 ? Math.min(1, scrollY / maxScrollY) : 1,
+          hasMoreBelow: scrollY < maxScrollY - 8,
+          atBottom: scrollY >= maxScrollY - 8
+        };
+      };
+
+      const before = metrics();
+      const viewportDelta = Math.max(120, Math.floor(before.viewportHeight * 0.82));
+      const explicitPixels = Number(payload.pixels || 0);
+      const delta = explicitPixels || viewportDelta;
+
+      if (payload.direction === "top") window.scrollTo(0, 0);
+      else if (payload.direction === "bottom") window.scrollTo(0, before.scrollHeight);
+      else if (payload.direction === "up") window.scrollBy(0, -delta);
+      else window.scrollBy(0, delta);
+
+      await delay(450);
+      const after = metrics();
+      return JSON.stringify({
+        ok: true,
+        direction: payload.direction || "down",
+        amount: payload.amount || "viewport",
+        before,
+        after,
+        changed: Math.abs(after.scrollY - before.scrollY) > 4,
+        reachedBottom: after.atBottom,
+        hasMoreBelow: after.hasMoreBelow
+      });
+    }`,
+  }).catch((err) => ({
+    ok: false,
+    text: "",
+    error: err instanceof Error ? err.message : String(err),
+  }));
+
+  const parsed = parseMcpWrappedJsonSafe(result.text || result.error || "");
+  return {
+    ok: parsed?.ok === true,
+    scroll: parsed || null,
+    text: result.text || "",
+    error: parsed?.ok === true ? "" : result.error || "Scroll action failed.",
+  };
+}
+
 export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
   const startedAt = Date.now();
   const currentUrl = currentUrlFromInput(args, state);
@@ -278,6 +408,7 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
   }
 
   const snapshotCall = await callPlaywrightTool(["browser_snapshot", "snapshot"], {});
+  const scroll = await capturePlaywrightScrollMetrics().catch(() => null);
   let screenshotCall = null;
 
   const includeScreenshot = args.includeScreenshot === true || args.screenshot === true;
@@ -334,7 +465,11 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
     imagePath: image.imagePath || "",
     mimeType: image.mimeType || "",
     screenshotError: screenshotCall.error || "",
-    dom: summarizeSnapshotText(snapshotCall.text),
+    scroll,
+    dom: {
+      ...summarizeSnapshotText(snapshotCall.text),
+      scroll,
+    },
   };
 
   return {
@@ -354,6 +489,7 @@ export async function capturePlaywrightMcpSnapshot(args = {}, state = {}) {
       forms: [],
       interactiveElements: [],
       stats: {},
+      scroll,
     },
     error: screenshotCall.error || "",
   };
@@ -3903,6 +4039,10 @@ async function executeApprovedAction(command = {}, args = {}, state = {}) {
 
   if (tool === "browserClickByText") {
     return tryPlaywrightClick(command, args, state);
+  }
+
+  if (tool === "browserScroll") {
+    return scrollPlaywrightPage(command);
   }
 
   if (tool === "browserPrepareFormSubmission") {

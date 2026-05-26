@@ -9,6 +9,7 @@ import { buildObserveCommand } from "./tools/observe.js";
 import { buildScrapeCommand } from "./tools/scrape.js";
 import { buildSearchCommand } from "./tools/search.js";
 import { buildScreenshotCommand } from "./tools/screenshot.js";
+import { buildScrollCommand } from "./tools/scroll.js";
 import { buildVerifyCommand } from "./tools/verify.js";
 
 const ALLOWED_TOOLS = new Set([
@@ -19,6 +20,7 @@ const ALLOWED_TOOLS = new Set([
   "browserFillFields",
   "browserSubmitForm",
   "browserFillAndSubmit",
+  "browserScroll",
   "browserScrape",
   "browserExtract",
   "browserScreenshot",
@@ -134,6 +136,7 @@ function buildCommandFromStep(step = {}, route = "") {
   if (kind === "click") return buildClickCommand(step, route);
   if (kind === "fill" || kind === "fill_and_submit") return buildFillCommand(step, route);
   if (kind === "submit") return buildSubmitCommand(step, route);
+  if (kind === "scroll") return buildScrollCommand(step, route);
   if (kind === "screenshot") return buildScreenshotCommand(step, route);
   if (kind === "scrape") return buildScrapeCommand(step, route);
   if (kind === "extract") return buildExtractCommand(step, route);
@@ -149,6 +152,7 @@ function completeStepCommand(step = {}, route = "") {
   if ((kind === "fill" || kind === "fill_and_submit") && Array.isArray(step.fields) && step.fields.length) return buildCommandFromStep(step, route);
   if (kind === "click" && (step.targetText || step.text || step.selector || step.href)) return buildCommandFromStep(step, route);
   if (kind === "submit") return buildCommandFromStep(step, route);
+  if (kind === "scroll") return buildCommandFromStep(step, route);
   if (["observe", "scrape", "extract", "screenshot", "verify", "report"].includes(kind)) return buildCommandFromStep(step, route);
   return null;
 }
@@ -163,6 +167,7 @@ function commandMatchesStep(command = {}, step = {}) {
   if (kind === "fill") return tool === "browserFillFields";
   if (kind === "fill_and_submit") return tool === "browserFillAndSubmit";
   if (kind === "submit") return tool === "browserSubmitForm";
+  if (kind === "scroll") return tool === "browserScroll";
   if (kind === "screenshot") return tool === "browserScreenshot";
   if (kind === "scrape") return tool === "browserScrape";
   if (kind === "extract") return tool === "browserExtract";

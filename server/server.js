@@ -57,6 +57,11 @@ import {
   compactBrowserStateForModel,
   getBrowserState,
 } from "./lib/browser-state-provider.js";
+import {
+  browserAgentReset,
+  browserAgentRun,
+  browserAgentStatus,
+} from "./lib/browser-agent.js";
 import { convertMcpLogsToAuditInputs } from "./lib/mcp-log-audit.js";
 import { importEzhrmObservation } from "./lib/ezhrm-skill-importer.js";
 import {
@@ -907,6 +912,32 @@ app.get("/api/services/status", async (_req, res) => {
 
 app.get("/api/browser/status", async (_req, res) => {
   res.json(await lightpandaStatus());
+});
+
+app.get("/api/browser-agent/status", async (req, res) => {
+  try {
+    res.json(await browserAgentStatus({
+      sessionId: req.query?.sessionId || req.query?.session || "default-browser-session",
+    }));
+  } catch (err) {
+    res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/api/browser-agent/run", async (req, res) => {
+  try {
+    res.json(await browserAgentRun(req.body || {}));
+  } catch (err) {
+    res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/api/browser-agent/reset", async (req, res) => {
+  try {
+    res.json(await browserAgentReset(req.body || {}));
+  } catch (err) {
+    res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 app.post("/api/browser/state", async (req, res) => {

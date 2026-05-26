@@ -154,6 +154,14 @@ function normalizeRouteValue(value = "") {
   return ["playwright", "lightpanda"].includes(route) ? route : "";
 }
 
+function firstText(...values) {
+  for (const value of values) {
+    const text = safeText(value || "", 1000);
+    if (text) return text;
+  }
+  return "";
+}
+
 function routeFromName(route = "") {
   const normalized = normalizeRouteValue(route);
   return ROUTES[normalized] || null;
@@ -165,6 +173,65 @@ function stateForRouteSelection(state = {}, route = "") {
   if (!state?.route) return state;
   if (state.route === selected) return state;
   return defaultBrowserAgentState(state.sessionId || "default-browser-session");
+}
+
+function needsUserConversationResult({
+  sessionId = "",
+  instruction = "",
+  plannerResult = {},
+  routeSelection = {},
+  routeName = "",
+  state = {},
+  startedAt = 0,
+} = {}) {
+  const reason = safeText(plannerResult.plan?.reason || "I need one more detail before I can safely browse for you.", 900);
+  const nextSafeAction = safeText(
+    plannerResult.plan?.userIntent
+      ? `Please clarify the missing detail for: ${plannerResult.plan.userIntent}`
+      : "Please share the page, target, or value you want me to use. If you are not sure, tell me your goal and I can suggest a safe next step.",
+    900
+  );
+
+  return {
+    ok: false,
+    status: "needs_user",
+    route: routeName || routeSelection.route || "",
+    summary: reason,
+    nextSafeAction,
+    requiredUserInput: true,
+    currentUrl: state.currentUrl || "",
+    currentTitle: state.currentTitle || "",
+    state,
+    plan: plannerResult.plan,
+    routeSelection: routeSelection.decision,
+    stepResults: [],
+    agentTrace: [
+      traceEntry({
+        role: "planner",
+        title: "Planner",
+        status: "needs_user",
+        ok: false,
+        input: instruction,
+        output: plannerResult.plan,
+        summary: reason,
+        tokens: plannerResult.usage?.totalTokens || null,
+      }),
+    ],
+    pipeline: {
+      architecture: "ai_agent_browser_route_isolated_v1",
+      route: routeName || routeSelection.route || "",
+      planner: plannerResult.plan,
+      routeSelection: routeSelection.decision,
+      isolation: { ok: true },
+    },
+    runtimeTiming: {
+      totalMs: roundMs(nowMs() - startedAt),
+    },
+    tokenUsage: combineTokenUsage([
+      { stage: "planner", route: "planning", usage: plannerResult.usage },
+      { stage: "routeSelector", route: "planning", usage: routeSelection.usage },
+    ], routeName || routeSelection.route || ""),
+  };
 }
 
 async function runSingleStep({
@@ -330,8 +397,20 @@ async function runSingleStep({
     verification: runResult?.verification || null,
     extracted: runResult?.extracted || null,
     pageKey: runResult?.pageKey || "",
-    currentUrl: afterSnapshot?.url || afterObservation?.url || "",
-    currentTitle: afterSnapshot?.title || afterObservation?.title || "",
+    currentUrl: firstText(
+      afterSnapshot?.url,
+      afterObservation?.url,
+      state.currentUrl,
+      state.lastValidObservation?.url,
+      currentUrl
+    ),
+    currentTitle: firstText(
+      afterSnapshot?.title,
+      afterObservation?.title,
+      state.currentTitle,
+      state.lastValidObservation?.title,
+      currentTitle
+    ),
     beforeSnapshot,
     afterSnapshot,
     snapshotDelta,
@@ -381,6 +460,7 @@ async function runSingleStep({
       plan,
       instruction,
       pageKey: runResult?.pageKey || "",
+      routeEngine: routeName === "playwright" ? "playwright_mcp" : "lightpanda_cdp",
     }
   );
 
@@ -409,8 +489,22 @@ async function runSingleStep({
     snapshotDelta,
     summary: report.report?.summary || runResult?.error || watch.watch?.summary || "Browser step completed.",
     nextSafeAction: report.report?.nextSafeAction || watch.watch?.nextSafeAction || "Continue with the next browser step.",
-    currentUrl: afterObservation?.url || nextState.currentUrl || "",
-    currentTitle: afterObservation?.title || nextState.currentTitle || "",
+    currentUrl: firstText(
+      afterObservation?.url,
+      afterSnapshot?.url,
+      nextState.currentUrl,
+      nextState.lastValidObservation?.url,
+      state.currentUrl,
+      currentUrl
+    ),
+    currentTitle: firstText(
+      afterObservation?.title,
+      afterSnapshot?.title,
+      nextState.currentTitle,
+      nextState.lastValidObservation?.title,
+      state.currentTitle,
+      currentTitle
+    ),
     state: nextState,
     isolation,
     runtimeMs: roundMs(nowMs() - stepStartedAt),
@@ -529,6 +623,19 @@ export async function runBrowserAgentOrchestrator({
   const routeName = normalizeRouteValue(routeSelection.route) || "playwright";
   const route = routeFromName(routeName);
   const routeState = stateForRouteSelection(baseState, routeName);
+  const plannedSteps = Array.isArray(plannerResult.plan?.steps) ? plannerResult.plan.steps : [];
+
+  if (plannerResult.plan?.status === "needs_user" && plannedSteps.length === 0) {
+    return needsUserConversationResult({
+      sessionId,
+      instruction,
+      plannerResult,
+      routeSelection,
+      routeName,
+      state: routeState,
+      startedAt,
+    });
+  }
 
   if (!route) {
     return {
@@ -568,7 +675,7 @@ export async function runBrowserAgentOrchestrator({
   let workingState = routeState;
   let lastResult = null;
 
-  for (const step of Array.isArray(plannerResult.plan?.steps) ? plannerResult.plan.steps : []) {
+  for (const step of plannedSteps) {
     debugTrace("task:step:dispatch", { index: step.index, kind: step.kind || "" });
     const result = await runSingleStep({
       routeName,
@@ -594,11 +701,25 @@ export async function runBrowserAgentOrchestrator({
   }
 
   const completed = stepResults.filter((item) => item.ok).length;
-  const total = Array.isArray(plannerResult.plan?.steps) ? plannerResult.plan.steps.length : 0;
+  const total = plannedSteps.length;
   const final = lastResult || {};
   const success = completed === total && total > 0 && final.ok !== false;
 
   const report = final.report || null;
+  const bestCurrentUrl = firstText(
+    final.currentUrl,
+    workingState.currentUrl,
+    workingState.lastValidObservation?.url,
+    workingState.lastObservation?.url,
+    currentUrl
+  );
+  const bestCurrentTitle = firstText(
+    final.currentTitle,
+    workingState.currentTitle,
+    workingState.lastValidObservation?.title,
+    workingState.lastObservation?.title,
+    currentTitle
+  );
 
   const result = {
     ok: success,
@@ -606,8 +727,8 @@ export async function runBrowserAgentOrchestrator({
     route: routeName,
     summary: report?.summary || final.summary || plannerResult.plan?.reason || "Browser task completed.",
     nextSafeAction: final.nextSafeAction || report?.nextSafeAction || "Continue with the next browser instruction.",
-    currentUrl: final.currentUrl || workingState.currentUrl || currentUrl || "",
-    currentTitle: final.currentTitle || workingState.currentTitle || currentTitle || "",
+    currentUrl: bestCurrentUrl,
+    currentTitle: bestCurrentTitle,
     state: workingState,
     plan: plannerResult.plan,
     routeSelection: routeSelection.decision,

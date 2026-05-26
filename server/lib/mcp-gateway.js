@@ -250,6 +250,7 @@ function compactBrowserAgentStatusPayload(payload = {}) {
       lastFailedObservation: compactBrowserObservation(state.lastFailedObservation),
       updatedAt: compactString(state.updatedAt, 80),
     },
+    uiReport: payload.uiReport || null,
     runtime: payload.runtime,
     browserHealth: payload.browserHealth && typeof payload.browserHealth === "object"
       ? {
@@ -300,6 +301,7 @@ function compactBrowserAgentPayload(payload = {}) {
     engine: compactString(payload.engine || payload.whatFound?.engine || payload.state?.activeEngine || "", 80),
     summary: shortenUrlsInText(payload.summary || "", 500),
     browserSummary: browserAgentBrief(payload),
+    uiReport: payload.uiReport || null,
     whatFound,
     observedControls,
     possibleNextActions: Array.isArray(payload.possibleNextActions) ? payload.possibleNextActions.slice(0, 10) : [],
@@ -1065,7 +1067,7 @@ const builtinServers = [
       },
       {
         name: "learn",
-        description: "Learn a user-named action or alias from the current page without overwriting imported site-skill observations.",
+        description: "Deprecated compatibility endpoint. Legacy browser-agent site-action learning was removed; use normal browser-agent run instructions or add a dedicated route/tool module.",
         inputSchema: {
           type: "object",
           required: ["instruction"],

@@ -34,24 +34,44 @@ export async function watchBrowserResult({
     ...(Array.isArray(resultImages) ? resultImages : []),
   ].filter(Boolean);
 
-  const response = await callBrowserAgentRoleJson("resultReviewer", {
-    system: watcherSystemPrompt(),
-    context: {
+  let response;
+  try {
+    response = await callBrowserAgentRoleJson("resultReviewer", {
+      system: watcherSystemPrompt(),
+      context: {
+        route,
+        step,
+        command,
+        result,
+        beforeObservation,
+        afterObservation,
+        beforeSnapshot,
+        afterSnapshot,
+        snapshotDelta,
+        currentState,
+      },
+      schemaName: "browser_agent_watcher",
+      images: modelImages,
       route,
-      step,
-      command,
-      result,
-      beforeObservation,
-      afterObservation,
-      beforeSnapshot,
-      afterSnapshot,
-      snapshotDelta,
-      currentState,
-    },
-    schemaName: "browser_agent_watcher",
-    images: modelImages,
-    route,
-  });
+    });
+  } catch (error) {
+    if (error?.code !== "BROWSER_AGENT_LLM_INVALID_JSON") throw error;
+    const success = result?.ok !== false;
+    return {
+      ok: true,
+      watch: {
+        status: success ? "passed" : "failed",
+        success,
+        summary: success ? "The browser command completed and produced route-owned evidence." : safeText(result?.error || "The browser command failed.", 900),
+        evidence: safeText(snapshotDelta?.summary || result?.summary || result?.error || "", 1200),
+        reason: "Watcher LLM returned invalid JSON twice, so route-owned executor evidence was used.",
+        nextSafeAction: success ? "Continue with the next step." : safeText(result?.error || "Inspect the browser result before retrying.", 900),
+        confidence: success ? 0.72 : 0.55,
+      },
+      usage: error.usage || null,
+      rawContent: error.contentPreview || "",
+    };
+  }
 
   const watch = normalizeWatch(response.data || {});
 

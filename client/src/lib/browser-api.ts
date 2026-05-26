@@ -118,6 +118,7 @@ export interface BrowserAgentStatus {
   ok: boolean;
   status?: string;
   sessionId?: string;
+  uiReport?: BrowserAgentStatusReport;
   state?: {
     currentUrl?: string;
     currentTitle?: string;
@@ -152,6 +153,144 @@ export interface BrowserAgentStatus {
     };
     strategy?: string;
   };
+  error?: string;
+}
+
+export interface BrowserAgentScreenshot {
+  id: string;
+  stepIndex: number;
+  label: string;
+  capturedAt: string;
+  mimeType: string;
+  imagePath: string;
+  hasImage: boolean;
+  bytesApprox: number;
+  dataUrl: string;
+}
+
+export interface BrowserAgentUiReport {
+  reportVersion: "browser-agent-ui-report/v1" | string;
+  generatedAt: string;
+  ok: boolean;
+  status: string;
+  route: "playwright" | "lightpanda" | string;
+  backend: string;
+  requiredUserInput: boolean;
+  summary: string;
+  nextSafeAction: string;
+  current: { url: string; title: string };
+  routeIsolation: {
+    ok: boolean;
+    selectedRoute: string;
+    backend: string;
+    stepRoutes: string[];
+    stepBackends: string[];
+  };
+  metrics: {
+    totalMs: number;
+    stepCount: number;
+    completedSteps: number;
+    failedStepIndex: number | null;
+    screenshotCount: number;
+    scrollCount: number;
+    reachedBottom: boolean;
+  };
+  llm: {
+    totalTokens: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalDurationMs: number;
+    models: string[];
+    byRole: Record<string, unknown>;
+    byRoute: Record<string, unknown>;
+    calls: Array<Record<string, unknown>>;
+  };
+  plan: {
+    status: string;
+    userIntent: string;
+    routeHint: string;
+    reason: string;
+    confidence: number;
+    needsLightpandaWarmup: boolean;
+    steps: Array<Record<string, unknown>>;
+  };
+  routeSelection: {
+    route: string;
+    reason: string;
+    confidence: number;
+    warmLightpanda: boolean;
+  };
+  steps: Array<{
+    id: string;
+    index: number;
+    kind: string;
+    text: string;
+    route: string;
+    backend: string;
+    tool: string;
+    status: string;
+    ok: boolean;
+    durationMs: number;
+    summary: string;
+    nextSafeAction: string;
+    currentUrl: string;
+    currentTitle: string;
+    command: Record<string, unknown>;
+    verification: Record<string, unknown> | null;
+    extraction: Record<string, unknown>;
+    filledFields: Array<Record<string, unknown>>;
+    missingFields: Array<Record<string, unknown>>;
+    scroll: Record<string, unknown> | null;
+    screenshots: BrowserAgentScreenshot[];
+    agents: Array<Record<string, unknown>>;
+  }>;
+  evidence: {
+    facts: string[];
+    screenshots: BrowserAgentScreenshot[];
+    latestScroll: Record<string, unknown> | null;
+    finalObservation: BrowserAgentObservation;
+    filledFields: Array<Record<string, unknown>>;
+    missingFields: Array<Record<string, unknown>>;
+  };
+  trace: Array<Record<string, unknown>>;
+  raw: {
+    hasRawResult: boolean;
+    hasStepResults: boolean;
+    imageDataIncluded: boolean;
+  };
+}
+
+export interface BrowserAgentStatusReport {
+  reportVersion: "browser-agent-status-report/v1" | string;
+  generatedAt: string;
+  ok: boolean;
+  status: string;
+  sessionId: string;
+  route: string;
+  backend: string;
+  current: { url: string; title: string };
+  lastInstruction: string;
+  lastCommand: Record<string, unknown>;
+  finalObservation: BrowserAgentObservation;
+  history: Array<Record<string, unknown>>;
+  runtime?: BrowserAgentStatus["runtime"] | null;
+  browserHealth?: Record<string, unknown> | null;
+}
+
+export interface BrowserAgentRunResult {
+  ok: boolean;
+  status: string;
+  route?: string;
+  summary?: string;
+  nextSafeAction?: string;
+  currentUrl?: string;
+  currentTitle?: string;
+  requiredUserInput?: boolean;
+  uiReport?: BrowserAgentUiReport;
+  runtimeTiming?: Record<string, unknown>;
+  tokenUsage?: Record<string, unknown>;
+  stepResults?: Array<Record<string, unknown>>;
+  agentTrace?: Array<Record<string, unknown>>;
   error?: string;
 }
 
@@ -243,10 +382,31 @@ export async function screenshotPlaywright(): Promise<PlaywrightMcpResult> {
 }
 
 export async function getBrowserAgentStatus(sessionId?: string): Promise<BrowserAgentStatus> {
-  return callMcpJson<BrowserAgentStatus>(
-    "mcp__browser_agent__status",
-    sessionId ? { sessionId } : {},
-  );
+  const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  return readJson<BrowserAgentStatus>(`/api/browser-agent/status${query}`);
+}
+
+export async function runBrowserAgent(args: {
+  instruction: string;
+  sessionId?: string;
+  route?: "playwright" | "lightpanda" | "auto" | string;
+  currentUrl?: string;
+  currentTitle?: string;
+  includeImages?: boolean;
+}): Promise<BrowserAgentRunResult> {
+  return readJson<BrowserAgentRunResult>("/api/browser-agent/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+}
+
+export async function resetBrowserAgent(sessionId?: string): Promise<BrowserAgentStatus> {
+  return readJson<BrowserAgentStatus>("/api/browser-agent/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sessionId ? { sessionId } : {}),
+  });
 }
 
 export async function getServiceStatus(): Promise<ServiceStatus> {

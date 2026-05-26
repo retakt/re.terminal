@@ -156,6 +156,16 @@ export function createPlaywrightEngine() {
       });
     },
 
+    async scroll(command = {}, context = {}) {
+      return executePlaywrightMcpBrowserCommand({
+        command: { ...command, tool: "browserScroll" },
+        args: context,
+        state: context.state || {},
+        skipBeforeSnapshot: true,
+        beforeObservation: context.currentObservation || null,
+      });
+    },
+
     async screenshot(command = {}, context = {}) {
       const snapshot = await capturePlaywrightMcpSnapshot({
         ...context,

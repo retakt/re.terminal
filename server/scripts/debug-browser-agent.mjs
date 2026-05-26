@@ -30,6 +30,7 @@ setDefaultEnv("EXTERNAL_MCP_CALL_TIMEOUT_MS", "15000");
 const {
   browserAgentRun,
   browserAgentReset,
+  buildBrowserAgentMarkdownReport,
 } = await import("../lib/browser-agent.js");
 
 const sessionId = `debug-browser-${Date.now()}`;
@@ -73,6 +74,16 @@ try {
     blockedReason: result.blockedReason,
     runtimeTiming: result.runtimeTiming,
     tokenUsage: result.tokenUsage,
+    uiReport: result.uiReport ? {
+      reportVersion: result.uiReport.reportVersion,
+      route: result.uiReport.route,
+      backend: result.uiReport.backend,
+      metrics: result.uiReport.metrics,
+      llm: {
+        totalTokens: result.uiReport.llm?.totalTokens || 0,
+        models: result.uiReport.llm?.models || [],
+      },
+    } : null,
     sequence: result.sequence,
     architecture: result.pipeline?.architecture,
   }, null, 2));
@@ -89,9 +100,16 @@ try {
   }
 
   console.log("\n=== RAW RESULT SAVED ===");
-  const out = `server/debug-browser-agent-${Date.now()}.json`;
+  const stamp = Date.now();
+  const out = `server/debug-browser-agent-${stamp}.json`;
+  const uiOut = `server/debug-browser-agent-ui-${stamp}.json`;
+  const mdOut = `server/debug-browser-agent-report-${stamp}.md`;
   fs.writeFileSync(out, JSON.stringify(result, null, 2));
+  fs.writeFileSync(uiOut, JSON.stringify(result.uiReport || null, null, 2));
+  fs.writeFileSync(mdOut, buildBrowserAgentMarkdownReport(result));
   console.log(out);
+  console.log(uiOut);
+  console.log(mdOut);
 
   process.exit(result.ok ? 0 : 1);
 } catch (err) {

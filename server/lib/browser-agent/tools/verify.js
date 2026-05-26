@@ -1,5 +1,15 @@
 import { safeText } from "../shared.js";
 
+function expectedTextFromStep(step = {}) {
+  const direct = safeText(step.expectedText || step.targetText || step.target || "", 240);
+  if (direct) return direct;
+  const text = safeText(step.text || step.notes || "", 500);
+  return safeText(
+    text.match(/\b(?:page\s+says|verify(?:\s+that)?(?:\s+the\s+page)?\s+says)\s+(.+?)(?:[.!?]\s*$|$)/i)?.[1] || "",
+    240
+  );
+}
+
 export function buildVerifyCommand(step = {}, route = "") {
   return {
     ok: true,
@@ -8,7 +18,7 @@ export function buildVerifyCommand(step = {}, route = "") {
       kind: "verify",
       tool: "browserVerify",
       args: {
-        expectedText: safeText(step.expectedText || step.targetText || step.target || "", 240),
+        expectedText: expectedTextFromStep(step),
         expectedUrl: safeText(step.expectedUrl || step.url || "", 500),
         expectedTitle: safeText(step.expectedTitle || "", 240),
       },

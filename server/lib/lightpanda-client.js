@@ -705,6 +705,8 @@ function semanticSnapshotExpression() {
         const label = labelFor(el);
         const selector = stableSelector(el);
         const href = tag === "a" ? absoluteUrl(el.href || el.getAttribute("href")) : "";
+        const secret = /password/i.test(type);
+        const controlValue = ["input", "textarea", "select"].includes(tag) ? String(el.value || "") : "";
         return {
           index,
           tag,
@@ -718,7 +720,9 @@ function semanticSnapshotExpression() {
           ariaLabel: el.getAttribute("aria-label") || "",
           placeholder: el.getAttribute("placeholder") || "",
           required: el.hasAttribute("required"),
-          secret: /password/i.test(type),
+          secret,
+          valuePreview: secret ? "[redacted]" : pick(controlValue, 120),
+          checked: tag === "input" && /^(checkbox|radio)$/i.test(type) ? Boolean(el.checked) : undefined,
           attrs: attrsFor(el),
           raw: {
             outerHTML: pick(el.outerHTML || "", 800),
@@ -760,6 +764,8 @@ function semanticSnapshotExpression() {
         ariaLabel: entry.ariaLabel,
         required: entry.required,
         secret: entry.secret,
+        valuePreview: entry.valuePreview,
+        checked: entry.checked,
         selector: entry.selector,
       }))
       .slice(0, 120);
@@ -778,6 +784,8 @@ function semanticSnapshotExpression() {
         ariaLabel: field.getAttribute("aria-label") || "",
         required: field.hasAttribute("required"),
         secret: /password/i.test(field.getAttribute("type") || ""),
+        valuePreview: /password/i.test(field.getAttribute("type") || "") ? "[redacted]" : pick(field.value || "", 120),
+        checked: field.tagName.toLowerCase() === "input" && /^(checkbox|radio)$/i.test(field.getAttribute("type") || "") ? Boolean(field.checked) : undefined,
         selector: stableSelector(field),
       })),
       buttons: Array.from(form.querySelectorAll("button, input[type='submit'], input[type='button']")).slice(0, 30).map((button) => ({
@@ -913,7 +921,9 @@ async function evaluateBasicSnapshot(session, sid) {
           placeholder: field.getAttribute('placeholder') || '',
           ariaLabel: field.getAttribute('aria-label') || '',
           selector: field.id ? '#' + field.id : '',
-          secret: /password/i.test(field.getAttribute('type') || '')
+          secret: /password/i.test(field.getAttribute('type') || ''),
+          valuePreview: /password/i.test(field.getAttribute('type') || '') ? '[redacted]' : pick(field.value || '', 120),
+          checked: field.tagName.toLowerCase() === 'input' && /^(checkbox|radio)$/i.test(field.getAttribute('type') || '') ? Boolean(field.checked) : undefined
         }))
       }));
     })()`,

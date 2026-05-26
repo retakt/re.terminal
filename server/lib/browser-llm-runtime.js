@@ -9,6 +9,7 @@ const ALLOWED_TOOLS = new Set([
   "browserFillFields",
   "browserSubmitForm",
   "browserFillAndSubmit",
+  "browserScroll",
   "browserPrepareFormSubmission",
   "browserSubmitPreparedForm",
   "browserScrape",
@@ -918,6 +919,24 @@ function compactContext(context = {}) {
   return JSON.stringify(context, null, 2).slice(0, 12000);
 }
 
+function compactRetryContext(context = {}) {
+  return JSON.stringify(context, null, 2).slice(0, 2600);
+}
+
+function combineUsage(...items) {
+  const usageItems = items.filter((item) => item && typeof item === "object");
+  if (!usageItems.length) return null;
+  const last = usageItems[usageItems.length - 1] || {};
+  return {
+    ...last,
+    promptTokens: usageItems.reduce((sum, item) => sum + Number(item.promptTokens || 0), 0),
+    completionTokens: usageItems.reduce((sum, item) => sum + Number(item.completionTokens || 0), 0),
+    totalTokens: usageItems.reduce((sum, item) => sum + Number(item.totalTokens || 0), 0),
+    totalDurationMs: usageItems.reduce((sum, item) => sum + Number(item.totalDurationMs || 0), 0),
+    retriedForValidJson: usageItems.length > 1,
+  };
+}
+
 function normalizedImages(images = []) {
   return (Array.isArray(images) ? images : [])
     .map((image) => String(image || "").trim().replace(/^data:image\/[a-z0-9.+-]+;base64,/i, ""))
@@ -999,20 +1018,56 @@ export async function callBrowserAgentRoleJson(stage = "planner", {
   });
 
   let data;
+  let usage = call.usage;
+  let rawContent = call.content;
   try {
     data = parseStrictJson(call.content, schemaName || role);
     if (shouldNormalizeWatcherJson(role, schemaName)) {
       data = normalizeWatcherJsonShape(data);
     }
   } catch (err) {
-    err.usage = call.usage;
-    throw err;
+    const retry = await callOllamaChat({
+      stage: role,
+      format: roleSchemaFormat,
+      route,
+      messages: [
+        {
+          role: "system",
+          content: [
+            String(system || "Return ONLY strict JSON. Do not use markdown."),
+            "Your previous response was invalid JSON or too long.",
+            "Return exactly one compact JSON object matching the requested schema.",
+            "Keep summary, reason, evidence, and facts short. Do not include markdown.",
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: compactRetryContext({
+            schemaName: schemaName || role,
+            previousInvalidPreview: err.contentPreview || String(call.content || "").slice(0, 1200),
+            context,
+          }),
+        },
+      ],
+    });
+
+    try {
+      data = parseStrictJson(retry.content, schemaName || role);
+      if (shouldNormalizeWatcherJson(role, schemaName)) {
+        data = normalizeWatcherJsonShape(data);
+      }
+      usage = combineUsage(call.usage, retry.usage);
+      rawContent = retry.content;
+    } catch (retryErr) {
+      retryErr.usage = combineUsage(call.usage, retry.usage);
+      throw retryErr;
+    }
   }
 
   return {
     data,
-    usage: call.usage,
-    rawContent: call.content,
+    usage,
+    rawContent,
   };
 }
 
