@@ -50,6 +50,75 @@ function redactValue(value, pathParts = []) {
   }));
 }
 
+function isBrowserAgentStateRecord(value = {}) {
+  if (!value || typeof value !== "object") return false;
+  if (typeof value.sessionId !== "string" || !value.sessionId.trim()) return false;
+  return Boolean(
+    typeof value.updatedAt === "string" ||
+    typeof value.currentUrl === "string" ||
+    typeof value.currentTitle === "string" ||
+    typeof value.lastInstruction === "string" ||
+    Array.isArray(value.history)
+  );
+}
+
+function summarizeBrowserAgentState(state = {}) {
+  const currentUrl = meaningfulBrowserUrl(state.currentUrl || state.lastValidObservation?.url || state.lastObservation?.url || "");
+  const currentTitle = safeText(state.currentTitle || state.lastValidObservation?.title || state.lastObservation?.title || "", 200);
+  const lastInstruction = safeText(state.lastInstruction || "", 400);
+  const summary = safeText(
+    state.lastResult?.summary ||
+      state.lastResult?.status ||
+      lastInstruction ||
+      currentTitle ||
+      currentUrl ||
+      "browser session",
+    400
+  );
+
+  return {
+    sessionId: safeText(state.sessionId || "default-browser-session", 120),
+    currentUrl,
+    currentTitle,
+    route: safeText(state.route || "", 40),
+    routeEngine: safeText(state.routeEngine || "", 40),
+    lastInstruction,
+    summary,
+    status: safeText(state.lastResult?.status || state.status || "", 40),
+    updatedAt: safeText(state.updatedAt || nowIso(), 40),
+    historyCount: Array.isArray(state.history) ? state.history.length : 0,
+  };
+}
+
+export function listBrowserAgentSessions() {
+  try {
+    if (!fs.existsSync(STATE_DIR)) return [];
+
+    const sessions = fs
+      .readdirSync(STATE_DIR)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => {
+        try {
+          const filePath = path.join(STATE_DIR, name);
+          const loaded = JSON.parse(fs.readFileSync(filePath, "utf8"));
+          if (!isBrowserAgentStateRecord(loaded)) return null;
+          return summarizeBrowserAgentState(loaded);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    return sessions.sort((left, right) => {
+      const leftTime = Number(new Date(left.updatedAt || 0).getTime() || 0);
+      const rightTime = Number(new Date(right.updatedAt || 0).getTime() || 0);
+      return rightTime - leftTime;
+    });
+  } catch {
+    return [];
+  }
+}
+
 export function defaultBrowserAgentState(sessionId = "default-browser-session") {
   return {
     sessionId: String(sessionId || "default-browser-session"),

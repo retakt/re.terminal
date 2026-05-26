@@ -45,6 +45,8 @@ const CHAT_MODEL_KEY = "reterm.chat.model";
 const CHAT_OPTIONS_KEY = "reterm.chat.options";
 const CHAT_MODE_KEY = "reterm.chat.mode";
 const CHAT_RUNTIME_PREFIX = "reterm.chat.runtime.";
+const BROWSER_SESSION_ID_KEY = "reterm.browser.agentSessionId";
+const BROWSER_SESSION_LINK_EVENT = "reterm.browser.session-link";
 const MAX_TOOL_LOGS = 80;
 const MAX_RUN_LOGS = 40;
 const MAX_REASONING_LOGS = 30;
@@ -67,10 +69,17 @@ function safeLocalStorage() {
   }
 }
 
+function linkBrowserSessionToChat(sessionId: string) {
+  const storage = safeLocalStorage();
+  try {
+    storage?.setItem(BROWSER_SESSION_ID_KEY, sessionId);
+    window.dispatchEvent(new CustomEvent(BROWSER_SESSION_LINK_EVENT, { detail: { sessionId } }));
+  } catch {}
+}
+
 function loadOrCreateSessionId(initialSessionId?: string) {
   const storage = safeLocalStorage();
   if (initialSessionId) {
-    try { storage?.setItem(CHAT_SESSION_ID_KEY, initialSessionId); } catch {}
     return initialSessionId;
   }
 
@@ -1043,7 +1052,17 @@ function memorySummaryForLog(memory: any) {
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-export function ChatProvider({ children, initialSessionId, sessionName }: { children: ReactNode; initialSessionId?: string; sessionName?: string }) {
+export function ChatProvider({
+  children,
+  initialSessionId,
+  sessionName,
+  isActive = true,
+}: {
+  children: ReactNode;
+  initialSessionId?: string;
+  sessionName?: string;
+  isActive?: boolean;
+}) {
   const [sessionId] = useState(() => loadOrCreateSessionId(initialSessionId));
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const [models, setModels] = useState<string[]>([]);
@@ -1079,6 +1098,17 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
   chatModeRef.current = chatMode;
   runtimeContextRef.current = runtimeContext;
   sessionOptionsRef.current = sessionOptions;
+
+  useEffect(() => {
+    if (!isActive) return;
+    const latestMode = loadChatMode();
+    setChatModeState(latestMode);
+    chatModeRef.current = latestMode;
+    try {
+      safeLocalStorage()?.setItem(CHAT_SESSION_ID_KEY, sessionId);
+    } catch {}
+    linkBrowserSessionToChat(sessionId);
+  }, [isActive, sessionId]);
 
   const persistToolLogs = useCallback(() => {
     saveToolLogs(sessionId, toolLogsRef.current);
@@ -1253,6 +1283,9 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       if (slash) {
         if (slash.modeOverride) {
           setChatMode(slash.modeOverride);
+          if (slash.modeOverride === "browser") {
+            linkBrowserSessionToChat(sessionId);
+          }
         }
         if (slash.optionOverrides) {
           updateSessionOptions(slash.optionOverrides);
@@ -1271,6 +1304,9 @@ export function ChatProvider({ children, initialSessionId, sessionName }: { chil
       }
 
       const promptMode = chatModeRef.current;
+      if (promptMode === "browser") {
+        linkBrowserSessionToChat(sessionId);
+      }
       void warmupModels({
         model: currentModel,
         includeBrowserAgent: false,

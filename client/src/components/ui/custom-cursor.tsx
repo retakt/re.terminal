@@ -47,6 +47,43 @@ type CursorProps = {
   hideNativeCursor?: boolean;
 };
 
+type TooltipLayout = {
+  left: number;
+  top: number;
+  placement: "above" | "below";
+  maxHeight: number | null;
+  maxWidth: number | null;
+};
+
+const TOOLTIP_POINTER_EPSILON = 2;
+const TOOLTIP_CONTENT_MOVE_EPSILON = 6;
+const TOOLTIP_POINTER_MOVE_WINDOW_MS = 180;
+const DEFAULT_TOOLTIP_LAYOUT: TooltipLayout = {
+  left: 0,
+  top: 0,
+  placement: "below",
+  maxHeight: null,
+  maxWidth: null,
+};
+
+let sharedTooltipSnapshot: {
+  point: { x: number; y: number };
+  content: React.ReactNode;
+} | null = null;
+let sharedTooltipLayout: TooltipLayout | null = null;
+let lastTooltipPhysicalMoveAt = 0;
+
+function pointerMoved(
+  current: { x: number; y: number },
+  previous: { x: number; y: number },
+  epsilon = TOOLTIP_POINTER_EPSILON,
+) {
+  return (
+    Math.abs(current.x - previous.x) > epsilon ||
+    Math.abs(current.y - previous.y) > epsilon
+  );
+}
+
 export function Cursor({
   children,
   className,
@@ -62,7 +99,14 @@ export function Cursor({
   const posX = useMotionValue(0);
   const posY = useMotionValue(0);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const tooltipRef = React.useRef<HTMLDivElement>(null);
   const [mouseInside, setMouseInside] = React.useState(false);
+  const [cursorPoint, setCursorPoint] = React.useState({ x: 0, y: 0 });
+  const [stableContent, setStableContent] = React.useState<React.ReactNode>(null);
+  const [tooltipLayout, setTooltipLayout] = React.useState<TooltipLayout>(
+    () => sharedTooltipLayout ?? DEFAULT_TOOLTIP_LAYOUT,
+  );
+  const [tooltipReady, setTooltipReady] = React.useState(Boolean(sharedTooltipLayout));
 
   const handleMouseMove = React.useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -71,14 +115,157 @@ export function Cursor({
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const localX = event.clientX - rect.left;
-      const localY = event.clientY - rect.top;
+      const point = { x: event.clientX, y: event.clientY };
 
-      posX.set(localX);
-      posY.set(localY);
+      posX.set(point.x);
+      posY.set(point.y);
+      setCursorPoint(point);
+
+      const hasPhysicalMovement =
+        Math.abs(event.movementX) > 0 || Math.abs(event.movementY) > 0;
+      const movedFarEnough =
+        !sharedTooltipSnapshot ||
+        pointerMoved(point, sharedTooltipSnapshot.point, TOOLTIP_CONTENT_MOVE_EPSILON);
+
+      if (content && hasPhysicalMovement && movedFarEnough) {
+        lastTooltipPhysicalMoveAt = performance.now();
+        sharedTooltipSnapshot = { point, content };
+        setStableContent(content);
+      }
     },
-    [disabled, posX, posY],
+    [content, disabled, posX, posY],
   );
+
+  const handleMouseEnter = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (disabled) return;
+
+      const point = { x: event.clientX, y: event.clientY };
+      const recentlyMoved =
+        performance.now() - lastTooltipPhysicalMoveAt < TOOLTIP_POINTER_MOVE_WINDOW_MS;
+      const shouldKeepSnapshot =
+        Boolean(sharedTooltipSnapshot?.content) &&
+        sharedTooltipSnapshot != null &&
+        !recentlyMoved;
+      const nextContent = shouldKeepSnapshot ? sharedTooltipSnapshot?.content : content;
+
+      posX.set(point.x);
+      posY.set(point.y);
+      setCursorPoint(point);
+      setStableContent(nextContent ?? null);
+      if (shouldKeepSnapshot && sharedTooltipLayout) {
+        setTooltipLayout(sharedTooltipLayout);
+        setTooltipReady(true);
+      }
+      setMouseInside(true);
+
+      if (content && !shouldKeepSnapshot) {
+        sharedTooltipSnapshot = { point, content };
+      }
+    },
+    [content, disabled, posX, posY],
+  );
+
+  React.useLayoutEffect(() => {
+    if (!mouseInside || !stableContent) return;
+
+    const updatePlacement = () => {
+      const panel = tooltipRef.current;
+      if (!panel) return;
+
+      const gap = 0;
+      const pad = 10;
+      const minHeight = 96;
+      const maxAllowedHeight = 320;
+      const boundsElement = containerRef.current?.closest(".log-container");
+      const boundsRect = boundsElement?.getBoundingClientRect();
+      const boundary = boundsRect
+        ? {
+            left: boundsRect.left + pad,
+            top: boundsRect.top + pad,
+            right: boundsRect.right - pad,
+            bottom: boundsRect.bottom - pad,
+          }
+        : {
+            left: pad,
+            top: pad,
+            right: window.innerWidth - pad,
+            bottom: window.innerHeight - pad,
+          };
+      const boundaryWidth = Math.max(0, boundary.right - boundary.left);
+      const boundaryHeight = Math.max(0, boundary.bottom - boundary.top);
+      const maxAllowedWidth = Math.min(820, Math.max(0, boundaryWidth));
+      const desiredHeight = panel.scrollHeight || panel.offsetHeight || minHeight;
+      const desiredWidth = panel.scrollWidth || panel.offsetWidth || 320;
+      const spaceAbove = Math.max(0, cursorPoint.y - gap - boundary.top);
+      const spaceBelow = Math.max(0, boundary.bottom - cursorPoint.y - gap);
+      const requiredBelowSpace = Math.max(desiredHeight + 24, boundaryHeight * 0.25);
+
+      const nextPlacement: TooltipLayout["placement"] =
+        spaceBelow < requiredBelowSpace
+          ? "above"
+          : desiredHeight <= spaceBelow
+            ? "below"
+            : desiredHeight <= spaceAbove
+              ? "above"
+              : spaceBelow >= spaceAbove
+                ? "below"
+                : "above";
+
+      const nextMaxHeight = Math.min(
+        maxAllowedHeight,
+        Math.max(minHeight, nextPlacement === "below" ? spaceBelow : spaceAbove),
+      );
+      const effectiveHeight = Math.min(desiredHeight, nextMaxHeight);
+      const effectiveWidth = Math.min(desiredWidth, maxAllowedWidth);
+      const minLeft = boundary.left;
+      const maxLeft = Math.max(boundary.left, boundary.right - effectiveWidth);
+      const nextLeft = Math.min(
+        Math.max(cursorPoint.x - effectiveWidth / 2, minLeft),
+        maxLeft,
+      );
+      const nextTop = nextPlacement === "above"
+        ? Math.max(boundary.top, cursorPoint.y - effectiveHeight - gap)
+        : Math.min(
+            Math.max(boundary.top, boundary.bottom - effectiveHeight),
+            cursorPoint.y + gap,
+          );
+
+      const nextLayout: TooltipLayout = {
+        left: nextLeft,
+        top: nextTop,
+        placement: nextPlacement,
+        maxHeight: nextMaxHeight,
+        maxWidth: maxAllowedWidth,
+      };
+
+      sharedTooltipLayout = nextLayout;
+      setTooltipLayout((current) => {
+        if (
+          current.left === nextLayout.left &&
+          current.top === nextLayout.top &&
+          current.placement === nextLayout.placement &&
+          current.maxHeight === nextLayout.maxHeight &&
+          current.maxWidth === nextLayout.maxWidth
+        ) {
+          return current;
+        }
+        return nextLayout;
+      });
+      setTooltipReady(true);
+    };
+
+    if (!sharedTooltipLayout) {
+      setTooltipReady(false);
+    }
+    const frame = window.requestAnimationFrame(updatePlacement);
+    window.addEventListener("resize", updatePlacement);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePlacement);
+    };
+  }, [cursorPoint.x, cursorPoint.y, mouseInside, stableContent]);
 
   if (disabled) return <>{children}</>;
 
@@ -87,9 +274,14 @@ export function Cursor({
       ref={containerRef}
       className={cn("relative", className)}
       style={hideNativeCursor ? { cursor: "none" } : undefined}
-      onMouseEnter={() => setMouseInside(true)}
+      onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => setMouseInside(false)}
+      onMouseLeave={() => {
+        setMouseInside(false);
+        if (!sharedTooltipLayout) {
+          setTooltipReady(false);
+        }
+      }}
     >
       {children}
 
@@ -98,11 +290,14 @@ export function Cursor({
           <FollowCursor
             x={posX}
             y={posY}
+            tooltipRef={tooltipRef}
+            tooltipLayout={tooltipLayout}
+            tooltipReady={tooltipReady}
             name={name}
             customSVG={customSVG}
             svgClassName={svgClassName}
             cursorColor={cursorColor}
-            content={content}
+            content={stableContent}
             panelClassName={panelClassName}
           />
         )}
@@ -114,6 +309,9 @@ export function Cursor({
 export function FollowCursor({
   x,
   y,
+  tooltipRef,
+  tooltipLayout,
+  tooltipReady,
   name,
   customSVG,
   svgClassName,
@@ -123,6 +321,15 @@ export function FollowCursor({
 }: {
   x: MotionValue<number>;
   y: MotionValue<number>;
+  tooltipRef: React.RefObject<HTMLDivElement>;
+  tooltipLayout: {
+    left: number;
+    top: number;
+    placement: "above" | "below";
+    maxHeight: number | null;
+    maxWidth: number | null;
+  };
+  tooltipReady: boolean;
   name?: string;
   customSVG?: React.ReactNode;
   svgClassName?: string;
@@ -146,21 +353,35 @@ export function FollowCursor({
   };
 
   const [strokeClass, textClass, bgClass] = getColorClasses(cursorColor).split(" ");
+  const hasPanel = Boolean(content);
 
   return (
     <motion.div
-      className="pointer-events-none absolute z-[999999]"
+      className="pointer-events-none fixed z-[999999]"
       style={{
-        left: x,
-        top: y,
+        left: content ? tooltipLayout.left : x,
+        top: content ? tooltipLayout.top : y,
       }}
-      initial={{ scale: 0.96, opacity: 0 }}
+      initial={hasPanel ? false : { scale: 0.96, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.96, opacity: 0 }}
-      transition={{ duration: 0.12, ease: "easeOut" }}
+      exit={hasPanel ? { scale: 1, opacity: 1 } : { scale: 0.96, opacity: 0 }}
+      transition={hasPanel ? { duration: 0 } : { duration: 0.12, ease: "easeOut" }}
     >
       {content ? (
-        <div className={cn("log-cursor-tooltip", panelClassName)}>
+        <div
+          ref={tooltipRef}
+          className={cn("log-cursor-tooltip", panelClassName)}
+          data-placement={tooltipLayout.placement}
+          style={{
+            transform: "none",
+            maxHeight: tooltipLayout.maxHeight ? `${tooltipLayout.maxHeight}px` : undefined,
+            maxWidth: tooltipLayout.maxWidth ? `${tooltipLayout.maxWidth}px` : undefined,
+            minWidth: tooltipLayout.maxWidth
+              ? `${Math.min(320, tooltipLayout.maxWidth)}px`
+              : undefined,
+            opacity: tooltipReady ? 1 : 0,
+          }}
+        >
           {content}
         </div>
       ) : (

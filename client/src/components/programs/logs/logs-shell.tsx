@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Cursor } from "@/components/ui/custom-cursor";
 import { Pause, Play, RefreshCcw, Search, Trash2, Terminal } from "lucide-react";
@@ -290,7 +290,12 @@ function TerminalLine({
   activePhoneTooltipSeq: number | null;
   setActivePhoneTooltipSeq: React.Dispatch<React.SetStateAction<number | null>>;
 }) {
+  const lineRef = useRef<HTMLDivElement>(null);
+  const phoneTooltipRef = useRef<HTMLDivElement>(null);
   const phoneOpen = isPhone && activePhoneTooltipSeq === event.seq;
+  const [phonePlacement, setPhonePlacement] = useState<"above" | "below">("below");
+  const [phoneMaxHeight, setPhoneMaxHeight] = useState<number | null>(null);
+  const [phoneStyle, setPhoneStyle] = useState<React.CSSProperties>({});
   const statusColor = getStatusColor(event.status);
   const categoryColor = getCategoryColor(event.category);
 
@@ -333,6 +338,63 @@ function TerminalLine({
   const tokenText = event.usage?.totalTokens ? `${event.usage.totalTokens}t` : "";
   const preview = buildPreview(event, rawTitle, durationMs);
 
+  useLayoutEffect(() => {
+    if (!phoneOpen) return;
+
+    const updatePlacement = () => {
+      const line = lineRef.current;
+      const tooltip = phoneTooltipRef.current;
+      if (!line || !tooltip) return;
+
+      const lineRect = line.getBoundingClientRect();
+      const tooltipHeight = tooltip.scrollHeight || tooltip.offsetHeight || 0;
+      const topSpace = Math.max(0, lineRect.top - 8);
+      const bottomSpace = Math.max(0, window.innerHeight - lineRect.bottom - 8);
+      const requiredBelowSpace = Math.max(tooltipHeight + 48, window.innerHeight * 0.3);
+
+      const nextPlacement =
+        bottomSpace < requiredBelowSpace
+          ? "above"
+          : tooltipHeight <= bottomSpace
+            ? "below"
+            : tooltipHeight <= topSpace
+              ? "above"
+              : bottomSpace >= topSpace
+                ? "below"
+                : "above";
+
+      const availableSpace = nextPlacement === "above" ? topSpace : bottomSpace;
+      const nextMaxHeight = Math.min(240, Math.max(96, availableSpace));
+      const nextStyle: React.CSSProperties =
+        nextPlacement === "above"
+          ? {
+              left: 4,
+              right: 4,
+              bottom: Math.max(8, window.innerHeight - lineRect.top + 4),
+            }
+          : {
+              left: 4,
+              right: 4,
+              top: Math.max(8, lineRect.bottom + 4),
+            };
+
+      setPhonePlacement((current) => (current === nextPlacement ? current : nextPlacement));
+      setPhoneMaxHeight((current) => (current === nextMaxHeight ? current : nextMaxHeight));
+      setPhoneStyle((current) => {
+        const currentKey = JSON.stringify(current);
+        const nextKey = JSON.stringify(nextStyle);
+        return currentKey === nextKey ? current : nextStyle;
+      });
+    };
+
+    const frame = window.requestAnimationFrame(updatePlacement);
+    window.addEventListener("resize", updatePlacement);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePlacement);
+    };
+  }, [phoneOpen]);
 
   return (
     <Cursor
@@ -353,6 +415,7 @@ function TerminalLine({
       }
     >
 <div
+  ref={lineRef}
   className={`log-line ${phoneOpen ? "is-tooltip-open" : ""}`}
   onClick={(eventClick) => {
     if (!isPhone) return;
@@ -376,7 +439,15 @@ function TerminalLine({
         <span className="log-message">{renderPreview(preview)}</span>
 
         {isPhone && phoneOpen && (
-          <div className="log-phone-tooltip">
+          <div
+            ref={phoneTooltipRef}
+            className="log-phone-tooltip"
+            data-placement={phonePlacement}
+            style={{
+              ...(phoneMaxHeight ? { "--log-phone-tooltip-max-height": `${phoneMaxHeight}px` } as React.CSSProperties : {}),
+              ...phoneStyle,
+            }}
+          >
             <LogTooltipContent
               event={event}
               categoryColor={categoryColor}

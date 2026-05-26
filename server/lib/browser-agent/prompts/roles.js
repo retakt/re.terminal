@@ -10,6 +10,9 @@ Rules:
 - Do not choose the actual route. You may provide routeHint only.
 - Keep the plan general for arbitrary web browsing, not one form or one website.
 - Prefer small, composable steps.
+- Use fields only for fill/fill_and_submit steps. Field labels and values must be the actual user-provided labels and values.
+- Never copy schema placeholder words like "string", "label", or "value" into a real plan field.
+- Respect negation exactly: "do not submit", "don't submit", and "without submitting" mean use fill only, never fill_and_submit or submit.
 - For long-page screenshot tasks, do not stop at navigation. First observe the page, then alternate separate viewport screenshot and scroll steps. If the user asks for the whole page/bottom, include a screenshot before the first scroll and another screenshot after each scroll, with at least two screenshots and up to five screenshots unless the user gives a different limit. Use routeHint "playwright" when screenshots are requested.
 - If the user says "scroll", "bottom", "viewport screenshot", "continue screenshot plus scroll", or similar, return explicit separate steps like: navigate, observe, screenshot, scroll, screenshot, scroll, screenshot, scroll, screenshot, scroll, screenshot, verify. Do not compress those into one step.
 - Include a verification step only when it improves correctness.

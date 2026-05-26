@@ -14,6 +14,10 @@ import {
 import {
   getLightpandaStatus,
   getBrowserAgentStatus,
+  getBrowserAgentSessions,
+  createBrowserAgentSession,
+  runBrowserAgent,
+  resetBrowserAgent,
   getPlaywrightMcpStatus,
   navigateLightpanda,
   navigatePlaywright,
@@ -22,7 +26,9 @@ import {
   snapshotPlaywright,
   startPlaywrightMcp,
   type BrowserAgentObservation,
+  type BrowserAgentRunResult,
   type BrowserAgentStatus,
+  type BrowserAgentSessionSummary,
   type BrowserBackend,
   type LightpandaPageResult,
   type LightpandaStatus,
@@ -30,12 +36,36 @@ import {
   type PlaywrightMcpStatus,
 } from "@/lib/browser-api";
 import { focusInputShell } from "@/lib/focus-input-shell";
+import { useApp } from "@/contexts/app-context";
 
 const CHAT_SESSION_ID_KEY = "reterm.chat.sessionId";
+const BROWSER_SESSION_ID_KEY = "reterm.browser.agentSessionId";
+const BROWSER_SESSION_LINK_EVENT = "reterm.browser.session-link";
+
+type BrowserSessionRecord = {
+  sessionId: string;
+  currentUrl: string;
+  currentTitle: string;
+  route: string;
+  routeEngine: string;
+  lastInstruction: string;
+  summary: string;
+  status: string;
+  updatedAt: string;
+  historyCount: number;
+};
 
 function duration(ms?: number) {
   if (typeof ms !== "number") return "n/a";
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+function latencyTone(ms?: number) {
+  if (typeof ms !== "number") return "idle";
+  if (ms <= 300) return "fast";
+  if (ms <= 1200) return "ok";
+  if (ms <= 3000) return "slow";
+  return "bad";
 }
 
 function compact(value = "", limit = 160) {
@@ -55,6 +85,106 @@ function currentChatSessionId() {
   } catch {
     return "";
   }
+}
+
+function browserSessionIdSeed() {
+  const chatSession = currentChatSessionId();
+  return chatSession || `browser-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function currentBrowserSessionId() {
+  if (typeof window === "undefined") return browserSessionIdSeed();
+  try {
+    return window.localStorage.getItem(BROWSER_SESSION_ID_KEY) || browserSessionIdSeed();
+  } catch {
+    return browserSessionIdSeed();
+  }
+}
+
+function browserSessionLabel(session: BrowserSessionRecord | BrowserAgentSessionSummary | null | undefined) {
+  if (!session) return "browser session";
+  return session.currentTitle?.trim()
+    || session.currentUrl?.trim()
+    || session.summary?.trim()
+    || `session ${session.sessionId.slice(0, 8)}`;
+}
+
+function browserSessionSubtitle(session: BrowserSessionRecord | BrowserAgentSessionSummary | null | undefined) {
+  if (!session) return "";
+  return compact(session.lastInstruction || session.summary || session.routeEngine || session.route || "", 140);
+}
+
+function explicitInstructionRoute(instruction = "") {
+  const lower = instruction.toLowerCase();
+  if (/\blightpanda\b/.test(lower)) return "lightpanda";
+  if (/\bplaywright\b/.test(lower)) return "playwright";
+  return "auto";
+}
+
+function playwrightResponseMs(status: PlaywrightMcpStatus | null) {
+  const server = status?.server as (PlaywrightMcpStatus["server"] & { responseMs?: number | null; durationMs?: number | null }) | undefined;
+  const ms = Number(server?.responseMs ?? server?.durationMs ?? 0);
+  return Number.isFinite(ms) && ms > 0 ? ms : undefined;
+}
+
+function browserSessionFromSummary(
+  session: BrowserAgentSessionSummary | null | undefined,
+  fallbackSessionId = "",
+): BrowserSessionRecord | null {
+  if (!session?.sessionId) return null;
+  return {
+    sessionId: session.sessionId || fallbackSessionId,
+    currentUrl: String(session.currentUrl || "").trim(),
+    currentTitle: String(session.currentTitle || "").trim(),
+    route: String(session.route || "").trim(),
+    routeEngine: String(session.routeEngine || "").trim(),
+    lastInstruction: String(session.lastInstruction || "").trim(),
+    summary: String(session.summary || "").trim(),
+    status: String(session.status || "").trim(),
+    updatedAt: String(session.updatedAt || new Date().toISOString()).trim(),
+    historyCount: Number(session.historyCount || 0),
+  };
+}
+
+function browserSessionFromStatus(
+  status: BrowserAgentStatus | null | undefined,
+  fallbackSessionId = "",
+): BrowserSessionRecord | null {
+  if (!status?.sessionId && !fallbackSessionId) return null;
+  const state = (status?.state || {}) as Record<string, any>;
+  const report = (status?.uiReport || {}) as Record<string, any>;
+  return {
+    sessionId: status?.sessionId || fallbackSessionId,
+    currentUrl: String(state.currentUrl || report?.current?.url || "").trim(),
+    currentTitle: String(state.currentTitle || report?.current?.title || "").trim(),
+    route: String(report?.route || state.lastCommand?.backend || state.activeEngine || "").trim(),
+    routeEngine: String(report?.backend || state.activeEngine || "").trim(),
+    lastInstruction: String(state.lastIntent || state.lastInstruction || report?.lastInstruction || "").trim(),
+    summary: String(report?.summary || state.lastResult?.summary || state.lastResult?.status || state.lastInstruction || state.currentTitle || state.currentUrl || "").trim(),
+    status: String(status?.status || report?.status || "").trim(),
+    updatedAt: String(state.updatedAt || report?.generatedAt || new Date().toISOString()).trim(),
+    historyCount: Number(Array.isArray(state?.history) ? state.history.length : 0),
+  };
+}
+
+function browserSessionFromRun(
+  result: BrowserAgentRunResult | null | undefined,
+  fallbackSessionId = "",
+): BrowserSessionRecord | null {
+  if (!result && !fallbackSessionId) return null;
+  const report = result?.uiReport || null;
+  return {
+    sessionId: fallbackSessionId,
+    currentUrl: String(result?.currentUrl || report?.current?.url || "").trim(),
+    currentTitle: String(result?.currentTitle || report?.current?.title || "").trim(),
+    route: String(result?.route || report?.route || "").trim(),
+    routeEngine: String(report?.backend || "").trim(),
+    lastInstruction: String(report?.plan?.userIntent || "").trim(),
+    summary: String(result?.summary || report?.summary || "").trim(),
+    status: String(result?.status || report?.status || "").trim(),
+    updatedAt: new Date().toISOString(),
+    historyCount: Number(report?.steps?.length || 0),
+  };
 }
 
 function observationToPage(observation?: BrowserAgentObservation | null): LightpandaPageResult["page"] | null {
@@ -126,6 +256,7 @@ function backendLabel(backend: BrowserBackend) {
 }
 
 export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
+  const { pages, openProgram } = useApp();
   const [address, setAddress] = React.useState("");
   const [visualUrl, setVisualUrl] = React.useState("");
   const [backend, setBackend] = React.useState<BrowserBackend>("auto");
@@ -134,7 +265,12 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const [lightpandaStatus, setLightpandaStatus] = React.useState<LightpandaStatus | null>(null);
   const [playwrightStatus, setPlaywrightStatus] = React.useState<PlaywrightMcpStatus | null>(null);
   const [agentStatus, setAgentStatus] = React.useState<BrowserAgentStatus | null>(null);
-  const [agentSessionId, setAgentSessionId] = React.useState("");
+  const [agentSessionId, setAgentSessionId] = React.useState(() => currentBrowserSessionId());
+  const [browserSessions, setBrowserSessions] = React.useState<BrowserSessionRecord[]>([]);
+  const [browserInstruction, setBrowserInstruction] = React.useState("");
+  const [browserRunResult, setBrowserRunResult] = React.useState<BrowserAgentRunResult | null>(null);
+  const [browserRunError, setBrowserRunError] = React.useState("");
+  const [browserRunning, setBrowserRunning] = React.useState(false);
   const [agentStatusError, setAgentStatusError] = React.useState("");
   const [lightpandaResult, setLightpandaResult] = React.useState<LightpandaPageResult | null>(null);
   const [playwrightResult, setPlaywrightResult] = React.useState<PlaywrightMcpResult | null>(null);
@@ -144,6 +280,8 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const [screenshotError, setScreenshotError] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
+  const agentStatusRef = React.useRef<BrowserAgentStatus | null>(null);
+  const agentSessionIdRef = React.useRef(agentSessionId);
 
   const agentState = agentStatus?.state;
   const agentObservation = agentState?.lastValidObservation || agentState?.lastObservation || null;
@@ -155,6 +293,26 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const previewUrl = selectedBackend === "playwright" ? visualUrl : page?.url || visualUrl;
   const agentBackend = String(agentState?.lastCommand?.backend || agentState?.lastToolResult?.engine || agentState?.activeEngine || "");
   const agentUpdatedAt = agentState?.updatedAt || "";
+  const chatSessions = React.useMemo(
+    () => pages.flatMap((page, index) => {
+      if (page.type !== "chat" || !("sessionId" in page) || !page.sessionId) return [];
+      return [{
+        pageId: page.id,
+        title: page.title || `session #${index + 1}`,
+        sessionId: String(page.sessionId || ""),
+      }];
+    }),
+    [pages],
+  );
+  const linkedChatSession = chatSessions.find((session) => session.sessionId === agentSessionId) || null;
+
+  React.useEffect(() => {
+    agentStatusRef.current = agentStatus;
+  }, [agentStatus]);
+
+  React.useEffect(() => {
+    agentSessionIdRef.current = agentSessionId;
+  }, [agentSessionId]);
 
   const refreshPlaywrightScreenshot = React.useCallback(async ({ includeSnapshot = true } = {}) => {
     setScreenshotError("");
@@ -208,27 +366,117 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     return () => window.clearInterval(interval);
   }, [isActive, loadStatus]);
 
-  const loadAgentStatus = React.useCallback(async () => {
-    const sessionId = currentChatSessionId();
-    setAgentSessionId(sessionId);
+  const upsertBrowserSession = React.useCallback((record: BrowserSessionRecord | null) => {
+    if (!record?.sessionId) return;
+    setBrowserSessions((current) => {
+      const next = [
+        record,
+        ...current.filter((entry) => entry.sessionId !== record.sessionId),
+      ];
+      next.sort((left, right) => {
+        const leftTime = new Date(left.updatedAt || 0).getTime() || 0;
+        const rightTime = new Date(right.updatedAt || 0).getTime() || 0;
+        return rightTime - leftTime;
+      });
+      return next.slice(0, 24);
+    });
+  }, []);
+
+  const refreshBrowserSessions = React.useCallback(async () => {
+    try {
+      const next = await getBrowserAgentSessions();
+      const normalized = next
+        .map((session) => browserSessionFromSummary(session))
+        .filter(Boolean) as BrowserSessionRecord[];
+      const activeRecord = browserSessionFromStatus(agentStatusRef.current, agentSessionIdRef.current);
+      const merged = activeRecord
+        ? [
+          activeRecord,
+          ...normalized.filter((session) => session.sessionId !== activeRecord.sessionId),
+        ]
+        : normalized;
+      setBrowserSessions(merged);
+      return merged;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const loadAgentStatus = React.useCallback(async (sessionId: string) => {
     if (!sessionId) return null;
+    setAgentSessionId(sessionId);
     try {
       const next = await getBrowserAgentStatus(sessionId);
       setAgentStatus(next);
       setAgentStatusError("");
+      const record = browserSessionFromStatus(next, sessionId);
+      if (record) upsertBrowserSession(record);
       return next;
     } catch (err) {
       setAgentStatusError(err instanceof Error ? err.message : String(err));
+      setAgentStatus(null);
       return null;
     }
-  }, []);
+  }, [upsertBrowserSession]);
+
+  const activateBrowserSession = React.useCallback(async (sessionId: string) => {
+    setError("");
+    setAgentStatusError("");
+    setBrowserRunError("");
+    setBrowserRunResult(null);
+    setBrowserInstruction("");
+    try {
+      window.localStorage.setItem(BROWSER_SESSION_ID_KEY, sessionId);
+    } catch {}
+    return loadAgentStatus(sessionId);
+  }, [loadAgentStatus]);
+
+  const linkChatSessionToBrowser = React.useCallback(async (sessionId: string) => {
+    if (!sessionId) return null;
+    try {
+      window.localStorage.setItem(CHAT_SESSION_ID_KEY, sessionId);
+      window.localStorage.setItem(BROWSER_SESSION_ID_KEY, sessionId);
+    } catch {}
+    return activateBrowserSession(sessionId);
+  }, [activateBrowserSession]);
+
+  React.useEffect(() => {
+    const handleBrowserSessionLink = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string }>).detail || {};
+      const nextSessionId = detail.sessionId || currentBrowserSessionId();
+      if (!nextSessionId || nextSessionId === agentSessionIdRef.current) return;
+      void activateBrowserSession(nextSessionId);
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== BROWSER_SESSION_ID_KEY || !event.newValue || event.newValue === agentSessionIdRef.current) return;
+      void activateBrowserSession(event.newValue);
+    };
+    window.addEventListener(BROWSER_SESSION_LINK_EVENT, handleBrowserSessionLink as EventListener);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(BROWSER_SESSION_LINK_EVENT, handleBrowserSessionLink as EventListener);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [activateBrowserSession]);
 
   React.useEffect(() => {
     if (!isActive) return;
-    void loadAgentStatus();
-    const interval = window.setInterval(() => void loadAgentStatus(), 2500);
-    return () => window.clearInterval(interval);
-  }, [isActive, loadAgentStatus]);
+    void refreshBrowserSessions();
+    void loadAgentStatus(agentSessionId);
+    const statusInterval = window.setInterval(() => void loadAgentStatus(agentSessionId), 2500);
+    const sessionsInterval = window.setInterval(() => void refreshBrowserSessions(), 12000);
+    return () => {
+      window.clearInterval(statusInterval);
+      window.clearInterval(sessionsInterval);
+    };
+  }, [agentSessionId, isActive, loadAgentStatus, refreshBrowserSessions]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(BROWSER_SESSION_ID_KEY, agentSessionId);
+    } catch {}
+  }, [agentSessionId]);
 
   React.useEffect(() => {
     if (!agentState || loading) return;
@@ -250,6 +498,89 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
       setScreenshotError(err instanceof Error ? err.message : String(err));
     });
   }, [agentBackend, agentUpdatedAt, isActive, loading, playwrightStatus, refreshPlaywrightScreenshot]);
+
+  const createLinkedChatSession = React.useCallback(async () => {
+    const sessionId = openProgram("chat");
+    if (!sessionId) return;
+    try {
+      window.localStorage.setItem(CHAT_SESSION_ID_KEY, sessionId);
+      window.localStorage.setItem(BROWSER_SESSION_ID_KEY, sessionId);
+    } catch {}
+    setAgentSessionId(sessionId);
+    setAgentStatus(null);
+    setBrowserRunResult(null);
+    setBrowserRunError("");
+    setBrowserInstruction("");
+    try {
+      const created = await createBrowserAgentSession(sessionId);
+      const record = browserSessionFromStatus(created, sessionId);
+      if (record) upsertBrowserSession(record);
+      await refreshBrowserSessions();
+    } catch (err) {
+      setAgentStatusError(err instanceof Error ? err.message : String(err));
+    }
+  }, [openProgram, refreshBrowserSessions, upsertBrowserSession]);
+
+  const resetBrowserSession = React.useCallback(async () => {
+    if (!agentSessionId) return;
+    setError("");
+    setAgentStatusError("");
+    setBrowserRunError("");
+    setBrowserRunResult(null);
+    setBrowserInstruction("");
+    setAgentStatus(null);
+    try {
+      await resetBrowserAgent(agentSessionId);
+      await refreshBrowserSessions();
+      await loadAgentStatus(agentSessionId);
+    } catch (err) {
+      setAgentStatusError(err instanceof Error ? err.message : String(err));
+    }
+  }, [agentSessionId, loadAgentStatus, refreshBrowserSessions]);
+
+  const runBrowserInstruction = React.useCallback(async () => {
+    const instruction = browserInstruction.trim();
+    if (!instruction || browserRunning) return;
+    const runSessionId = agentSessionId;
+
+    setBrowserRunning(true);
+    setError("");
+    setBrowserRunError("");
+    try {
+      const route = explicitInstructionRoute(instruction);
+      const result = await runBrowserAgent({
+        instruction,
+        sessionId: runSessionId,
+        route,
+        currentUrl: visualUrl || page?.url || address || "",
+        currentTitle: page?.title || "",
+        includeImages: route === "playwright" || selectedBackend === "playwright",
+      });
+      const stillCurrent = agentSessionIdRef.current === runSessionId;
+      if (stillCurrent) setBrowserRunResult(result);
+      const nextUrl = result.currentUrl || result.uiReport?.current?.url || "";
+      if (stillCurrent && nextUrl) {
+        setVisualUrl(nextUrl);
+        setAddress(nextUrl);
+      }
+      const record = browserSessionFromRun(result, runSessionId);
+      if (record) upsertBrowserSession(record);
+      await refreshBrowserSessions();
+      if (stillCurrent) {
+        await loadAgentStatus(runSessionId);
+        setBrowserInstruction("");
+      }
+      if (stillCurrent && !result.ok && result.error) {
+        setBrowserRunError(result.error);
+      }
+    } catch (err) {
+      if (agentSessionIdRef.current === runSessionId) {
+        setBrowserRunError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      setBrowserRunning(false);
+    }
+  }, [address, agentSessionId, browserInstruction, browserRunning, loadAgentStatus, page?.title, page?.url, refreshBrowserSessions, selectedBackend, upsertBrowserSession, visualUrl]);
 
   const ensurePlaywrightReady = React.useCallback(async () => {
     let status = await getPlaywrightMcpStatus();
@@ -387,6 +718,22 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const extractionPath = page?.extractionPath || page?.extractionSources?.join(", ") || (playwrightResult ? "playwright_mcp.snapshot" : "none");
   const aiRuntimeTitle = agentState?.currentTitle || page?.title || (playwrightResult ? "Playwright snapshot" : "No page yet");
   const agentModel = agentStatus?.runtime?.models?.planner || agentStatus?.runtime?.model || "";
+  const currentBrowserSession = React.useMemo(() => {
+    return browserSessions.find((session) => session.sessionId === agentSessionId)
+      || browserSessionFromStatus(agentStatus, agentSessionId)
+      || null;
+  }, [agentSessionId, agentStatus, browserSessions]);
+  const browserOnlySessions = React.useMemo(() => {
+    const chatSessionIds = new Set(chatSessions.map((session) => session.sessionId));
+    return browserSessions.filter((session) => !chatSessionIds.has(session.sessionId));
+  }, [browserSessions, chatSessions]);
+  const browserRunSummary = browserRunResult?.summary || browserRunResult?.uiReport?.summary || "";
+  const browserRunNextAction = browserRunResult?.nextSafeAction || browserRunResult?.uiReport?.nextSafeAction || "";
+  const browserRunRoute = browserRunResult?.route || browserRunResult?.uiReport?.route || "";
+  const activeLatencyMs = selectedBackend === "playwright"
+    ? playwrightResponseMs(playwrightStatus)
+    : lightpandaResult?.durationMs || lightpandaStatus?.durationMs;
+  const activeLatencyTone = latencyTone(activeLatencyMs);
 
   return (
     <div className="program-shell browser-workbench">
@@ -405,8 +752,16 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
             {playwrightStatus?.server?.toolCount ? ` (${playwrightStatus.server.toolCount} tools)` : ""}
           </span>
           {agentSessionId && (
-            <span className={agentStatus?.ok ? "is-ready" : "is-down"}>AI: {agentStatus?.ok ? "following" : "offline"}</span>
+            <span
+              className={agentStatus?.ok ? "is-ready" : "is-down"}
+              title={currentBrowserSession?.summary || currentBrowserSession?.lastInstruction || ""}
+            >
+              AI session: {linkedChatSession?.title || "browser-only"} · #{agentSessionId.slice(0, 8)} · {agentStatus?.ok ? "following" : "offline"}
+            </span>
           )}
+          <span className={`browser-latency browser-latency--${activeLatencyTone}`}>
+            response {duration(activeLatencyMs)}
+          </span>
           <button
             type="button"
             className={screenshotPolling ? "is-ready" : ""}
@@ -507,8 +862,8 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
           </div>
           <div className="browser-live-footer">
             <span><Bot size={13} /> AI backend: {selectedBackend === "playwright" ? "playwright_mcp" : "lightpanda"}</span>
-            {agentSessionId && <span>AI session {agentSessionId.slice(0, 8)}</span>}
-            <span><Clock size={13} /> {duration(lightpandaResult?.durationMs || lightpandaStatus?.durationMs)}</span>
+            {agentSessionId && <span>AI session {linkedChatSession?.title || `#${agentSessionId.slice(0, 8)}`}</span>}
+            <span className={`browser-latency browser-latency--${activeLatencyTone}`}><Clock size={13} /> {duration(activeLatencyMs)}</span>
             {selectedBackend === "playwright" && <span>Playwright preview uses screenshot polling, not video streaming.</span>}
             {lastScreenshotAt && selectedBackend === "playwright" && <span>screenshot updated {lastScreenshotAt}</span>}
             {screenshotError && selectedBackend === "playwright" && <span className="is-down">screenshot error: {compact(screenshotError, 120)}</span>}
@@ -523,7 +878,108 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
             <p>{compact(readablePreview || playwrightPreview || "Navigate to a page and the browser agent preview will appear here.", 420)}</p>
             {error && <pre>{error}</pre>}
             {agentStatusError && <pre>{agentStatusError}</pre>}
-            {agentModel && <small className="browser-agent-model">planner: {compact(agentModel, 54)}</small>}
+            {browserRunSummary && <small className="browser-session-summary">last run: {compact(browserRunSummary, 220)}</small>}
+            {browserRunNextAction && <small className="browser-session-summary browser-session-summary--next">next: {compact(browserRunNextAction, 220)}</small>}
+            <div className="browser-hero-meta">
+              {currentBrowserSession && <small className="browser-agent-model">session: {browserSessionLabel(currentBrowserSession)}</small>}
+              {agentModel && <small className="browser-agent-model">planner: {compact(agentModel, 54)}</small>}
+              {browserRunRoute && <small className="browser-agent-model">route: {browserRunRoute}</small>}
+            </div>
+          </section>
+
+          <form
+            className="browser-card browser-composer-shell"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void runBrowserInstruction();
+            }}
+          >
+            <div className="browser-composer-head">
+              <span>browser prompt</span>
+              <small>direct to orchestrator · {linkedChatSession?.title || "browser-only session"}</small>
+            </div>
+            <label className="browser-composer input-shell" onPointerDown={focusInputShell}>
+              <textarea
+                value={browserInstruction}
+                onChange={(event) => setBrowserInstruction(event.target.value)}
+                placeholder="Go to a page, read the table, scrape the contents, fill a form, or compare two pages."
+                rows={4}
+              />
+            </label>
+            <div className="browser-composer-actions">
+              <button type="submit" className="browser-primary-action" disabled={browserRunning || !browserInstruction.trim()}>
+                {browserRunning ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                Run prompt
+              </button>
+            </div>
+            {(browserRunError || browserRunSummary) && (
+              <div className="browser-composer-output">
+                {browserRunError && <pre className="browser-composer-error">{browserRunError}</pre>}
+                {!browserRunError && browserRunSummary && <p>{compact(browserRunSummary, 260)}</p>}
+              </div>
+            )}
+          </form>
+
+          <section className="browser-card">
+            <div className="browser-card-head">
+              <span>linked chat sessions</span>
+              <button type="button" className="browser-card-action" onClick={() => void createLinkedChatSession()} disabled={browserRunning}>
+                New chat tab
+              </button>
+            </div>
+            <div className="browser-session-list">
+              {chatSessions.length === 0 ? (
+                <em>No chat sessions yet. Create one to link chat and browser state.</em>
+              ) : (
+                chatSessions.map((session) => {
+                  const active = session.sessionId === agentSessionId;
+                  return (
+                    <button
+                      key={session.sessionId}
+                      type="button"
+                      className={active ? "is-active" : ""}
+                      onClick={() => void linkChatSessionToBrowser(session.sessionId)}
+                    >
+                      <strong>{session.title}</strong>
+                      <small>{active ? "browser agent attached" : "attach browser agent to this chat"}</small>
+                      <span className="browser-session-id">#{compact(session.sessionId, 10)}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          <section className="browser-card">
+            <div className="browser-card-head">
+              <span>browser-only sessions</span>
+              <div className="browser-hero-meta">
+                <button type="button" className="browser-card-action" onClick={() => void resetBrowserSession()} disabled={browserRunning || !agentSessionId}>
+                  Reset current
+                </button>
+              </div>
+            </div>
+            <div className="browser-session-list">
+              {browserOnlySessions.length === 0 ? (
+                <em>No standalone browser sessions yet.</em>
+              ) : (
+                browserOnlySessions.map((session) => {
+                  const active = session.sessionId === agentSessionId;
+                  return (
+                    <button
+                      key={session.sessionId}
+                      type="button"
+                      className={active ? "is-active" : ""}
+                      onClick={() => void activateBrowserSession(session.sessionId)}
+                    >
+                      <strong>{browserSessionLabel(session)}</strong>
+                      <small>{browserSessionSubtitle(session) || "session ready"}</small>
+                      <span className="browser-session-id">#{compact(session.sessionId, 10)}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </section>
 
           <section className="browser-card">

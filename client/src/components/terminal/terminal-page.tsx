@@ -927,7 +927,7 @@ function PageContent({ page, isActive }: { page: Page; isActive: boolean }) {
   if (page.type === "spreadsheet") return <SpreadsheetViewer filePath={page.filePath} />;
   if (page.type === "doc")       return <DocViewer filePath={page.filePath} />;
   if (page.type === "browser")   return <BrowserShell isActive={isActive} />;
-  if (page.type === "chat")      return <ChatShell isActive={isActive} />;
+  if (page.type === "chat")      return <ChatShell isActive={isActive} pageSessionId={page.sessionId} pageTitle={page.title} />;
   if (page.type === "logs")      return <LogsShell isActive={isActive} />;
   if (page.type === "forum")     return <ForumShell />;
   if (page.type === "community") return <CommunityShell />;

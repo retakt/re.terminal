@@ -77,7 +77,7 @@ export interface AppContextValue {
   openPdf: (filePath: string, title?: string) => void;
   openSpreadsheet: (filePath: string, title?: string) => void;
   openDoc: (filePath: string, title?: string) => void;
-  openProgram: (kind: ProgramKind, title?: string) => void;
+  openProgram: (kind: ProgramKind, title?: string, options?: { sessionId?: string }) => string | undefined;
   openPath: (filePath: string) => void;
   closePage: (id: string) => void;
   switchPage: (id: string) => void;
@@ -110,7 +110,24 @@ function loadPages(): Page[] {
     const raw = localStorage.getItem(PAGES_KEY);
     if (!raw) return [];
     const pages = JSON.parse(raw) as Page[];
-    return pages.filter(p => p.type !== "terminal");
+    let migratedChatNumber = 1;
+    return pages
+      .filter(p => p.type !== "terminal")
+      .map((page) => {
+        if (page.type !== "chat") return page;
+        const title = String(page.title || "").trim();
+        const legacy = title.match(/^ai chat\s*(\d+)?$/i);
+        const existing = title.match(/^session\s*#\s*(\d+)$/i);
+        const sessionId = "sessionId" in page && page.sessionId ? page.sessionId : generateUUID();
+        if (existing) {
+          migratedChatNumber = Math.max(migratedChatNumber, Number(existing[1]) + 1);
+          return { ...page, sessionId };
+        }
+        if (!legacy && title) return { ...page, sessionId };
+        const number = legacy?.[1] ? Number(legacy[1]) : migratedChatNumber;
+        migratedChatNumber = Math.max(migratedChatNumber, number + 1);
+        return { ...page, sessionId, title: `session #${number}` };
+      });
   } catch {
     return [];
   }
@@ -136,7 +153,7 @@ function loadActiveId(): string | null {
 
 const PROGRAM_TITLES: Record<ProgramKind, string> = {
   browser: "browser",
-  chat: "ai chat",
+  chat: "session",
   logs: "Logs",
   forum: "forum",
   community: "community",
@@ -147,6 +164,17 @@ const PROGRAM_TITLES: Record<ProgramKind, string> = {
   playground: "playground",
   "memory-graph": "memory graph",
 };
+
+function nextChatSessionTitle(pages: Page[]) {
+  const maxNumber = pages
+    .filter((page) => page.type === "chat")
+    .reduce((max, page) => {
+      const match = String(page.title || "").match(/(?:session\s*#|ai chat\s*)(\d+)/i);
+      const number = match ? Number(match[1]) : 0;
+      return Number.isFinite(number) ? Math.max(max, number) : max;
+    }, 0);
+  return `session #${maxNumber + 1}`;
+}
 
 function viewerTitle(filePath: string, title?: string) {
   return title || getBaseName(filePath);
@@ -400,17 +428,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [queueAuditEvent]);
 
-  const openProgram = useCallback((kind: ProgramKind, title?: string) => {
+  const openProgram = useCallback((kind: ProgramKind, title?: string, options?: { sessionId?: string }) => {
+    const requestedChatSessionId = kind === "chat" ? options?.sessionId || generateUUID() : undefined;
     setPages(prev => {
       // Allow multiple chat tabs, each with a unique session/memory
       if (kind === "chat") {
-        const chatCount = prev.filter(p => p.type === "chat").length;
-        const sessionId = generateUUID();
+        const sessionId = requestedChatSessionId || generateUUID();
         const page: ProgramPage = {
           id: uid(),
           type: kind,
           sessionId,
-          title: title || `ai chat ${chatCount + 1}`,
+          title: title || nextChatSessionTitle(prev),
         };
         queueAuditEvent([
           makePageAuditEvent(page, "page.open", `opened ${page.title}`),
@@ -442,6 +470,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setActivePageId(page.id);
       return [...prev, page];
     });
+    return requestedChatSessionId;
   }, [queueAuditEvent]);
 
   const openPath = useCallback((filePath: string) => {

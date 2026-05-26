@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightOpenIcon, PanelRightCloseIcon, Brain, SlidersHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightOpenIcon, PanelRightCloseIcon, Brain, SlidersHorizontalIcon, PencilIcon, Trash2Icon, MessageSquareIcon, GlobeIcon } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -17,6 +17,8 @@ import { useApp } from "@/contexts/app-context";
 const PANEL_MOTION_KEY = "reterm.chat.panelMotion";
 const MOBILE_QUERY = "(max-width: 1024px), (hover: none) and (pointer: coarse)";
 const MOBILE_PANEL_EXIT_MS = 380;
+const BROWSER_SESSION_ID_KEY = "reterm.browser.agentSessionId";
+const BROWSER_SESSION_LINK_EVENT = "reterm.browser.session-link";
 type MobilePanelSide = "context" | "activity";
 
 function loadPanelMotion(): PanelMotionMode {
@@ -44,6 +46,10 @@ function useIsCompactChatLayout() {
   }, []);
 
   return isCompact;
+}
+
+function sessionHash(sessionId = "") {
+  return sessionId ? sessionId.slice(0, 8) : "--------";
 }
 
 // ── Chat toolbar ──────────────────────────────────────────────────────────────
@@ -172,9 +178,69 @@ function ContextPanel() {
         <div className="space-y-4 p-3">
           <ModelSection />
           <RuntimeContextSection />
+          <ChatSessionsSection />
         </div>
       </ScrollArea>
     </div>
+  );
+}
+
+function ChatSessionsSection() {
+  const { sessionId: activeSessionId, setChatMode } = useChatContext();
+  const { pages, switchPage } = useApp();
+  const chatPages = pages.flatMap((page, index) => {
+    if (page.type !== "chat" || !("sessionId" in page) || !page.sessionId) return [];
+    return [{
+      pageId: page.id,
+      title: page.title || `session #${index + 1}`,
+      sessionId: String(page.sessionId),
+    }];
+  });
+
+  const linkBrowserSession = (pageId: string, sessionId: string) => {
+    try {
+      window.localStorage.setItem(BROWSER_SESSION_ID_KEY, sessionId);
+      window.dispatchEvent(new CustomEvent(BROWSER_SESSION_LINK_EVENT, { detail: { sessionId } }));
+    } catch {}
+    setChatMode("browser");
+    switchPage(pageId);
+  };
+
+  return (
+    <section className="chat-session-switcher">
+      <div className="chat-session-switcher__head">
+        <span>chat sessions</span>
+        <small>tabs own sessions</small>
+      </div>
+      <div className="chat-session-switcher__list">
+        {chatPages.length === 0 ? (
+          <em>No chat sessions yet.</em>
+        ) : (
+          chatPages.map((page) => {
+            const sessionId = page.sessionId;
+            const active = sessionId === activeSessionId;
+            return (
+              <div key={page.pageId} className={cn("chat-session-switcher__row", active && "is-active")}>
+                <button type="button" className="chat-session-switcher__main" onClick={() => switchPage(page.pageId)}>
+                  <MessageSquareIcon className="size-3.5" />
+                  <span>{page.title}</span>
+                  <code>#{sessionHash(sessionId)}</code>
+                </button>
+                <button
+                  type="button"
+                  className="chat-session-switcher__browser"
+                  onClick={() => linkBrowserSession(page.pageId, sessionId)}
+                  title="Use this chat session as the browser-agent session"
+                >
+                  <GlobeIcon className="size-3" />
+                  browser
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -419,14 +485,22 @@ function ChatLayout({ isActive }: { isActive: boolean }) {
 
 // ── Chat shell (entry point) ──────────────────────────────────────────────────
 
-export function ChatShell({ isActive = true }: { isActive?: boolean }) {
+export function ChatShell({
+  isActive = true,
+  pageSessionId,
+  pageTitle,
+}: {
+  isActive?: boolean;
+  pageSessionId?: string;
+  pageTitle?: string;
+}) {
   const { pages, activePageId } = useApp();
   const activePage = pages.find(p => p.id === activePageId);
-  const initialSessionId = (activePage as any)?.sessionId;
-  const sessionName = activePage?.title;
+  const initialSessionId = pageSessionId || (activePage as any)?.sessionId;
+  const sessionName = pageTitle || activePage?.title;
 
   return (
-    <ChatProvider initialSessionId={initialSessionId} sessionName={sessionName}>
+    <ChatProvider initialSessionId={initialSessionId} sessionName={sessionName} isActive={isActive}>
       <ChatLayout isActive={isActive} />
     </ChatProvider>
   );

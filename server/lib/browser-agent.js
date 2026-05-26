@@ -4,6 +4,8 @@ import {
   defaultBrowserAgentState,
   loadBrowserAgentState,
   resetBrowserAgentState,
+  saveBrowserAgentState,
+  listBrowserAgentSessions,
 } from "./browser-agent/state.js";
 import {
   buildBrowserAgentMarkdownReport,
@@ -72,6 +74,12 @@ export async function browserAgentReset(args = {}) {
   };
 }
 
+export async function browserAgentCreateSession(args = {}) {
+  const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
+  saveBrowserAgentState(defaultBrowserAgentState(sessionId));
+  return browserAgentStatus({ sessionId });
+}
+
 export async function browserAgentStatus(args = {}) {
   const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
   const state = loadBrowserAgentState(sessionId);
@@ -92,6 +100,10 @@ export async function browserAgentStatus(args = {}) {
     ...status,
     uiReport: buildBrowserAgentStatusReport(status),
   };
+}
+
+export async function browserAgentListSessions() {
+  return listBrowserAgentSessions();
 }
 
 export async function browserAgentLearn(args = {}) {

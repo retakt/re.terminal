@@ -32,14 +32,30 @@ function normalizeField(field = {}) {
   };
 }
 
+function isSchemaPlaceholderField(field = {}) {
+  const label = safeText(field.label || "", 120).toLowerCase();
+  const value = safeText(field.value || "", 500).toLowerCase();
+  const placeholderLabels = new Set(["string", "label", "field", "field label", "name", "value"]);
+  if (!label && !value) return true;
+  if (placeholderLabels.has(label)) return true;
+  return label === "example" && value === "string";
+}
+
 function normalizeStep(step = {}) {
+  const kind = normalizeKind(step.kind);
+  const fields = ["fill", "fill_and_submit"].includes(kind) && Array.isArray(step.fields)
+    ? step.fields
+        .map(normalizeField)
+        .filter((field) => (field.label || field.value) && !isSchemaPlaceholderField(field))
+    : [];
+
   return {
-    kind: normalizeKind(step.kind),
+    kind,
     text: safeText(step.text || "", 1200),
     url: safeText(step.url || "", 600),
     query: safeText(step.query || "", 500),
     targetText: safeText(step.targetText || "", 240),
-    fields: Array.isArray(step.fields) ? step.fields.map(normalizeField).filter((field) => field.label || field.value) : [],
+    fields,
     notes: safeText(step.notes || "", 400),
     shouldVerify: step.shouldVerify !== false,
     shouldScreenshot: Boolean(step.shouldScreenshot),
@@ -127,12 +143,16 @@ function compactInstructionForRetry(instruction = "") {
   while ((match = pattern.exec(text))) {
     fields.push({ label: safeText(match[1], 120), value: safeText(match[2], 500) });
   }
+  const forbidsSubmit = /\b(?:do\s+not|don't|dont|never|without)\s+(?:click(?:ing)?\s+)?(?:submit|submitting|send|sending|post|posting)\b/i.test(text) ||
+    /\b(?:submit|send|post)\b[^.?!]{0,40}\b(?:not|required|needed|necessary)\b/i.test(text);
+  const requestsSubmit = !forbidsSubmit && /\b(?:submit|send|post)\b/i.test(text);
 
   return {
     instruction: safeText(text, 1200),
     url,
     fields,
-    requestsSubmit: /\bsubmit\b/i.test(text),
+    requestsSubmit,
+    forbidsSubmit,
     requestsScreenshot: /\bscreenshot\b/i.test(text),
     verificationText: text.match(/\b(?:page\s+says|verify(?:\s+the\s+page\s+says)?)\s+["']([^"']+)["']/i)?.[1] || "",
   };
@@ -262,10 +282,31 @@ function restoreExplicitInstructionDetails(plan = {}, compact = {}) {
 
   let steps = Array.isArray(plan.steps) ? plan.steps.map((step) => ({ ...step })) : [];
 
+  if (compact.forbidsSubmit) {
+    steps = steps
+      .map((step) => {
+        const kind = String(step.kind || "").toLowerCase();
+        if (kind !== "fill_and_submit") return step;
+        return {
+          ...step,
+          kind: "fill",
+          targetText: "",
+          notes: [step.notes || "", "Downgraded from fill_and_submit because the user explicitly said not to submit."]
+            .filter(Boolean)
+            .join(" "),
+        };
+      })
+      .filter((step) => String(step.kind || "").toLowerCase() !== "submit");
+  }
+
   if (fields.length) {
     const fillIndex = steps.findIndex((step) => ["fill", "fill_and_submit"].includes(String(step.kind || "").toLowerCase()));
     const mergedFields = (existingFields = []) => {
-      const out = Array.isArray(existingFields) ? [...existingFields] : [];
+      const out = Array.isArray(existingFields)
+        ? existingFields
+            .map(normalizeField)
+            .filter((field) => (field.label || field.value) && !isSchemaPlaceholderField(field))
+        : [];
       const seen = new Set(out.map(fieldKey));
       for (const field of fields) {
         const key = fieldKey(field);

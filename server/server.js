@@ -59,6 +59,8 @@ import {
 } from "./lib/browser-state-provider.js";
 import {
   browserAgentReset,
+  browserAgentCreateSession,
+  browserAgentListSessions,
   browserAgentRun,
   browserAgentStatus,
 } from "./lib/browser-agent.js";
@@ -919,6 +921,22 @@ app.get("/api/browser-agent/status", async (req, res) => {
     res.json(await browserAgentStatus({
       sessionId: req.query?.sessionId || req.query?.session || "default-browser-session",
     }));
+  } catch (err) {
+    res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get("/api/browser-agent/sessions", async (_req, res) => {
+  try {
+    res.json(await browserAgentListSessions());
+  } catch (err) {
+    res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/api/browser-agent/sessions", async (req, res) => {
+  try {
+    res.json(await browserAgentCreateSession(req.body || {}));
   } catch (err) {
     res.status(500).json({ ok: false, status: "failed", error: err instanceof Error ? err.message : String(err) });
   }

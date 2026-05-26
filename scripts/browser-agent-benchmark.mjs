@@ -30,6 +30,99 @@ function loadServerEnv() {
   }
 }
 
+function loadBenchmarkEnv() {
+  const envPath = path.join(repoRoot, "server", "config", "browser-agent", "benchmark.env");
+  if (!fs.existsSync(envPath)) return;
+  const raw = fs.readFileSync(envPath, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const index = trimmed.indexOf("=");
+    const key = trimmed.slice(0, index).trim();
+    const value = trimmed.slice(index + 1).trim();
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadBenchmarkEnv();
+loadServerEnv();
+
+const BASE_URL = firstEnv([
+  "BROWSER_AGENT_MAIN_BASE_URL",
+  "BROWSER_AGENT_ORCHESTRATOR_BASE_URL",
+  "BROWSER_AGENT_BASE_URL",
+  "OLLAMA_BASE_URL",
+], "http://takt-pc.reverse-cliff.ts.net:11434").replace(/\/+$/, "");
+
+async function ollamaTags() {
+  try {
+    const response = await fetch(`${BASE_URL}/api/tags`, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data.models) ? data.models.map((model) => model.name).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function firstEnv(names = [], fallback = "") {
+  for (const name of names) {
+    const value = String(process.env[name] || "").trim();
+    if (value) return value;
+  }
+  return fallback;
+}
+
+function unique(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function pickBenchmarkModel(availableModels = []) {
+  const benchmarkModel = String(process.env.BROWSER_AGENT_BENCHMARK_MODEL || "").trim();
+  if (benchmarkModel) return benchmarkModel;
+
+  const preferred = unique([
+    "llama3.2:latest",
+    "rnj-1:latest",
+    ...availableModels,
+    process.env.BROWSER_AGENT_MAIN_MODEL,
+    process.env.BROWSER_AGENT_PLANNER_MODEL,
+    process.env.BROWSER_AGENT_MODEL,
+    process.env.OLLAMA_MODEL,
+  ]);
+
+  for (const model of preferred) {
+    if (availableModels.includes(model)) return model;
+  }
+
+  return availableModels[0] || preferred[0] || "llama3.2:latest";
+}
+
+function applyBenchmarkModel(model = "") {
+  const chosen = String(model || "").trim();
+  if (!chosen) return;
+
+  const keys = [
+    "BROWSER_AGENT_BENCHMARK_MODEL",
+    "BROWSER_AGENT_MODEL",
+    "OLLAMA_MODEL",
+    "BROWSER_AGENT_MAIN_MODEL",
+    "BROWSER_AGENT_ORCHESTRATOR_MODEL",
+    "BROWSER_AGENT_PLANNER_MODEL",
+    "BROWSER_AGENT_STEP_AGENT_MODEL",
+    "BROWSER_AGENT_CHECKER_MODEL",
+    "BROWSER_AGENT_REVIEWER_MODEL",
+    "BROWSER_AGENT_WATCHER_MODEL",
+    "BROWSER_AGENT_RESULT_REVIEWER_MODEL",
+    "BROWSER_AGENT_FINAL_VERIFIER_MODEL",
+    "BROWSER_AGENT_REPORTER_MODEL",
+  ];
+
+  for (const key of keys) {
+    process.env[key] = chosen;
+  }
+}
+
 function nowStamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
@@ -324,9 +417,11 @@ function markdownTable(rows) {
 }
 
 async function main() {
-  loadServerEnv();
   fs.mkdirSync(artifactsDir, { recursive: true });
   const removedBefore = cleanupBenchmarkState();
+  const availableModels = await ollamaTags();
+  const selectedModel = pickBenchmarkModel(availableModels);
+  applyBenchmarkModel(selectedModel);
   const results = [];
 
   for (let index = 0; index < browserScenarios.length; index += 1) {
@@ -348,6 +443,8 @@ async function main() {
       removedBefore,
       removedAfter,
     },
+    availableModels,
+    selectedModel,
     results,
   };
   const outputPath = path.join(artifactsDir, `browser-agent-benchmark-${nowStamp()}.json`);

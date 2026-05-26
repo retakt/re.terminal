@@ -83,6 +83,8 @@ export interface PlaywrightMcpStatus {
     status?: "ready" | "configured" | "disabled" | "error" | string;
     error?: string;
     toolCount?: number;
+    responseMs?: number | null;
+    durationMs?: number | null;
   };
   error?: string;
 }
@@ -294,6 +296,19 @@ export interface BrowserAgentRunResult {
   error?: string;
 }
 
+export interface BrowserAgentSessionSummary {
+  sessionId: string;
+  currentUrl?: string;
+  currentTitle?: string;
+  route?: string;
+  routeEngine?: string;
+  lastInstruction?: string;
+  summary?: string;
+  status?: string;
+  updatedAt?: string;
+  historyCount?: number;
+}
+
 async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   const data = await response.json().catch(() => ({}));
@@ -384,6 +399,18 @@ export async function screenshotPlaywright(): Promise<PlaywrightMcpResult> {
 export async function getBrowserAgentStatus(sessionId?: string): Promise<BrowserAgentStatus> {
   const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
   return readJson<BrowserAgentStatus>(`/api/browser-agent/status${query}`);
+}
+
+export async function getBrowserAgentSessions(): Promise<BrowserAgentSessionSummary[]> {
+  return readJson<BrowserAgentSessionSummary[]>("/api/browser-agent/sessions");
+}
+
+export async function createBrowserAgentSession(sessionId?: string): Promise<BrowserAgentStatus> {
+  return readJson<BrowserAgentStatus>("/api/browser-agent/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sessionId ? { sessionId } : {}),
+  });
 }
 
 export async function runBrowserAgent(args: {
