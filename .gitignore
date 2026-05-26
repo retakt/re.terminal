@@ -10,7 +10,7 @@ client/artifacts/
 .env.*
 !.env.example
 !**/.env.example
-
+server/re-term.audit.jsonl 
 # Logs and temp files
 *.log
 *.tmp
