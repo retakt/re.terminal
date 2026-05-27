@@ -9,10 +9,7 @@
     "dev:client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
     "start": "npm run build && node --env-file=server/.env server/server.js",
-    "start:prod": "npm run build && node --env-file=server/.env server/server.js",
-    "smoke:mcp-architecture": "node server/scripts/smoke-mcp-architecture.js",
-    "smoke:readiness": "node server/scripts/smoke-production-readiness.js",
-    "smoke:all": "npm run smoke:mcp-architecture && npm run smoke:readiness"
+    "start:prod": "npm run build && node --env-file=server/.env server/server.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

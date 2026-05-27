@@ -1,16 +1,23 @@
 import fs from "fs";
 import path from "path";
 
-const AUDIT_LOG_FILE = path.resolve(
-  process.cwd(),
-  process.env.AUDIT_LOG_FILE || "re-term.audit.jsonl",
-);
 const MAX_IN_MEMORY = Math.max(200, Math.min(parseInt(process.env.AUDIT_LOG_MEMORY_MAX || "5000", 10) || 5000, 20000));
 
 let initialized = false;
 let sequence = 0;
 let auditStream = null;
 let recentEvents = [];
+let auditLogFile = "";
+
+function resolveAuditLogFile() {
+  if (!auditLogFile) {
+    auditLogFile = path.resolve(
+      process.cwd(),
+      process.env.AUDIT_LOG_FILE || "re-term.audit.jsonl",
+    );
+  }
+  return auditLogFile;
+}
 
 function safeClone(value) {
   try {
@@ -128,11 +135,12 @@ function ensureInitialized() {
   if (initialized) return;
   initialized = true;
 
-  fs.mkdirSync(path.dirname(AUDIT_LOG_FILE), { recursive: true });
+  const logFile = resolveAuditLogFile();
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
 
-  if (fs.existsSync(AUDIT_LOG_FILE)) {
+  if (fs.existsSync(logFile)) {
     try {
-      const raw = fs.readFileSync(AUDIT_LOG_FILE, "utf8");
+      const raw = fs.readFileSync(logFile, "utf8");
       const lines = raw.split(/\r?\n/).filter(Boolean);
       for (const line of lines.slice(-MAX_IN_MEMORY)) {
         try {
@@ -150,12 +158,12 @@ function ensureInitialized() {
     }
   }
 
-  auditStream = fs.createWriteStream(AUDIT_LOG_FILE, { flags: "a" });
+  auditStream = fs.createWriteStream(logFile, { flags: "a" });
 }
 
 export function getAuditLogFile() {
   ensureInitialized();
-  return AUDIT_LOG_FILE;
+  return resolveAuditLogFile();
 }
 
 export function appendAuditEvent(input = {}) {
@@ -230,6 +238,6 @@ export function queryAuditEvents(options = {}) {
     returned: events.length,
     limit,
     lastSeq: sequence,
-    logFile: AUDIT_LOG_FILE,
+    logFile: resolveAuditLogFile(),
   };
 }

@@ -179,6 +179,24 @@ export function resetBrowserAgentState(sessionId = "default-browser-session") {
   return defaultBrowserAgentState(sessionId);
 }
 
+export function resetAllBrowserAgentState() {
+  try {
+    if (!fs.existsSync(STATE_DIR)) return [];
+    const removed = [];
+    for (const name of fs.readdirSync(STATE_DIR)) {
+      if (!name.endsWith(".json")) continue;
+      const filePath = path.join(STATE_DIR, name);
+      try {
+        fs.unlinkSync(filePath);
+        removed.push(name);
+      } catch {}
+    }
+    return removed;
+  } catch {
+    return [];
+  }
+}
+
 export function updateBrowserAgentState(state = {}, patch = {}) {
   return saveBrowserAgentState({
     ...state,

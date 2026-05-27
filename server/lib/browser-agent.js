@@ -4,6 +4,7 @@ import {
   defaultBrowserAgentState,
   loadBrowserAgentState,
   mergeBrowserAgentObservation,
+  resetAllBrowserAgentState,
   resetBrowserAgentState,
   saveBrowserAgentState,
   listBrowserAgentSessions,
@@ -72,15 +73,20 @@ export async function browserAgentObserve(args = {}) {
 }
 
 export async function browserAgentReset(args = {}) {
-  const sessionId = safeSessionId(args.sessionId || DEFAULT_SESSION_ID);
-  resetBrowserAgentState(sessionId);
+  const hasSessionId = typeof args.sessionId === "string" && args.sessionId.trim();
+  const sessionId = hasSessionId ? safeSessionId(args.sessionId || DEFAULT_SESSION_ID) : DEFAULT_SESSION_ID;
+  if (hasSessionId) {
+    resetBrowserAgentState(sessionId);
+  } else {
+    resetAllBrowserAgentState();
+  }
   const state = defaultBrowserAgentState(sessionId);
   const result = {
     ok: true,
     status: "success",
     sessionId,
     state,
-    summary: "Browser session reset.",
+    summary: hasSessionId ? "Browser session reset." : "All browser sessions reset.",
   };
   return {
     ...result,

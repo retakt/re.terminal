@@ -1,8 +1,16 @@
-```
 # Dependencies
 node_modules/
+
+# Build outputs and generated app data
 artifacts/
 client/artifacts/
+client/dist/
+client/.vite/
+client/.cache/
+server/data/
+client/data/
+server/.playwright-mcp/
+server/lib/browser-agents/
 
 # Environment
 .env
@@ -10,20 +18,30 @@ client/artifacts/
 .env.*
 !.env.example
 !**/.env.example
-server/re-term.audit.jsonl 
-# Logs and temp files
+
+# Logs, audits, temp files
 *.log
+*.jsonl
 *.tmp
-server/data/
-client/data/
-client/dist/
-client/artifacts/
-server/.playwright-mcp/
-server/lib/browser-agents/
+
+# One-off patch/debug scripts
+*.cjs
+*.mjs
+
+# Tests, smoke checks, snapshots, browser-agent runtime state
+coverage/
+__tests__/
+__snapshots__/
+test/
+tests/
+*.test.*
+*.spec.*
+test-*
+smoke-*
+server/debug-browser-agent-*.json
+server/config/browser-agent/*.json
+server/config/browser-agent/benchmark.env
+server/lib/config/browser-agent/*.json
+
 # Editors
 .vscode/
-```
-
-# Browser agent debug artifacts
-server/debug-browser-agent-*.json
-server/config/browser-agent/debug-browser-*.json

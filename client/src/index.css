@@ -1689,6 +1689,65 @@ body {
 .reterm-tab--editor .reterm-tab-icon   { color: var(--accent-yellow); }
 .reterm-tab--files  .reterm-tab-icon   { color: var(--accent-cyan);   }
 .reterm-tab--terminal .reterm-tab-icon { color: var(--accent-blue);   }
+.reterm-tab--browser,
+.reterm-tab[data-page-type="browser"] {
+  --tab-accent: #a3e635;
+}
+.reterm-tab--chat,
+.reterm-tab[data-page-type="chat"] {
+  --tab-accent: var(--accent-orange);
+}
+.reterm-tab--browser .reterm-tab-icon,
+.reterm-tab[data-page-type="browser"] .reterm-tab-icon {
+  color: #a3e635;
+}
+.reterm-tab--chat .reterm-tab-icon,
+.reterm-tab[data-page-type="chat"] .reterm-tab-icon {
+  color: var(--accent-orange);
+}
+.reterm-tab--browser.reterm-tab--active .reterm-tab-icon,
+.reterm-tab[data-page-type="browser"].reterm-tab--active .reterm-tab-icon {
+  color: #a3e635;
+}
+.reterm-tab--chat.reterm-tab--active .reterm-tab-icon,
+.reterm-tab[data-page-type="chat"].reterm-tab--active .reterm-tab-icon {
+  color: var(--accent-orange);
+}
+.reterm-tab--browser:hover,
+.reterm-tab[data-page-type="browser"]:hover,
+.reterm-tab--chat:hover,
+.reterm-tab[data-page-type="chat"]:hover {
+  background: color-mix(in srgb, var(--tab-accent) 6%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--tab-accent) 22%, transparent);
+}
+.reterm-tab--browser.reterm-tab--active .reterm-tab-title,
+.reterm-tab[data-page-type="browser"].reterm-tab--active .reterm-tab-title {
+  color: color-mix(in srgb, #a3e635 84%, var(--fg-base));
+}
+.reterm-tab--chat.reterm-tab--active .reterm-tab-title,
+.reterm-tab[data-page-type="chat"].reterm-tab--active .reterm-tab-title {
+  color: color-mix(in srgb, var(--accent-orange) 84%, var(--fg-base));
+}
+.reterm-tab--browser.reterm-tab--active,
+.reterm-tab[data-page-type="browser"].reterm-tab--active {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.05),
+    inset 0 0 0 1px color-mix(in srgb, #a3e635 24%, transparent);
+}
+.reterm-tab--browser.reterm-tab--active::after,
+.reterm-tab[data-page-type="browser"].reterm-tab--active::after {
+  background: #a3e635;
+}
+.reterm-tab--chat.reterm-tab--active,
+.reterm-tab[data-page-type="chat"].reterm-tab--active {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.05),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent-orange) 24%, transparent);
+}
+.reterm-tab--chat.reterm-tab--active::after,
+.reterm-tab[data-page-type="chat"].reterm-tab--active::after {
+  background: var(--accent-orange);
+}
 
 /* ─── File sub-tab bar ───────────────────────────────────────────────────── */
 
@@ -13564,7 +13623,7 @@ display: flex !important;
   flex-direction: column;
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  background: var(--bg-base);
+  background: var(--bg-surface);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   overflow: hidden;
 }
@@ -14252,23 +14311,23 @@ display: flex !important;
 .browser-composer-error { margin: 0; padding: 8px; border-color: color-mix(in srgb, #fb7185 44%, var(--ui-border-soft, var(--browser-border))); color: #fecdd3; background: color-mix(in srgb, #fb7185 10%, transparent); }
 .browser-card-action { height: 24px; padding: 0 9px; border: 1px solid var(--browser-border); border-radius: 4px; background: color-mix(in srgb, var(--ui-card, #101014) 80%, transparent); color: var(--text-muted, #94a3b8); font-size: 11px; cursor: pointer; }
 .browser-card-action:disabled { cursor: not-allowed; opacity: .55; }
-.browser-session-list { display: grid; gap: 7px; }
-.browser-session-list button { display: grid; gap: 3px; width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--ui-border-soft, var(--browser-border)); border-radius: 4px; background: var(--ui-input, color-mix(in srgb, var(--bg-base, #09090b) 75%, transparent)); color: var(--ui-text, var(--text-primary, #f8fafc)); text-align: left; cursor: pointer; }
+.browser-session-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; min-width: 0; }
+.browser-session-list button { display: grid; gap: 3px; width: 100%; min-width: 0; min-height: 42px; padding: 8px 10px; border: 1px solid var(--ui-border-soft, var(--browser-border)); border-radius: 4px; background: var(--ui-input, color-mix(in srgb, var(--bg-base, #09090b) 75%, transparent)); color: var(--ui-text, var(--text-primary, #f8fafc)); text-align: left; cursor: pointer; }
 .browser-session-list button.is-active { border-color: color-mix(in srgb, var(--browser-accent) 55%, var(--browser-border)); background: color-mix(in srgb, var(--browser-accent) 11%, var(--bg-base, #09090b)); }
-.browser-session-list strong { display: block; color: var(--ui-text, var(--text-primary, #f8fafc)); font-size: 12px; line-height: 1.35; }
+.browser-session-list strong { display: block; color: var(--ui-text, var(--text-primary, #f8fafc)); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; }
 .browser-session-list small,
 .browser-session-list em,
-.browser-session-id { color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 11px; font-style: normal; }
+.browser-session-id { color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 11px; font-style: normal; overflow-wrap: anywhere; word-break: break-word; }
 .browser-session-id { color: color-mix(in srgb, var(--browser-accent) 78%, var(--text-muted, #94a3b8)); font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
 .browser-session-list em { display: block; padding: 4px 0; }
 .browser-agent-model { display: block; margin-top: 9px; color: var(--fg-dim, var(--text-muted, #94a3b8)); font-size: 11px; }
 .browser-signal-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
 .browser-signal-grid strong { display: grid; place-items: center; min-height: 52px; border: 1px solid var(--ui-border-soft, var(--browser-border)); border-radius: 4px; color: var(--ui-text, var(--text-primary, #f8fafc)); font-size: 17px; background: var(--ui-input, color-mix(in srgb, var(--bg-base, #09090b) 70%, transparent)); }
 .browser-signal-grid em { color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 10px; font-style: normal; font-weight: 500; }
-.browser-action-list, .browser-link-list { display: grid; gap: 7px; }
-.browser-action-list button, .browser-link-list button { display: grid; gap: 3px; width: 100%; min-height: 34px; padding: 8px 10px; border: 1px solid var(--ui-border-soft, var(--browser-border)); border-radius: 4px; background: var(--ui-input, color-mix(in srgb, var(--bg-base, #09090b) 75%, transparent)); color: var(--ui-text, var(--text-primary, #f8fafc)); text-align: left; cursor: pointer; }
+.browser-action-list, .browser-link-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; min-width: 0; }
+.browser-action-list button, .browser-link-list button { display: grid; gap: 3px; width: 100%; min-width: 0; min-height: 34px; padding: 8px 10px; border: 1px solid var(--ui-border-soft, var(--browser-border)); border-radius: 4px; background: var(--ui-input, color-mix(in srgb, var(--bg-base, #09090b) 75%, transparent)); color: var(--ui-text, var(--text-primary, #f8fafc)); text-align: left; cursor: pointer; }
 .browser-action-list button:disabled { cursor: not-allowed; opacity: .5; }
-.browser-link-list small, .browser-link-list em { color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 11px; font-style: normal; }
+.browser-link-list small, .browser-link-list em { color: var(--fg-muted, var(--text-muted, #94a3b8)); font-size: 11px; font-style: normal; overflow-wrap: anywhere; word-break: break-word; }
 @media (max-width: 980px) { .browser-stage { grid-template-columns: minmax(0, 1fr); } .browser-ai-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) { .browser-workbench { padding: 8px; } .browser-topbar { align-items: flex-start; flex-direction: column; } .browser-commandbar { grid-template-columns: 34px 34px 34px minmax(0, 1fr); } .browser-commandbar select, .browser-commandbar .browser-primary-action, .browser-commandbar button:last-child { grid-column: span 2; } .browser-ai-panel { grid-template-columns: minmax(0, 1fr); } .browser-composer { min-height: 96px; } }
 
@@ -14350,8 +14409,8 @@ display: flex !important;
     height: 100%;
     padding: 8px;
     border-left: 1px solid var(--browser-border);
-    background: color-mix(in srgb, var(--browser-panel) 96%, var(--bg-base, #09090b) 4%);
-    box-shadow: -18px 0 36px rgba(0,0,0,.32);
+    background: color-mix(in srgb, var(--ui-panel, var(--browser-panel)) 96%, transparent);
+    box-shadow: -12px 0 28px rgba(0,0,0,.22);
     transform: translateX(calc(100% + 12px));
     transition: transform .16s ease;
     grid-template-columns: minmax(0, 1fr) !important;
@@ -14374,6 +14433,7 @@ display: flex !important;
   .browser-workbench { padding: 4px; }
   .browser-topbar { align-items: center; flex-direction: row; min-height: 38px; }
   .browser-title div span { display: none; }
+  .browser-view-label { display: none; }
   .browser-status-strip { flex: 1; justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .browser-status-strip::-webkit-scrollbar { display: none; }
   .browser-commandbar { grid-template-columns: 30px 30px 30px minmax(128px, 1fr) 82px 58px; gap: 4px; padding: 5px; overflow-x: auto; }
@@ -14547,6 +14607,13 @@ display: flex !important;
   min-height: 0;
   overflow: hidden;
   position: relative;
+}
+
+.program-shell.browser-workbench .browser-stage {
+  border: 1px solid var(--browser-border) !important;
+  border-radius: 4px !important;
+  background: var(--browser-panel) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
 }
 
 .browser-split-group {
@@ -17393,6 +17460,19 @@ display: flex !important;
   min-height: 20px !important;
   gap: 4px !important;
   padding: 0 6px !important;
+  color: var(--ui-muted) !important;
+  background: color-mix(in srgb, var(--ui-input) 92%, transparent) !important;
+  border-color: var(--ui-border-soft) !important;
+}
+
+.browser-topbar .browser-view-toggle button svg {
+  display: none !important;
+}
+
+.browser-topbar .browser-view-toggle button.is-active {
+  color: color-mix(in srgb, var(--browser-accent) 82%, var(--fg-base)) !important;
+  border-color: color-mix(in srgb, var(--browser-accent) 26%, var(--ui-border-soft)) !important;
+  background: color-mix(in srgb, var(--browser-accent) 5%, var(--ui-input)) !important;
 }
 
 .browser-process-view {
@@ -17428,13 +17508,23 @@ display: flex !important;
 }
 
 .browser-card-action--reset:not(:disabled) {
-  border-color: color-mix(in srgb, var(--browser-danger) 44%, var(--border-subtle)) !important;
-  background: color-mix(in srgb, var(--browser-danger) 7%, transparent) !important;
-  color: var(--browser-danger) !important;
+  border-color: color-mix(in srgb, var(--browser-accent) 44%, var(--border-subtle)) !important;
+  background: color-mix(in srgb, var(--browser-accent) 7%, transparent) !important;
+  color: color-mix(in srgb, var(--browser-accent) 84%, var(--fg-base)) !important;
+}
+
+.browser-card-action--reset:not(:disabled) svg {
+  color: color-mix(in srgb, var(--browser-accent) 84%, var(--fg-base)) !important;
 }
 
 .browser-card-action--reset:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--browser-danger) 70%, var(--border-subtle)) !important;
   background: color-mix(in srgb, var(--browser-danger) 12%, transparent) !important;
+  color: var(--browser-danger) !important;
+}
+
+.browser-card-action--reset:not(:disabled):hover svg {
+  color: var(--browser-danger) !important;
 }
 
 .browser-agent-model--session {
@@ -17452,6 +17542,15 @@ display: flex !important;
 .browser-card-head small,
 .browser-conversation-card .browser-card-head small {
   color: color-mix(in srgb, var(--browser-meta-session) 70%, var(--fg-muted)) !important;
+}
+
+.browser-card-head .browser-hero-meta {
+  margin-top: 0 !important;
+  margin-right: 4px !important;
+}
+
+.browser-card-head .browser-card-action--icon {
+  padding-inline: 6px !important;
 }
 
 @media (max-width: 720px) {
@@ -17517,6 +17616,10 @@ display: flex !important;
     max-width: 27px !important;
     padding: 0 !important;
     font-size: 0 !important;
+  }
+
+  .browser-topbar .browser-view-toggle button svg {
+    display: inline-flex !important;
   }
 
   .browser-topbar .browser-view-toggle button span {
@@ -17879,20 +17982,1321 @@ display: flex !important;
   box-shadow: none !important;
 }
 
-/* remove right panel left border only on desktop so it does not double with overlay */
-.browser-ai-panel--desktop {
+/* browser-overlay-only:end */
+
+/* Browser mobile drawer full-bleed fix:
+   keep the internal split between the process and conversation cards, but make
+   the overlay itself fill the phone frame top-to-bottom so the border frame is
+   visible instead of shrinking into a side sheet. */
+@media (max-width: 980px) {
+  .program-shell.browser-workbench .browser-stage--compact {
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+    z-index: 14 !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-ai-panel--drawer {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: auto !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-process-view {
+    min-height: 0 !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-visible-links-card--inline {
+    display: block !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer {
+    inset: 0 !important;
+  }
+}
+
+/* Desktop browser frame: keep only the outer border and the real panel split.
+   The overlay outline should not leak into desktop mode. */
+@media (min-width: 981px) {
+  .program-shell.browser-workbench .browser-stage--desktop > .browser-split-group {
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop > .browser-split-group > [data-panel]:first-child::after {
+    content: none !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop .browser-ai-panel--desktop {
+    border-left: 1px solid var(--browser-border) !important;
+    box-shadow: none !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop .browser-resize-handle {
+    background: color-mix(in srgb, var(--browser-border) 58%, transparent) !important;
+    opacity: .55 !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 4px !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view > .browser-process-grid {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    gap: 0 !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view > .browser-process-grid > .browser-process-card {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 10px !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view > .browser-process-grid > .browser-process-card + .browser-process-card {
+    border-left: 1px solid color-mix(in srgb, var(--browser-border) 88%, transparent) !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view > .browser-readable-card,
+  .program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view > .browser-visible-links-card--inline {
+    border: 0 !important;
+    border-top: 1px solid color-mix(in srgb, var(--browser-border) 88%, transparent) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 10px 12px !important;
+  }
+}
+
+/* Compact browser body frame:
+   on phones, the live browser content should read as one full-height container
+   with only one separator between the process and conversation cards. */
+@media (max-width: 720px), (hover: none) and (pointer: coarse) {
+  .program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view {
+    min-height: 100% !important;
+    height: auto !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 4px !important;
+    box-shadow: none !important;
+    overflow: auto !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view > .browser-process-head {
+    padding: 8px 8px 6px !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--browser-border) 88%, transparent) !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view > .browser-process-grid {
+    gap: 0 !important;
+    border: 0 !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view > .browser-process-grid > .browser-process-card {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view > .browser-process-grid > .browser-process-card + .browser-process-card {
+    border-top: 1px solid color-mix(in srgb, var(--browser-border) 88%, transparent) !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view .browser-readable-card,
+  .program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view .browser-visible-links-card--inline {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view .browser-visible-links-card--inline {
+    border-top: 1px solid color-mix(in srgb, var(--browser-border) 88%, transparent) !important;
+    padding-bottom: 10px !important;
+  }
+}
+
+@media (max-width: 980px) and (pointer: fine) {
+  .program-shell.browser-workbench .browser-stage {
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop > .browser-split-group {
+    display: flex !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--desktop > .browser-split-group > [data-panel] {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
+
+  .program-shell.browser-workbench .browser-ai-panel {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
+
+  .program-shell.browser-workbench .browser-mobile-panel-drawer,
+  .program-shell.browser-workbench .browser-sidebar-backdrop {
+    display: none !important;
+  }
+
+  .program-shell.browser-workbench .browser-process-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr) !important;
+  }
+}
+
+/* Browser final frame: mirror the logs container with one square outer shell. */
+.program-shell.browser-workbench .browser-stage {
+  flex: 1 1 auto !important;
+  width: calc(100% - 8px) !important;
+  min-height: 0 !important;
+  margin: 4px !important;
+  border: 1px solid var(--border-subtle, var(--browser-border)) !important;
+  border-radius: 4px !important;
+  background: var(--bg-base, var(--browser-panel)) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  overflow: hidden !important;
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-stage {
+  background: var(--bg-surface, var(--browser-panel)) !important;
+  border-color: var(--border, var(--browser-border)) !important;
+  box-shadow: 0 4px 12px rgba(31, 35, 40, 0.08) !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop > .browser-split-group,
+.program-shell.browser-workbench .browser-stage--compact > .browser-live,
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact > .browser-live {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer {
+  inset: 0 !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-open,
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-closing {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  background: color-mix(in srgb, var(--bg-base, #0f1011) 94%, var(--browser-accent, #9ece6a) 6%) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+  z-index: 20 !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-ai-panel--drawer {
+  display: grid !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  color: var(--fg-base, var(--browser-text)) !important;
+  background: color-mix(in srgb, var(--bg-base, #0f1011) 94%, var(--browser-accent, #9ece6a) 6%) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-card {
+  border-bottom: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 20%, var(--border-subtle, #282a2e)) !important;
+  background: color-mix(in srgb, var(--bg-base, #0f1011) 88%, var(--browser-accent, #9ece6a) 7%) !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-card > span,
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-card-head span,
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-composer-head span {
+  color: var(--browser-accent, #9ece6a) !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-composer,
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-session-list button,
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-link-list button,
+.program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-mini-conversation article {
+  background: color-mix(in srgb, var(--bg-base, #0f1011) 82%, var(--browser-accent, #9ece6a) 4%) !important;
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-open,
+[data-theme="light"] .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-closing,
+[data-theme="light"] .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-ai-panel--drawer,
+[data-theme="light"] .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-card {
+  background: color-mix(in srgb, var(--bg-surface, #f6f8fa) 94%, var(--browser-accent, #65a30d) 6%) !important;
+}
+
+.program-shell.browser-workbench .browser-stage {
+  border-color: color-mix(in srgb, var(--browser-accent, #9ece6a) 38%, var(--border-subtle, #282a2e)) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact {
+  overflow: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact .browser-live-frame {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact .browser-process-view {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow: visible !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact .browser-process-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-auto-rows: auto !important;
+  align-content: start !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+.program-shell.browser-workbench .browser-stage--compact .browser-process-card {
+  width: 100% !important;
+  min-width: 0 !important;
   border-left: 0 !important;
 }
 
-/* the only visible frame */
-.browser-split-group > [data-panel]:first-child::after {
-  content: "" !important;
-  position: absolute !important;
-  inset: 4px !important;
-  z-index: 80 !important;
-  pointer-events: none !important;
-  border: 1px solid var(--browser-overlay-line) !important;
-  border-radius: 4px !important;
-  box-sizing: border-box !important;
+.program-shell.browser-workbench .browser-stage--compact .browser-process-card + .browser-process-card {
+  border-left: 0 !important;
+  border-top: 1px solid color-mix(in srgb, var(--browser-border) 82%, transparent) !important;
 }
-/* browser-overlay-only:end */
+
+[data-theme="light"] .program-shell.browser-workbench .browser-stage {
+  border-color: color-mix(in srgb, var(--browser-accent, #65a30d) 42%, var(--border, #d0d7de)) !important;
+  box-shadow: 0 4px 12px rgba(31, 35, 40, 0.08) !important;
+}
+
+/* Browser drawer contract:
+   the stage stays a logs-style framed container, while the phone panel remains
+   a real side drawer with the shared chat blur/fade/slide animation. */
+.program-shell.browser-workbench .browser-stage--desktop .browser-ai-panel {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+}
+
+@media (max-width: 720px) {
+  .program-shell.browser-workbench .browser-stage--compact {
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact > .chat-mobile-panel-backdrop {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 40 !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer,
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-open,
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-closing {
+    position: absolute !important;
+    inset: 0 0 0 auto !important;
+    display: block !important;
+    width: min(92vw, 420px) !important;
+    min-width: min(92vw, 420px) !important;
+    max-width: calc(100% - 24px) !important;
+    height: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-left: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 22%, var(--border-subtle, #282a2e)) !important;
+    border-radius: 0 !important;
+    background: color-mix(in srgb, var(--ui-panel, var(--bg-base, #0f1011)) 96%, transparent) !important;
+    box-shadow:
+      -24px 0 54px rgba(1, 4, 9, 0.28),
+      -1px 0 0 color-mix(in srgb, var(--browser-accent, #9ece6a) 10%, transparent) !important;
+    overflow: hidden !important;
+    z-index: 50 !important;
+  }
+
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-ai-panel--drawer {
+    position: relative !important;
+    inset: auto !important;
+    display: grid !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: color-mix(in srgb, var(--ui-panel, var(--bg-base, #0f1011)) 96%, transparent) !important;
+    box-shadow: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer,
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-open,
+  .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-closing {
+    width: min(90vw, 380px) !important;
+    min-width: min(90vw, 380px) !important;
+    max-width: calc(100% - 22px) !important;
+  }
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer,
+[data-theme="light"] .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-open,
+[data-theme="light"] .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer.is-closing,
+[data-theme="light"] .program-shell.browser-workbench .browser-stage--compact > .browser-mobile-panel-drawer .browser-ai-panel--drawer {
+  background: var(--bg-surface, #f6f8fa) !important;
+}
+
+/* Browser process restructure: the main page shows one process/log card, while
+   the conversation summary lives only in the side panel. */
+.program-shell.browser-workbench .browser-process-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.program-shell.browser-workbench .browser-process-card--agent {
+  width: 100% !important;
+  min-height: 0 !important;
+}
+
+.browser-process-preview {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+
+.browser-process-preview article {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--browser-accent) 24%, var(--browser-border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--browser-accent) 7%, var(--bg-base, #09090b));
+}
+
+.browser-process-preview strong,
+.browser-process-logs summary span {
+  color: var(--browser-accent);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.browser-process-preview p {
+  margin: 0;
+  color: var(--text-muted, #94a3b8);
+  font-size: 12px;
+  line-height: 1.46;
+  overflow-wrap: anywhere;
+}
+
+.browser-process-preview small,
+.browser-process-logs summary small {
+  color: var(--fg-subtle, #64748b);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.browser-process-logs {
+  border: 1px solid color-mix(in srgb, var(--browser-border) 78%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg-base, #09090b) 46%, transparent);
+  overflow: hidden;
+}
+
+.browser-process-logs summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 9px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.browser-process-logs summary::-webkit-details-marker {
+  display: none;
+}
+
+.browser-process-logs summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.browser-process-logs summary svg {
+  transition: transform .16s ease;
+}
+
+.browser-process-logs[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.browser-process-list--long {
+  max-height: min(48vh, 520px);
+  overflow: auto;
+  padding: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--browser-border) 72%, transparent);
+}
+
+.program-shell.browser-workbench .browser-readable-card p {
+  max-height: min(58vh, 700px) !important;
+}
+
+@media (max-width: 720px), (hover: none) and (pointer: coarse) {
+  .program-shell.browser-workbench .browser-stage--compact .browser-process-preview article,
+  .program-shell.browser-workbench .browser-stage--compact .browser-process-list article {
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: start !important;
+  }
+
+  .browser-process-logs summary {
+    min-height: 34px;
+  }
+
+  .browser-process-list--long {
+    max-height: 52vh;
+  }
+
+  .program-shell.browser-workbench .browser-readable-card p {
+    max-height: none !important;
+    min-height: 180px;
+  }
+}
+
+/* Final browser view-toggle override:
+   desktop = text only + neutral grey, mobile = icon only. */
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button {
+  color: var(--ui-muted) !important;
+  background: transparent !important;
+  border-color: var(--ui-border-soft) !important;
+  border-radius: 2px !important;
+  overflow: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button svg {
+  display: none !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button.is-active {
+  color: var(--ui-text) !important;
+  border-color: color-mix(in srgb, var(--browser-accent) 26%, var(--ui-border-soft)) !important;
+  background: color-mix(in srgb, var(--browser-accent) 6%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--browser-accent) 14%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button:hover {
+  transform: translateZ(0) !important;
+  background: color-mix(in srgb, var(--browser-accent) 5%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--browser-accent) 22%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle {
+  border-radius: 3px !important;
+  background: transparent !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button svg {
+  width: 12px !important;
+  height: 12px !important;
+  flex: 0 0 auto !important;
+}
+
+@media (max-width: 720px) {
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button svg {
+    display: inline-flex !important;
+  }
+
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button span {
+    display: none !important;
+  }
+}
+
+/* Browser desktop cleanup:
+   only the outer stage frame and the right panel divider should draw lines.
+   Narrow desktop panes stack the process cards so text does not collapse. */
+.program-shell.browser-workbench .browser-stage--desktop .browser-live,
+.program-shell.browser-workbench .browser-stage--desktop .browser-live-frame,
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-view,
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-grid,
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-card {
+  border-left: 0 !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view {
+  height: 100% !important;
+  min-height: 100% !important;
+  overflow: auto !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-grid {
+  width: 100% !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-card {
+  width: 100% !important;
+  min-width: 0 !important;
+  border-width: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-card + .browser-process-card {
+  border-top: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 18%, var(--border-subtle, #282a2e)) !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-list article {
+  grid-template-columns: minmax(86px, auto) minmax(0, 1fr) auto !important;
+}
+
+@media (min-width: 1260px) {
+  .program-shell.browser-workbench .browser-stage--desktop .browser-process-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* Browser process rail reset: later final pass keeps only one horizontal split. */
+.program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view,
+.program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view {
+  border-top: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 26%, var(--border-subtle, #282a2e)) !important;
+  border-right: 0 !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 26%, var(--border-subtle, #282a2e)) !important;
+  border-left: 0 !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--browser-accent, #9ece6a) 7%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--browser-accent, #9ece6a) 7%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-grid,
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-card,
+.program-shell.browser-workbench .browser-stage--compact .browser-process-grid,
+.program-shell.browser-workbench .browser-stage--compact .browser-process-card {
+  border-inline: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-process-grid,
+.program-shell.browser-workbench .browser-stage--compact .browser-process-grid {
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view > .browser-process-grid,
+.program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view > .browser-process-grid {
+  border: 0 !important;
+  border-inline: 0 !important;
+  box-shadow: none !important;
+}
+
+.program-shell.browser-workbench .browser-stage--desktop .browser-live-frame > .browser-process-view > .browser-process-grid > .browser-process-card,
+.program-shell.browser-workbench .browser-stage--compact .browser-live-frame > .browser-process-view > .browser-process-grid > .browser-process-card {
+  border-inline: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Browser process final pass:
+   keep the outer browser frame and a single horizontal divider only. */
+.program-shell.browser-workbench .browser-stage .browser-live-frame > .browser-process-view {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.program-shell.browser-workbench .browser-stage .browser-live-frame > .browser-process-view > .browser-process-grid {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.program-shell.browser-workbench .browser-stage .browser-live-frame > .browser-process-view > .browser-process-grid > .browser-process-card {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.program-shell.browser-workbench .browser-stage .browser-live-frame > .browser-process-view > .browser-process-grid > .browser-process-card + .browser-process-card {
+  border-top: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 22%, var(--border-subtle, #282a2e)) !important;
+  border-left: 0 !important;
+}
+
+/* Browser stage bottom edge: keep the 4px inset inside the grid row so the
+   outer overlay does not disappear under the shared status bar. */
+.program-shell.browser-workbench .browser-stage {
+  box-sizing: border-box !important;
+  height: calc(100% - 8px) !important;
+  max-height: calc(100% - 8px) !important;
+}
+
+/* Browser command + content frame:
+   make the URL bar the top strip of the same container, with no seam gap. */
+.program-shell.browser-workbench .browser-commandbar {
+  box-sizing: border-box !important;
+  width: calc(100% - 8px) !important;
+  margin: 0 4px !important;
+  border: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 38%, var(--border-subtle, #282a2e)) !important;
+  border-bottom: 0 !important;
+  border-radius: 4px 4px 0 0 !important;
+}
+
+.program-shell.browser-workbench .browser-stage {
+  margin: 0 4px 4px !important;
+  border-top: 0 !important;
+  border-radius: 0 0 4px 4px !important;
+  height: calc(100% - 4px) !important;
+  max-height: calc(100% - 4px) !important;
+}
+
+.program-shell.browser-workbench .browser-commandbar button,
+.program-shell.browser-workbench .browser-commandbar select,
+.program-shell.browser-workbench .browser-commandbar .browser-address {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.program-shell.browser-workbench .browser-commandbar button:hover,
+.program-shell.browser-workbench .browser-commandbar select:hover,
+.program-shell.browser-workbench .browser-commandbar .browser-address:focus-within {
+  border-color: color-mix(in srgb, var(--browser-accent, #9ece6a) 24%, transparent) !important;
+}
+
+/* Browser controls: same minimal hover language as Logs, tinted to lime. */
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button,
+.program-shell.browser-workbench .browser-topbar .browser-icon-action,
+.program-shell.browser-workbench .browser-topbar .browser-sidebar-toggle,
+.program-shell.browser-workbench .browser-commandbar button,
+.program-shell.browser-workbench .browser-card-action {
+  transition:
+    transform 150ms var(--motion-ease),
+    background-color 180ms var(--motion-ease),
+    border-color 180ms var(--motion-ease),
+    color 150ms ease,
+    opacity 150ms ease,
+    filter 150ms ease !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button::before,
+.program-shell.browser-workbench .browser-topbar .browser-icon-action::before,
+.program-shell.browser-workbench .browser-topbar .browser-sidebar-toggle::before,
+.program-shell.browser-workbench .browser-commandbar button::before,
+.program-shell.browser-workbench .browser-card-action::before,
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button::after,
+.program-shell.browser-workbench .browser-topbar .browser-icon-action::after,
+.program-shell.browser-workbench .browser-topbar .browser-sidebar-toggle::after,
+.program-shell.browser-workbench .browser-commandbar button::after,
+.program-shell.browser-workbench .browser-card-action::after {
+  content: none !important;
+  display: none !important;
+}
+
+@media (hover: hover) {
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button:hover,
+  .program-shell.browser-workbench .browser-topbar .browser-icon-action:hover,
+  .program-shell.browser-workbench .browser-topbar .browser-sidebar-toggle:hover,
+  .program-shell.browser-workbench .browser-commandbar button:hover,
+  .program-shell.browser-workbench .browser-card-action:hover {
+    transform: translateY(-1px) !important;
+    border-color: color-mix(in srgb, var(--browser-accent) 42%, var(--browser-border)) !important;
+    color: color-mix(in srgb, var(--browser-accent) 84%, var(--fg-base)) !important;
+    background: color-mix(in srgb, var(--browser-accent) 8%, var(--ui-input, var(--bg-base))) !important;
+    filter: saturate(1.04) !important;
+  }
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button.is-active,
+.program-shell.browser-workbench .browser-topbar .browser-icon-action.is-ready,
+.program-shell.browser-workbench .browser-topbar .browser-sidebar-toggle.is-active,
+.program-shell.browser-workbench .browser-commandbar button:focus-visible,
+.program-shell.browser-workbench .browser-card-action:focus-visible {
+  border-color: var(--browser-accent-border) !important;
+  background: color-mix(in srgb, var(--browser-accent) 8%, var(--ui-input, var(--bg-base))) !important;
+  color: color-mix(in srgb, var(--browser-accent) 88%, var(--fg-base)) !important;
+  box-shadow: none !important;
+}
+
+/* Final browser view-toggle pass:
+   desktop is text-only with a neutral chip; mobile keeps the icon-only variant. */
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle {
+  background: transparent !important;
+  border-color: transparent !important;
+  gap: 2px !important;
+  padding: 1px !important;
+  overflow: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button {
+  min-height: 22px !important;
+  padding: 0 7px !important;
+  border: 1px solid color-mix(in srgb, var(--browser-accent) 34%, var(--ui-border-soft)) !important;
+  border-radius: 4px !important;
+  background: color-mix(in srgb, var(--browser-accent) 8%, var(--bg-base)) !important;
+  color: var(--ui-muted) !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+  transform: none !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button svg {
+  display: none !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button.is-active {
+  color: color-mix(in srgb, var(--browser-accent) 78%, var(--fg-base)) !important;
+  background: color-mix(in srgb, var(--browser-accent) 10%, var(--bg-base)) !important;
+  border-color: color-mix(in srgb, var(--browser-accent) 40%, var(--ui-border-soft)) !important;
+  box-shadow: none !important;
+}
+
+@media (hover: hover) {
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button:hover {
+    transform: none !important;
+    color: color-mix(in srgb, var(--browser-accent) 82%, var(--fg-base)) !important;
+    background: color-mix(in srgb, var(--browser-accent) 9%, var(--bg-base)) !important;
+    border-color: color-mix(in srgb, var(--browser-accent) 48%, var(--ui-border-soft)) !important;
+    box-shadow: none !important;
+    filter: none !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button {
+    width: 26px !important;
+    min-width: 26px !important;
+    padding: 0 !important;
+  }
+
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button svg {
+    display: inline-flex !important;
+  }
+
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button span {
+    display: none !important;
+  }
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-topbar .browser-view-toggle button {
+  background: color-mix(in srgb, var(--browser-accent) 6%, var(--bg-surface)) !important;
+  border-color: color-mix(in srgb, var(--browser-accent) 34%, var(--ui-border-soft)) !important;
+  color: var(--ui-muted) !important;
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-topbar .browser-view-toggle button.is-active {
+  color: color-mix(in srgb, var(--browser-accent) 78%, var(--fg-base)) !important;
+  background: color-mix(in srgb, var(--browser-accent) 9%, var(--bg-surface)) !important;
+  border-color: color-mix(in srgb, var(--browser-accent) 40%, var(--ui-border-soft)) !important;
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-topbar .browser-view-toggle button:hover {
+  background: color-mix(in srgb, var(--browser-accent) 8%, var(--bg-surface)) !important;
+  border-color: color-mix(in srgb, var(--browser-accent) 48%, var(--ui-border-soft)) !important;
+}
+
+/* Browser view mode toggle: finished segmented control with a single frame. */
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  min-height: 24px !important;
+  padding: 2px !important;
+  border: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 30%, var(--ui-border-soft, #3a3d42)) !important;
+  border-radius: 5px !important;
+  background: color-mix(in srgb, var(--browser-accent, #9ece6a) 18%, #18220f) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--browser-accent, #9ece6a) 16%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  min-width: 76px !important;
+  min-height: 20px !important;
+  padding: 0 9px !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: none !important;
+  color: var(--fg-muted, #8f98a3) !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  transform: none !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button + button {
+  margin-left: 1px !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button svg {
+  display: inline-flex !important;
+  width: 12px !important;
+  height: 12px !important;
+  flex: 0 0 auto !important;
+  opacity: .82 !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle .browser-view-label,
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button span {
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  color: inherit !important;
+  font: inherit !important;
+  line-height: 1 !important;
+}
+
+.program-shell.browser-workbench .browser-topbar .browser-view-toggle button.is-active {
+  color: color-mix(in srgb, var(--browser-accent, #9ece6a) 86%, var(--fg-base, #f8fafc)) !important;
+  background: color-mix(in srgb, var(--browser-accent, #9ece6a) 30%, #243515) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--browser-accent, #9ece6a) 36%, transparent) !important;
+}
+
+@media (hover: hover) {
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button:hover {
+    color: color-mix(in srgb, var(--browser-accent, #9ece6a) 86%, var(--fg-base, #f8fafc)) !important;
+    background: color-mix(in srgb, var(--browser-accent, #9ece6a) 24%, #223113) !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    filter: none !important;
+    transform: none !important;
+  }
+
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button.is-active:hover {
+    background: color-mix(in srgb, var(--browser-accent, #9ece6a) 30%, #243515) !important;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--browser-accent, #9ece6a) 36%, transparent) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button {
+    min-width: 28px !important;
+    width: 28px !important;
+    padding: 0 !important;
+  }
+
+  .program-shell.browser-workbench .browser-topbar .browser-view-toggle button span {
+    display: none !important;
+  }
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-topbar .browser-view-toggle {
+  background: color-mix(in srgb, var(--bg-surface, #f6f8fa) 86%, var(--browser-accent, #72a516) 14%) !important;
+  border-color: color-mix(in srgb, var(--browser-accent, #72a516) 34%, var(--ui-border-soft, #d7dec9)) !important;
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-topbar .browser-view-toggle button {
+  color: color-mix(in srgb, var(--fg-muted, #64748b) 88%, var(--fg-base, #1f2937)) !important;
+}
+
+[data-theme="light"] .program-shell.browser-workbench .browser-topbar .browser-view-toggle button.is-active {
+  color: color-mix(in srgb, var(--browser-accent, #5f8d0f) 78%, var(--fg-base, #172018)) !important;
+  background: color-mix(in srgb, var(--browser-accent, #72a516) 14%, var(--bg-surface, #f6f8fa)) !important;
+}
+
+/* Browser drawer clipping fix:
+   mirror the chat activity sidebar clamp so long session/link rows cannot
+   expand the drawer or its internal scroll wrappers past the visible edge. */
+.program-shell.browser-workbench .browser-mobile-panel-drawer,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-ai-panel--drawer,
+.program-shell.browser-workbench .browser-ai-panel--desktop {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  contain: layout paint !important;
+}
+
+.program-shell.browser-workbench .browser-mobile-panel-drawer {
+  width: min(94vw, 420px) !important;
+  min-width: min(94vw, 420px) !important;
+  overflow: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-ai-panel--drawer,
+.program-shell.browser-workbench .browser-ai-panel--desktop {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-ai-panel--drawer *,
+.program-shell.browser-workbench .browser-ai-panel--desktop * {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-session-list,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-action-list,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-link-list,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-session-list,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-action-list,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-link-list {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  justify-items: stretch !important;
+}
+
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-session-list button,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-action-list button,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-link-list button,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-session-list button,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-action-list button,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-link-list button {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-session-list strong,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-session-list small,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-session-list em,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-session-id,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-link-list small,
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-link-list em,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-session-list strong,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-session-list small,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-session-list em,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-session-id,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-link-list small,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-link-list em {
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+.program-shell.browser-workbench .browser-mobile-panel-drawer .browser-session-list button,
+.program-shell.browser-workbench .browser-ai-panel--desktop .browser-session-list button {
+  justify-items: start !important;
+}
+
+/* Browser hero preview wrapping:
+   the extracted page snapshot can contain long URLs and markdown-like lines, so
+   keep that block wrapped inside the card instead of letting it spill sideways. */
+.program-shell.browser-workbench .browser-card--hero {
+  min-width: 0 !important;
+}
+
+.program-shell.browser-workbench .browser-card--hero p,
+.program-shell.browser-workbench .browser-card--hero pre,
+.program-shell.browser-workbench .browser-card--hero small {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  white-space: pre-wrap !important;
+}
+
+/* Browser extracted-page wrapping:
+   keep the readable snapshot inside its card, just like the chat activity pane. */
+.program-shell.browser-workbench .browser-readable-card {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.program-shell.browser-workbench .browser-readable-card p,
+.program-shell.browser-workbench .browser-readable-card pre,
+.program-shell.browser-workbench .browser-readable-card code,
+.program-shell.browser-workbench .browser-readable-card small,
+.program-shell.browser-workbench .browser-readable-card strong {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+.program-shell.browser-workbench .browser-readable-card p,
+.program-shell.browser-workbench .browser-readable-card pre,
+.program-shell.browser-workbench .browser-readable-card code {
+  white-space: pre-wrap !important;
+}
+
+/* Browser agent hierarchy:
+   one orchestrator parent with per-agent dropdowns for raw details. */
+.program-shell.browser-workbench .browser-agent-tree {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+  min-width: 0 !important;
+}
+
+.program-shell.browser-workbench .browser-agent-root {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  min-height: 34px !important;
+  padding: 8px 10px !important;
+  border: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 34%, var(--border-subtle, #282a2e)) !important;
+  border-radius: 5px 5px 0 0 !important;
+  background: color-mix(in srgb, var(--browser-accent, #9ece6a) 8%, var(--bg-base, #09090b)) !important;
+}
+
+.program-shell.browser-workbench .browser-agent-root strong {
+  color: color-mix(in srgb, var(--browser-accent, #9ece6a) 86%, var(--fg-base, #f8fafc)) !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: .04em !important;
+  text-transform: uppercase !important;
+}
+
+.program-shell.browser-workbench .browser-agent-root span {
+  min-width: 0 !important;
+  color: var(--fg-muted, #94a3b8) !important;
+  font-size: 11px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.program-shell.browser-workbench .browser-agent-children {
+  display: grid !important;
+  max-height: min(42vh, 500px) !important;
+  overflow: auto !important;
+  border: 1px solid color-mix(in srgb, var(--browser-accent, #9ece6a) 20%, var(--border-subtle, #282a2e)) !important;
+  border-top: 0 !important;
+  border-radius: 0 0 5px 5px !important;
+  background: color-mix(in srgb, var(--bg-base, #09090b) 72%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event {
+  min-width: 0 !important;
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle, #282a2e) 82%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event:first-child {
+  border-top: 0 !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary {
+  display: grid !important;
+  grid-template-columns: minmax(108px, auto) minmax(0, 1fr) auto !important;
+  gap: 9px !important;
+  align-items: center !important;
+  min-height: 38px !important;
+  padding: 8px 10px !important;
+  cursor: pointer !important;
+  list-style: none !important;
+  user-select: none !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary::-webkit-details-marker {
+  display: none !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary span {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary svg {
+  flex: 0 0 auto !important;
+  transition: transform .16s ease !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event[open] summary svg {
+  transform: rotate(180deg) !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary strong {
+  font-size: 11px !important;
+  font-weight: 780 !important;
+  letter-spacing: .035em !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary p,
+.program-shell.browser-workbench .browser-agent-event-body p {
+  margin: 0 !important;
+  min-width: 0 !important;
+  color: var(--fg-muted, #94a3b8) !important;
+  font-size: 12px !important;
+  line-height: 1.46 !important;
+  overflow-wrap: anywhere !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary p {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary small {
+  width: fit-content !important;
+  color: var(--fg-subtle, #64748b) !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event-body {
+  padding: 0 10px 10px 34px !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event.is-orchestrator {
+  --agent-tone: var(--browser-accent, #9ece6a);
+}
+
+.program-shell.browser-workbench .browser-agent-event.is-planner {
+  --agent-tone: #38bdf8;
+}
+
+.program-shell.browser-workbench .browser-agent-event.is-watcher {
+  --agent-tone: #fbbf24;
+}
+
+.program-shell.browser-workbench .browser-agent-event.is-browser {
+  --agent-tone: #a78bfa;
+}
+
+.program-shell.browser-workbench .browser-agent-event.is-reporter {
+  --agent-tone: #34d399;
+}
+
+.program-shell.browser-workbench .browser-agent-event summary strong,
+.program-shell.browser-workbench .browser-agent-event summary svg {
+  color: var(--agent-tone, var(--browser-accent, #9ece6a)) !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event[open] {
+  background: color-mix(in srgb, var(--agent-tone, var(--browser-accent, #9ece6a)) 7%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-agent-event[open] .browser-agent-event-body {
+  border-top: 1px solid color-mix(in srgb, var(--agent-tone, var(--browser-accent, #9ece6a)) 20%, transparent) !important;
+}
+
+@media (max-width: 720px), (hover: none) and (pointer: coarse) {
+  .program-shell.browser-workbench .browser-agent-root {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+  }
+
+  .program-shell.browser-workbench .browser-agent-root span {
+    white-space: normal !important;
+  }
+
+  .program-shell.browser-workbench .browser-agent-children {
+    max-height: 54vh !important;
+  }
+
+  .program-shell.browser-workbench .browser-agent-event summary {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 6px !important;
+  }
+
+  .program-shell.browser-workbench .browser-agent-event summary p {
+    grid-column: 1 / -1 !important;
+    white-space: normal !important;
+  }
+
+  .program-shell.browser-workbench .browser-agent-event-body {
+    padding-left: 10px !important;
+  }
+}
+
+.program-shell.browser-workbench .browser-card-action--reset:not(:disabled) {
+  border-color: color-mix(in srgb, var(--browser-accent) 44%, var(--border-subtle)) !important;
+  background: color-mix(in srgb, var(--browser-accent) 7%, transparent) !important;
+  color: color-mix(in srgb, var(--browser-accent) 84%, var(--fg-base)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--browser-accent) 36%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-card-action--reset:not(:disabled) svg {
+  color: color-mix(in srgb, var(--browser-accent) 84%, var(--fg-base)) !important;
+}
+
+.program-shell.browser-workbench .browser-card-action--reset:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--browser-danger) 72%, var(--border-subtle)) !important;
+  background: color-mix(in srgb, var(--browser-danger) 12%, transparent) !important;
+  color: var(--browser-danger) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--browser-danger) 78%, transparent) !important;
+}
+
+.program-shell.browser-workbench .browser-card-action--reset:not(:disabled):hover svg {
+  color: var(--browser-danger) !important;
+}

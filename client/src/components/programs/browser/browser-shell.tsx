@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
+  ChevronDown,
   Clock,
   ExternalLink,
   FileText,
@@ -10,10 +11,11 @@ import {
   Link as LinkIcon,
   ListChecks,
   Loader2,
-  MessageSquare,
   Monitor,
+  Plus,
   PanelRightCloseIcon,
   PanelRightOpenIcon,
+  Trash2,
   RefreshCcw,
   Search,
   Sparkles,
@@ -55,9 +57,10 @@ import { useApp } from "@/contexts/app-context";
 
 const CHAT_SESSION_ID_KEY = "reterm.chat.sessionId";
 const BROWSER_SESSION_ID_KEY = "reterm.browser.agentSessionId";
+const DEFAULT_BROWSER_SESSION_ID = "default-browser-session";
 const BROWSER_SESSION_LINK_EVENT = "reterm.browser.session-link";
 const BROWSER_CONVERSATION_EVENT = "reterm.browser.conversation-change";
-const MOBILE_QUERY = "(max-width: 1024px), (hover: none) and (pointer: coarse)";
+const MOBILE_QUERY = "(max-width: 720px)";
 const MOBILE_PANEL_EXIT_MS = 380;
 
 type BrowserViewMode = "headless" | "headful";
@@ -112,6 +115,14 @@ function latencyTone(ms?: number) {
 function compact(value = "", limit = 160) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   return text.length > limit ? `${text.slice(0, limit)}...` : text;
+}
+
+function humanizeInternalLabel(value = "", fallback = "") {
+  const text = compact(value, 120)
+    .replace(/[._/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || fallback;
 }
 
 function numberish(value: unknown) {
@@ -173,6 +184,18 @@ function conversationStorageKey(sessionId: string) {
   return `reterm.browser.conversation.${sessionId || "default-browser-session"}`;
 }
 
+function clearAllBrowserConversationStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key && key.startsWith("reterm.browser.conversation.")) keys.push(key);
+    }
+    keys.forEach((key) => window.localStorage.removeItem(key));
+  } catch {}
+}
+
 function entryId(prefix = "entry") {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -209,11 +232,6 @@ function saveConversation(sessionId: string, entries: BrowserConversationEntry[]
     window.localStorage.setItem(conversationStorageKey(sessionId), JSON.stringify(entries.slice(-30)));
     window.dispatchEvent(new CustomEvent(BROWSER_CONVERSATION_EVENT, { detail: { sessionId } }));
   } catch {}
-}
-
-function browserSessionSubtitle(session: BrowserSessionRecord | BrowserAgentSessionSummary | null | undefined) {
-  if (!session) return "";
-  return compact(session.lastInstruction || session.summary || session.routeEngine || session.route || "", 140);
 }
 
 function explicitInstructionRoute(instruction = "") {
@@ -323,7 +341,7 @@ function processItemsFromAgent(
     });
   }
 
-  const steps = Array.isArray(report?.steps) ? report.steps.slice(-5) : [];
+  const steps = Array.isArray(report?.steps) ? report.steps.slice(-18) : [];
   steps.forEach((step) => {
     items.push({
       role: step.tool === "browserVerify" ? "Watcher" : "Browser",
@@ -334,7 +352,7 @@ function processItemsFromAgent(
           step.summary || step.text || "",
           step.currentTitle || step.currentUrl || "",
         ].filter(Boolean).join(": "),
-        360,
+        720,
       ),
     });
   });
@@ -349,7 +367,7 @@ function processItemsFromAgent(
     });
   }
 
-  const history = Array.isArray(statusReport?.history) ? statusReport.history.slice(-3) : [];
+  const history = Array.isArray(statusReport?.history) ? statusReport.history.slice(-8) : [];
   history.forEach((entry) => {
     if (items.some((item) => item.text.includes(entry.title || entry.url || "never-match"))) return;
     items.push({
@@ -367,7 +385,7 @@ function processItemsFromAgent(
     });
   }
 
-  return items.slice(-8);
+  return items.slice(-24);
 }
 
 function observationToPage(observation?: BrowserAgentObservation | null): LightpandaPageResult["page"] | null {
@@ -779,8 +797,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     }
   }, [openProgram, refreshBrowserSessions, upsertBrowserSession]);
 
-  const resetBrowserSession = React.useCallback(async () => {
-    if (!agentSessionId) return;
+  const resetAllBrowserSessions = React.useCallback(async () => {
     setError("");
     setAgentStatusError("");
     setBrowserRunError("");
@@ -788,13 +805,19 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     setBrowserInstruction("");
     setAgentStatus(null);
     try {
-      await resetBrowserAgent(agentSessionId);
+      await resetBrowserAgent();
+      clearAllBrowserConversationStorage();
       await refreshBrowserSessions();
-      await loadAgentStatus(agentSessionId);
+      setAgentSessionId(DEFAULT_BROWSER_SESSION_ID);
+      try {
+        window.localStorage.setItem(BROWSER_SESSION_ID_KEY, DEFAULT_BROWSER_SESSION_ID);
+      } catch {}
+      setConversation([]);
+      await loadAgentStatus(DEFAULT_BROWSER_SESSION_ID);
     } catch (err) {
       setAgentStatusError(err instanceof Error ? err.message : String(err));
     }
-  }, [agentSessionId, loadAgentStatus, refreshBrowserSessions]);
+  }, [loadAgentStatus, refreshBrowserSessions]);
 
   const runBrowserInstruction = React.useCallback(async () => {
     const instruction = browserInstruction.trim();
@@ -1056,7 +1079,10 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
     () => processItemsFromAgent(browserRunResult, agentStatus, browserRunning),
     [agentStatus, browserRunResult, browserRunning],
   );
-  const extractionPath = page?.extractionPath || page?.extractionSources?.join(", ") || (playwrightResult ? "playwright_mcp.snapshot" : "none");
+  const extractionPath = humanizeInternalLabel(
+    page?.extractionPath || page?.extractionSources?.join(", ") || (playwrightResult ? "playwright_mcp.snapshot" : "none"),
+    "none",
+  );
   const aiRuntimeTitle = agentState?.currentTitle || page?.title || (playwrightResult ? "Playwright snapshot" : "No page yet");
   const agentModel = agentStatus?.runtime?.models?.planner || agentStatus?.runtime?.model || "";
   const currentBrowserSession = React.useMemo(() => {
@@ -1070,7 +1096,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   }, [browserSessions, chatSessions]);
   const browserRunSummary = browserRunResult?.summary || browserRunResult?.uiReport?.summary || "";
   const browserRunNextAction = browserRunResult?.nextSafeAction || browserRunResult?.uiReport?.nextSafeAction || "";
-  const browserRunRoute = browserRunResult?.route || browserRunResult?.uiReport?.route || "";
+  const browserRunRoute = humanizeInternalLabel(browserRunResult?.route || browserRunResult?.uiReport?.route || "");
   const activeLatencyMs = selectedBackend === "playwright"
     ? playwrightResponseMs(playwrightStatus)
     : lightpandaResult?.durationMs || lightpandaStatus?.durationMs;
@@ -1078,6 +1104,21 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
   const sidebarMounted = isCompact && (sidebarOpen || sidebarClosing);
   const sidebarMotionClass = sidebarClosing ? "is-closing" : "is-open";
   const playwrightToolCount = playwrightStatus?.server?.toolCount;
+  const renderProcessEvent = (item: BrowserProcessItem, index: number, keyPrefix = "event") => (
+    <details
+      key={`${keyPrefix}-${item.role}-${index}`}
+      className={`browser-agent-event is-${item.role.toLowerCase()}`}
+    >
+      <summary>
+        <span><ChevronDown size={13} /> <strong>{item.role}</strong></span>
+        <p>{compact(item.text, 220)}</p>
+        {item.status && <small>{item.status}</small>}
+      </summary>
+      <div className="browser-agent-event-body">
+        <p>{item.text}</p>
+      </div>
+    </details>
+  );
 
   const browserStatusStrip = (
     <div className="browser-status-strip browser-status-strip--topbar">
@@ -1085,15 +1126,17 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         <button
           type="button"
           className={viewMode === "headless" ? "is-active" : ""}
+          aria-pressed={viewMode === "headless"}
           onClick={() => setViewMode("headless")}
           title="Show formatted extraction and agent process"
         >
           <FileText size={13} />
-          <span>{isCompact ? "read" : "headless"}</span>
+          <span className="browser-view-label">headless</span>
         </button>
         <button
           type="button"
           className={viewMode === "headful" ? "is-active" : ""}
+          aria-pressed={viewMode === "headful"}
           onClick={() => {
             setViewMode("headful");
             setBackend("playwright");
@@ -1101,7 +1144,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
           title="Show the visual controlled browser"
         >
           <Monitor size={13} />
-          <span>{isCompact ? "view" : "headful"}</span>
+          <span className="browser-view-label">headful</span>
         </button>
       </div>
       <span className={cn("browser-status-chip browser-status-chip--lightpanda", lightpandaStatus?.ok ? "is-ready" : "is-down")}>
@@ -1188,37 +1231,19 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
               </strong>
             </div>
             <div className="browser-process-grid">
-              <section className="browser-process-card">
+              <section className="browser-process-card browser-process-card--agent">
                 <div className="browser-process-card-title">
                   <ListChecks size={14} />
                   agent process
                 </div>
-                <div className="browser-process-list">
-                  {processItems.map((item, index) => (
-                    <article key={`${item.role}-${index}`}>
-                      <strong>[{item.role}]</strong>
-                      <p>{item.text}</p>
-                      {item.status && <small>{item.status}</small>}
-                    </article>
-                  ))}
-                </div>
-              </section>
-              <section className="browser-process-card">
-                <div className="browser-process-card-title">
-                  <MessageSquare size={14} />
-                  compact conversation
-                </div>
-                <div className="browser-conversation-list">
-                  {conversation.length === 0 ? (
-                    <em>No browser conversation yet. Send a prompt and I will summarize the key turns here.</em>
-                  ) : (
-                    conversation.slice(-6).map((entry) => (
-                      <article key={entry.id} className={`is-${entry.role}`}>
-                        <strong>{entry.role === "user" ? "You" : "Orchestrator"}</strong>
-                        <p>{entry.text}</p>
-                      </article>
-                    ))
-                  )}
+                <div className="browser-agent-tree" aria-label="Browser agent hierarchy">
+                  <div className="browser-agent-root">
+                    <strong>Orchestrator</strong>
+                    <span>{browserRunning ? "coordinating active browser agents" : "latest agent activity"}</span>
+                  </div>
+                  <div className="browser-agent-children">
+                    {processItems.map((item, index) => renderProcessEvent(item, index))}
+                  </div>
                 </div>
               </section>
             </div>
@@ -1356,7 +1381,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
             title="New chat tab"
             aria-label="New chat tab"
           >
-            +
+            <Plus size={13} />
           </button>
         </div>
         <div className="browser-session-list">
@@ -1386,8 +1411,15 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         <div className="browser-card-head">
           <span>browser-only sessions</span>
           <div className="browser-hero-meta">
-            <button type="button" className="browser-card-action browser-card-action--reset" onClick={() => void resetBrowserSession()} disabled={browserRunning || !agentSessionId}>
-              Reset current
+            <button
+              type="button"
+              className="browser-card-action browser-card-action--reset browser-card-action--icon"
+              onClick={() => void resetAllBrowserSessions()}
+              disabled={browserRunning}
+              title="Reset all browser sessions"
+              aria-label="Reset all browser sessions"
+            >
+              <Trash2 size={13} />
             </button>
           </div>
         </div>
@@ -1405,7 +1437,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
                   onClick={() => void activateBrowserSession(session.sessionId)}
                 >
                   <strong>{browserSessionLabel(session)}</strong>
-                  <small>{browserSessionSubtitle(session) || "session ready"}</small>
+                  <small>browser agent session</small>
                   <span className="browser-session-id">#{compact(session.sessionId, 10)}</span>
                 </button>
               );
@@ -1498,7 +1530,7 @@ export function BrowserShell({ isActive = true }: { isActive?: boolean }) {
         </button>
       </form>
 
-      <main className={cn("browser-stage", isCompact && "browser-stage--compact")}>
+      <main className={cn("browser-stage", isCompact ? "browser-stage--compact" : "browser-stage--desktop")}>
         {isCompact ? (
           <>
             {browserLive}

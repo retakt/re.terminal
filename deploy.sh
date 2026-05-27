@@ -79,9 +79,16 @@ tar -czf "$SOURCE_ARCHIVE" \
   --exclude="tmp" \
   --exclude="temp" \
   --exclude="coverage" \
+  --exclude="__tests__" \
+  --exclude="test" \
+  --exclude="tests" \
   --exclude="*.log" \
+  --exclude="*.jsonl" \
   --exclude="*.tmp" \
+  --exclude="*.cjs" \
+  --exclude="*.mjs" \
   --exclude="*.map" \
+  --exclude="*snapshot*" \
   --exclude=".env" \
   --exclude=".env.local" \
   --exclude=".env.*" \
@@ -90,11 +97,19 @@ tar -czf "$SOURCE_ARCHIVE" \
   --exclude="server/.env" \
   --exclude="server/.env.local" \
   --exclude="server/.env.*" \
+  --exclude="server/check-browser-agent-env.mjs" \
+  --exclude="server/config/browser-agent/*.json" \
+  --exclude="server/config/browser-agent/benchmark.env" \
+  --exclude="server/debug-browser-agent-*.json" \
+  --exclude="server/lib/config/browser-agent/*.json" \
   --exclude="server/scripts/smoke-*" \
   --exclude="server/scripts/test-*" \
+  --exclude="server/scripts/*.mjs" \
   --exclude="server/test-*" \
   --exclude="server/*.test.*" \
   --exclude="server/*.spec.*" \
+  --exclude="scripts/*.mjs" \
+  --exclude="fix-*.cjs" \
   -C "$SCRIPT_DIR" .
 
 echo "Source archive size:"
@@ -168,6 +183,7 @@ prune_non_production() {
     -name .temp -o \
     -name tmp -o \
     -name temp -o \
+    -name __snapshots__ -o \
     -name __tests__ -o \
     -name test -o \
     -name tests -o \
@@ -176,15 +192,22 @@ prune_non_production() {
 
   find "$root" -type f \( \
     -name "*.log" -o \
+    -name "*.jsonl" -o \
     -name "*.tmp" -o \
+    -name "*.cjs" -o \
+    -name "*.mjs" -o \
     -name "*.map" -o \
+    -name "*snapshot*" -o \
     -name ".env" -o \
     -name ".env.local" -o \
     -name ".env.*" -o \
     -name "*.test.*" -o \
     -name "*.spec.*" -o \
     -name "test-*" -o \
-    -name "smoke-*" \
+    -name "smoke-*" -o \
+    -path "*/config/browser-agent/*.json" -o \
+    -path "*/config/browser-agent/benchmark.env" -o \
+    -path "*/lib/config/browser-agent/*.json" \
   \) ! -name ".env.example" -delete || true
 }
 
@@ -218,6 +241,21 @@ set_env_if_missing_or_value() {
   fi
 
   set_env_if_missing "$file" "$key" "$value"
+}
+
+set_env_value() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+
+  mkdir -p "$(dirname "$file")"
+  touch "$file"
+
+  if grep -q "^${key}=" "$file"; then
+    sed -i "s|^${key}=.*$|${key}=${value}|" "$file"
+  else
+    printf "\n%s=%s\n" "$key" "$value" >> "$file"
+  fi
 }
 
 wait_for_endpoint() {
@@ -423,6 +461,30 @@ if find "$RELEASE_DIR" -type f \( \
 fi
 
 if find "$RELEASE_DIR" -type f \( \
+  -name "*.log" -o \
+  -name "*.jsonl" -o \
+  -name "*.cjs" -o \
+  -name "*.mjs" -o \
+  -name "*snapshot*" -o \
+  -path "*/config/browser-agent/*.json" -o \
+  -path "*/config/browser-agent/benchmark.env" -o \
+  -path "*/lib/config/browser-agent/*.json" \
+\) | grep -q .; then
+  echo "Error: release contains cleanup-only artifacts:"
+  find "$RELEASE_DIR" -type f \( \
+    -name "*.log" -o \
+    -name "*.jsonl" -o \
+    -name "*.cjs" -o \
+    -name "*.mjs" -o \
+    -name "*snapshot*" -o \
+    -path "*/config/browser-agent/*.json" -o \
+    -path "*/config/browser-agent/benchmark.env" -o \
+    -path "*/lib/config/browser-agent/*.json" \
+  \)
+  exit 1
+fi
+
+if find "$RELEASE_DIR" -type f \( \
   -name ".env" -o \
   -name ".env.local" -o \
   -name ".env.*" \
@@ -466,6 +528,8 @@ restore_if_missing "$VPS_PATH/client/.env.local" "$BACKUP_DIR/client/.env.local"
 cd "$VPS_PATH"
 
 echo "Writing safe default server env values..."
+set_env_value "$VPS_PATH/server/.env" "LOG_FILE" "/dev/null"
+set_env_value "$VPS_PATH/server/.env" "AUDIT_LOG_FILE" "/dev/null"
 set_env_if_missing "$VPS_PATH/server/.env" "LIGHTPANDA_CDP_URL" "$LIGHTPANDA_CDP_URL"
 set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_CDP_URL" "$BROWSER_CHROME_CDP_URL"
 set_env_if_missing "$VPS_PATH/server/.env" "BROWSER_CHROME_CDP_PORT" "$BROWSER_CHROME_CDP_PORT"
@@ -507,6 +571,8 @@ if pm2 describe re-term >/dev/null 2>&1; then
 else
   pm2 start server/server.js --name re-term --update-env
 fi
+
+rm -f "$VPS_PATH/server/re-term.log" "$VPS_PATH/server/re-term.audit.jsonl"
 
 echo "Checking local server endpoints..."
 wait_for_endpoint "http://127.0.0.1:3003/api/stats" 30

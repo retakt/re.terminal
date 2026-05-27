@@ -395,6 +395,7 @@ function PrimaryTabBar() {
                 else tabRefs.current.delete(page.id);
               }}
               className={`reterm-tab ${isActive ? "reterm-tab--active" : ""} reterm-tab--${page.type}`}
+              data-page-type={page.type}
               draggable
               onClick={() => {
                 if (suppressClickRef.current === page.id) {
